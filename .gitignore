@@ -1,0 +1,19 @@
+# dependencies
+node_modules/
+
+# build and tool output
+dist/
+coverage/
+.turbo/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# env and secrets
+.env
+.env.*
+!.env.example
+
+# logs and OS files
+*.log
+.DS_Store

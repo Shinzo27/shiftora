@@ -1,0 +1,34 @@
+# Shiftora
+
+Shift scheduling and attendance for small businesses, clinics first: weekly schedules,
+WhatsApp notifications, geofenced/QR clock-in from a PWA, shift swaps and payroll-ready
+timesheets.
+
+> Work in progress. See [PRD.md](PRD.md) for the product, [ARCHITECTURE.md](ARCHITECTURE.md)
+> for the design and [AGENTS.md](AGENTS.md) for contribution rules.
+
+## Stack
+
+TypeScript monorepo (pnpm + Turborepo): NestJS API, BullMQ worker, React + Vite PWA,
+PostgreSQL 16 with Row-Level Security, Drizzle ORM, Redis.
+
+## Local setup
+
+Requirements: Node 26, pnpm 12, Docker.
+
+```bash
+pnpm install
+cp .env.example .env
+pnpm infra:up      # Postgres on :5433, Redis on :6379, Mailpit UI on :8025
+pnpm lint && pnpm typecheck && pnpm test && pnpm build
+```
+
+## Repository layout
+
+```
+apps/        api, worker, web (coming in week 1–3)
+packages/
+  config/    shared TypeScript and ESLint presets
+  domain/    pure business logic (time, validation, pay rules, scheduler)
+infra/       docker-compose for local services
+```
