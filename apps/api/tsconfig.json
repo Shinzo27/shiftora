@@ -1,0 +1,12 @@
+{
+  "extends": "@shiftora/config/tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": ["node"],
+    // NestJS dependency injection reads constructor parameter types from decorator metadata.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "include": ["src"]
+}

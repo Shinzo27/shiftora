@@ -4,3 +4,14 @@ packages:
 
 # Supply-chain safety: never install a package version published less than 7 days ago.
 minimumReleaseAge: 10080
+
+# Install scripts are blocked unless listed here. These are denied on purpose:
+# - esbuild, @swc/core: ship prebuilt binaries; their scripts only verify them
+# - ssh2, cpu-features: optional native add-ons Testcontainers doesn't need locally
+# - protobufjs: only runs a version check
+allowBuilds:
+  '@swc/core': false
+  cpu-features: false
+  esbuild: false
+  protobufjs: false
+  ssh2: false

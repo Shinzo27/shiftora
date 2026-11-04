@@ -4,15 +4,18 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: shiftora
-      POSTGRES_PASSWORD: shiftora
+      # Superuser for local admin only. Apps connect as app_owner / app_user
+      # (created by postgres/init/01-roles.sql).
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
       POSTGRES_DB: shiftora
     ports:
       - '${POSTGRES_PORT:-5433}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U shiftora -d shiftora']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d shiftora']
       interval: 5s
       timeout: 3s
       retries: 10

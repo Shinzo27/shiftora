@@ -20,15 +20,19 @@ Requirements: Node 26, pnpm 12, Docker.
 pnpm install
 cp .env.example .env
 pnpm infra:up      # Postgres on :5433, Redis on :6379, Mailpit UI on :8025
-pnpm lint && pnpm typecheck && pnpm test && pnpm build
+pnpm db:migrate
+pnpm dev           # API on http://localhost:4000/api/v1/health/ready
+pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
 
 ## Repository layout
 
 ```
-apps/        api, worker, web (coming in week 1–3)
+apps/
+  api/       NestJS 12 (Fastify) HTTP API
 packages/
   config/    shared TypeScript and ESLint presets
+  db/        Drizzle schema, SQL migrations (incl. RLS), database client
   domain/    pure business logic (time, validation, pay rules, scheduler)
-infra/       docker-compose for local services
+infra/       docker-compose and Postgres role setup for local services
 ```

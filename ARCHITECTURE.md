@@ -196,6 +196,9 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
 
 ### 7.1 Multi-tenancy with Postgres RLS
 - App connects as role `app_user` (no `BYPASSRLS`, not table owner). Migrations run as `app_owner`.
+  Locally both roles come from `infra/postgres/init/01-roles.sql`; in production they are
+  created once by hand. `0000_foundation` grants `app_user` default table privileges and
+  defines `current_org_id()`, which returns NULL when no tenant is set, so policies fail closed.
 - Every tenant table: `ALTER TABLE … ENABLE ROW LEVEL SECURITY; FORCE ROW LEVEL SECURITY;`
   policy `USING (org_id = current_setting('app.org_id')::uuid) WITH CHECK (same)`.
 - A NestJS interceptor opens a transaction per request and runs

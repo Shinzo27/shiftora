@@ -38,15 +38,16 @@ pnpm install
 cp .env.example .env
 pnpm infra:up          # postgres (localhost:5433), redis (6379), mailpit (smtp 1025, ui 8025)
 pnpm infra:down
-pnpm dev               # api + worker + web via turbo
+pnpm db:migrate        # apply migrations (runs as app_owner via MIGRATION_DATABASE_URL)
+pnpm db:generate       # drizzle-kit: write the next migration from packages/db/src/schema
+pnpm dev               # api (http://localhost:4000/api/v1) + worker + web via turbo
 pnpm format            # prettier --write (pnpm format:check in CI)
 pnpm lint && pnpm typecheck
 pnpm test              # unit (vitest)
+pnpm test:int          # integration (Testcontainers Postgres; needs Docker)
 pnpm build
 # added in later weeks:
-pnpm db:migrate        # apply migrations (runs as app_owner)
 pnpm db:seed           # seed the "demo clinic" tenant
-pnpm test:int          # integration (Testcontainers Postgres/Redis)
 pnpm test:e2e          # Playwright
 ```
 
@@ -56,8 +57,21 @@ Toolchain notes:
   Don't bump to 7 until it does.
 - `pnpm-workspace.yaml` sets `minimumReleaseAge` (7 days): pnpm won't install versions newer
   than that. Don't remove it to get a fresh release; wait or ask.
-- Local Postgres uses port **5433** (5432 is taken by a system Postgres on the dev machine).
+- Local ports: Postgres **5433**, API **4000** (5432 and 3000 are used by other projects
+  on the dev machine).
 - Shared TS/ESLint presets live in `packages/config`; packages extend them, not copy them.
+- Database roles: `postgres` (local superuser, admin only), `app_owner` (owns schema, runs
+  migrations), `app_user` (the API/worker; no BYPASSRLS, owns nothing). Created locally by
+  `infra/postgres/init/01-roles.sql`, which runs only on a fresh volume
+  (`docker compose -f infra/docker-compose.yml down -v` to reset).
+- Migrations: `pnpm db:generate` for schema changes, or
+  `pnpm --filter @shiftora/db exec drizzle-kit generate --custom --name=<name>` for
+  hand-written SQL (policies, functions). Each statement is separated by
+  `--> statement-breakpoint`. Tenant context is read with `current_org_id()`
+  (from `0000_foundation`), never `current_setting` directly.
+- API (NestJS 12, ESM): tests use Vitest + `unplugin-swc` because esbuild drops the decorator
+  metadata Nest's DI needs. Share HTTP setup through `configureApp()` so tests match `main.ts`.
+  Read settings from the injected `AppConfig`, never `process.env`.
 
 Before saying a task is done: `pnpm lint && pnpm typecheck && pnpm test` must pass, plus
 `pnpm test:int` if you touched SQL, migrations, tenancy, concurrency or queues. Report

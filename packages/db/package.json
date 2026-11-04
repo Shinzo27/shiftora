@@ -1,0 +1,40 @@
+{
+  "name": "@shiftora/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Drizzle schema, SQL migrations (incl. RLS policies) and database client",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "migrations"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "generate": "drizzle-kit generate",
+    "migrate": "node --env-file-if-exists=../../.env dist/cli/migrate.js"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.45.4",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@shiftora/config": "workspace:*",
+    "@testcontainers/postgresql": "^12.2.1",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^10.13.0",
+    "testcontainers": "^12.2.1",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.12"
+  }
+}
