@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 
-import { CLOCK, systemClock } from '../../common/clock.js';
 import { DatabaseModule } from '../../database/database.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
@@ -26,9 +25,8 @@ import { UsersRepository } from './users.repository.js';
     SessionsRepository,
     PasswordHasher,
     TokenService,
-    { provide: CLOCK, useValue: systemClock },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
-  exports: [TokenService],
+  exports: [AuthService, TokenService],
 })
 export class AuthModule {}

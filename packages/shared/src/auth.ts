@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 // Emails keep the user's casing; the database column is citext, so uniqueness and
 // lookups are case-insensitive anyway.
-const email = z.string().trim().pipe(z.email('Invalid email').max(254));
+export const email = z.string().trim().pipe(z.email('Invalid email').max(254));
 
 // NIST 800-63B: length matters, composition rules don't. Never trimmed.
 const newPassword = z.string().min(8, 'At least 8 characters').max(128, 'At most 128 characters');

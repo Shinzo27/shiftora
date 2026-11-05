@@ -1,10 +1,9 @@
-import { createHash, randomBytes } from 'node:crypto';
-
 import { Inject, Injectable } from '@nestjs/common';
 import type { Clock } from '@shiftora/domain';
 import { jwtVerify, SignJWT } from 'jose';
 
 import { CLOCK } from '../../common/clock.js';
+import { randomToken, sha256Hex } from '../../common/crypto.js';
 import { AppConfig } from '../../config/app-config.js';
 
 const ISSUER = 'shiftora';
@@ -17,9 +16,7 @@ export interface AccessToken {
 }
 
 /** SHA-256 hex of a refresh token. Only this is stored, so a DB leak exposes no tokens. */
-export function hashRefreshToken(token: string): string {
-  return createHash('sha256').update(token).digest('hex');
-}
+export const hashRefreshToken = sha256Hex;
 
 @Injectable()
 export class TokenService {
@@ -63,7 +60,7 @@ export class TokenService {
 
   /** 32 random bytes → 43-character base64url string. */
   newRefreshToken(): { token: string; hash: string } {
-    const token = randomBytes(32).toString('base64url');
+    const token = randomToken();
     return { token, hash: hashRefreshToken(token) };
   }
 }

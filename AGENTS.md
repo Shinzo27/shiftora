@@ -80,14 +80,20 @@ failures honestly with output; don't skip or delete failing tests to go green.
 ## Non-negotiable rules
 
 ### Tenancy and security
-- Every tenant table has `org_id uuid not null`, **RLS enabled and forced**, and a policy on
-  `current_setting('app.org_id')`. A new table without an RLS policy is a bug.
+- Every tenant table has `org_id uuid not null`, **RLS enabled and forced**, and a
+  `tenant_isolation` policy on `current_org_id()`. A new table without an RLS policy is a bug
+  (`packages/db/src/__tests__/tenancy-rls.int.test.ts` fails if you forget).
+- Tenant repositories use `RequestContext.tx` (never the raw `DATABASE` pool) and **always
+  filter by `this.context.orgId` explicitly**. RLS is the safety net, not the filter.
+- Org routes need `X-Org-Id`; restrict them with `@Roles(...)`. Routes that need a user but
+  no org use `@WithoutOrg()`. Changes to tenant data call `AuditService.record()`.
 - Never connect as a superuser or a `BYPASSRLS` role from app code. Never disable RLS to make
   a query work.
 - DB access goes through the request/job transaction that has `app.org_id` set
   (`set_config(..., true)` = transaction-local). Workers must set it from the job's `orgId`.
-- Every new endpoint needs an RBAC guard (`owner`/`manager`/`employee`/`kiosk`) and an
-  integration test proving another org's data is invisible.
+- Every new endpoint needs a role decision (`@Roles(...)` or deliberately any member) and an
+  integration test proving another org's data is invisible (see
+  `apps/api/src/modules/orgs/__tests__/tenancy.int.test.ts` and `src/testing/test-app.ts`).
 - Never log secrets, tokens, phone numbers in full, or precise coordinates. That includes
   passwords, refresh cookies and `Authorization` headers.
 - Every route requires a valid access token by default (global `JwtAuthGuard`). Use

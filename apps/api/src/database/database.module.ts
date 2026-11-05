@@ -2,6 +2,7 @@ import { Inject, Logger, Module, type OnApplicationShutdown } from '@nestjs/comm
 import { createDatabaseConnection, type DatabaseConnection } from '@shiftora/db';
 
 import { AppConfig } from '../config/app-config.js';
+import { RequestContext } from './request-context.js';
 
 /** Injection token for the shared database connection (pool + Drizzle client). */
 export const DATABASE = Symbol('DATABASE');
@@ -18,8 +19,9 @@ export const DATABASE = Symbol('DATABASE');
         });
       },
     },
+    RequestContext,
   ],
-  exports: [DATABASE],
+  exports: [DATABASE, RequestContext],
 })
 export class DatabaseModule implements OnApplicationShutdown {
   constructor(@Inject(DATABASE) private readonly database: DatabaseConnection) {}

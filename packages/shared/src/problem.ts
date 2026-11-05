@@ -8,6 +8,14 @@ export const errorCodes = {
   emailTaken: 'auth.email_taken',
   invalidCredentials: 'auth.invalid_credentials',
   invalidRefreshToken: 'auth.invalid_refresh_token',
+  forbidden: 'auth.forbidden',
+  orgRequired: 'org.required',
+  notMember: 'org.not_member',
+  memberNotFound: 'org.member_not_found',
+  lastOwner: 'org.last_owner',
+  inviteInvalid: 'invite.invalid',
+  inviteEmailMismatch: 'invite.email_mismatch',
+  alreadyMember: 'invite.already_member',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

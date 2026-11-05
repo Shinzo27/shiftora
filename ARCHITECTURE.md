@@ -107,7 +107,9 @@
 | Module | Owns | Publishes events |
 |---|---|---|
 | `auth` | users, sessions (refresh tokens), default-deny `JwtAuthGuard`, `@Public()` | — |
-| `tenancy` | org context per request, RLS session vars, RBAC guard | — |
+| `tenancy` | `TenancyInterceptor`: one transaction per request, RLS session vars, membership + `@Roles` check; `RequestContext` | — |
+| `audit` | `AuditService.record()` into `audit_events`, same transaction as the change | — |
+| `invites` | invite codes, accept flow | — |
 | `org` | organizations, locations, departments, roles, memberships, manager location scopes | `location.created` |
 | `billing` | plans, subscriptions, entitlements (employee/location limits, message quotas), coupons, GST invoices, Razorpay webhooks | `subscription.changed`, `payment.captured`, `invoice.issued` |
 | `platform-admin` | internal Shiftora staff console: coupons, subscription overview (no tenant business data in v1) | — |
@@ -129,12 +131,15 @@ All tenant tables have `org_id uuid not null` and an RLS policy. Primary keys ar
 (time-ordered, index-friendly).
 
 ```
-organizations(id, name, plan, created_at)
+organizations(id, name, created_at, updated_at)
 -- platform tables (no org_id, no RLS: a person can belong to several orgs)
 users(id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
 sessions(id, user_id, family_id, token_hash unique, expires_at, revoked_at, replaced_by,
          user_agent, ip, created_at)               -- one row per refresh token (§7.11)
-memberships(org_id, user_id, role: owner|manager|employee|kiosk)
+memberships(id, org_id, user_id, role: owner|manager|employee|kiosk, created_at, updated_at)
+                                                   -- unique (org_id, user_id)
+invites(id, org_id, email citext, role, token_hash unique, invited_by, expires_at,
+        accepted_at, accepted_by, revoked_at, created_at)  -- one open invite per (org, email)
 membership_locations(org_id, user_id, location_id)   -- manager/kiosk scope; empty for owner = all
 subscriptions(org_id, plan: free|pro, extra_locations int, status: active|past_due|cancelled,
               provider, provider_sub_id, provider_plan_id, current_period_end, grace_until,
@@ -204,10 +209,28 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
   created once by hand. `0000_foundation` grants `app_user` default table privileges and
   defines `current_org_id()`, which returns NULL when no tenant is set, so policies fail closed.
 - Every tenant table: `ALTER TABLE … ENABLE ROW LEVEL SECURITY; FORCE ROW LEVEL SECURITY;`
-  policy `USING (org_id = current_setting('app.org_id')::uuid) WITH CHECK (same)`.
-- A NestJS interceptor opens a transaction per request and runs
-  `SELECT set_config('app.org_id', $1, true)` (transaction-local, so pooled connections never
-  leak context). Workers do the same per job, using the `org_id` in the job payload.
+  policy `tenant_isolation USING (org_id = current_org_id()) WITH CHECK (same)`
+  (`0002_tenancy`). Two extra read-only policies let a user see **their own** memberships
+  and the orgs they belong to with no org selected (`users_read_own_memberships`,
+  `members_read_own_orgs`, via `current_user_id()`), so "list my orgs" works without a bypass.
+- Policies on one table are OR-ed. With org A selected, `select * from memberships` also
+  returns *your* memberships in other orgs. So repositories **always filter by org_id
+  explicitly**; RLS is the safety net behind that filter, not a replacement for it.
+- **Request flow** (`apps/api/src/modules/tenancy/tenancy.interceptor.ts`): after
+  `JwtAuthGuard` identifies the user, `TenancyInterceptor` reads `X-Org-Id`, opens one
+  transaction, runs `set_config('app.user_id'/'app.org_id', …, true)` (transaction-local, so
+  pooled connections never leak context), loads the caller's membership (none → 403
+  `org.not_member`, same answer for orgs that don't exist), checks `@Roles(...)`, then runs
+  the handler inside `RequestContext` (AsyncLocalStorage). Repositories use
+  `RequestContext.tx`, so the whole request commits or rolls back together, audit rows included.
+  Routes that need a user but no org (`POST/GET /orgs`, `POST /invites/accept`,
+  `GET /auth/me`) are marked `@WithoutOrg()`.
+- The role comes from the database on every request, not from the token (ADR 014), so
+  removing someone or changing their role takes effect on their next request.
+- Creating an org or accepting an invite *enters* that org mid-transaction
+  (`RequestContext.enterOrg`). Invite codes are `<org_id>.<secret>` so the invite is looked
+  up through RLS, with no bypass role.
+- Workers will do the same per job, using the `org_id` in the job payload.
 - Why RLS over only a `tenant_id` filter: a forgotten `WHERE` becomes an empty result rather
   than a data leak. Trade-off: every query must run inside a transaction with context set;
   cross-tenant admin jobs use a separate, audited role.
@@ -412,7 +435,8 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
 
 ## 8. API conventions
 
-- REST, JSON, `/api/v1/...`; resources nested under org context from the token, not the URL.
+- REST, JSON, `/api/v1/...`. The organisation a request acts on is chosen with the
+  `X-Org-Id` header (ADR 014), not the URL or the token.
 - Errors: RFC 7807 problem+json with stable `code`s.
 - Pagination: cursor-based (`?cursor=&limit=`).
 - Writes that clients may retry (clock-in, claim, swap) accept `Idempotency-Key`.
@@ -488,3 +512,4 @@ GET  /audit?entity=shift&entityId=
 | 011 | INR billing via Razorpay Subscriptions; Shiftora generates its own GST invoices | Accepted (2026-11-03) |
 | 012 | Coupon engine owned by Shiftora (platform-admin managed, random/custom codes) | Accepted (2026-11-03) |
 | 013 | Message quotas: 1,000 WhatsApp + 200 SMS per paid location/month, fall back to push/email | Accepted (2026-11-03) |
+| 014 | Org selected per request with `X-Org-Id`; role loaded from the DB each request (not token claims) | Accepted (2026-11-05) |

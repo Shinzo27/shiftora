@@ -14,6 +14,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppException } from '../../common/app-exception.js';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { AppConfig } from '../../config/app-config.js';
+import { WithoutOrg } from '../tenancy/decorators.js';
 import { AuthService, type IssuedSession, type RequestMeta } from './auth.service.js';
 import type { AuthenticatedUser } from './authenticated-user.js';
 import { CurrentUser } from './current-user.decorator.js';
@@ -87,6 +88,7 @@ export class AuthController {
     clearRefreshCookie(reply, this.config.secureCookies);
   }
 
+  @WithoutOrg()
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser): Promise<AuthUser> {
     return this.auth.me(user.id);
