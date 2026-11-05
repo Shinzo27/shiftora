@@ -22,6 +22,7 @@ cp .env.example .env
 pnpm infra:up      # Postgres on :5433, Redis on :6379, Mailpit UI on :8025
 pnpm db:migrate
 pnpm dev           # API on http://localhost:4000/api/v1/health/ready
+                   # auth: POST /api/v1/auth/{signup,login,refresh,logout}, GET /api/v1/auth/me
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
 
@@ -32,6 +33,7 @@ apps/
   api/       NestJS 12 (Fastify) HTTP API
 packages/
   config/    shared TypeScript and ESLint presets
+  shared/    Zod schemas and API types shared by api, worker and web
   db/        Drizzle schema, SQL migrations (incl. RLS), database client
   domain/    pure business logic (time, validation, pay rules, scheduler)
 infra/       docker-compose and Postgres role setup for local services

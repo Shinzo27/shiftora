@@ -1,23 +1,13 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-
-import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { runMigrations } from '../migrate.js';
+import { startTestDatabase, type TestDatabase } from '../testing/index.js';
 
-const rolesSql = fileURLToPath(
-  new URL('../../../../infra/postgres/init/01-roles.sql', import.meta.url),
-);
 const ORG_ID = '0193a3c4-5b6d-7e8f-9a0b-1c2d3e4f5a6b';
 
-let container: StartedPostgreSqlContainer;
+let database: TestDatabase;
 let appUser: pg.Client;
-
-function urlFor(user: string): string {
-  return `postgres://${user}:${user}@${container.getHost()}:${container.getPort()}/shiftora`;
-}
 
 async function currentOrgId(client: pg.Client): Promise<string | null> {
   const { rows } = await client.query<{ org: string | null }>('select current_org_id() as org');
@@ -25,27 +15,14 @@ async function currentOrgId(client: pg.Client): Promise<string | null> {
 }
 
 beforeAll(async () => {
-  // Same image and role setup as local dev (infra/), so tests exercise the real thing.
-  container = await new PostgreSqlContainer('postgres:16-alpine')
-    .withDatabase('shiftora')
-    .withUsername('postgres')
-    .withPassword('postgres')
-    .start();
-
-  const admin = new pg.Client({ connectionString: container.getConnectionUri() });
-  await admin.connect();
-  await admin.query(await readFile(rolesSql, 'utf8'));
-  await admin.end();
-
-  await runMigrations(urlFor('app_owner'));
-
-  appUser = new pg.Client({ connectionString: urlFor('app_user') });
+  database = await startTestDatabase();
+  appUser = new pg.Client({ connectionString: database.urlFor('app_user') });
   await appUser.connect();
 });
 
 afterAll(async () => {
   await appUser?.end();
-  await container?.stop();
+  await database?.stop();
 });
 
 describe('0000_foundation', () => {
@@ -78,6 +55,6 @@ describe('0000_foundation', () => {
   });
 
   it('can run again without changes (already-applied migrations are skipped)', async () => {
-    await expect(runMigrations(urlFor('app_owner'))).resolves.toBeUndefined();
+    await expect(runMigrations(database.urlFor('app_owner'))).resolves.toBeUndefined();
   });
 });

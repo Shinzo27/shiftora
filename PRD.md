@@ -217,8 +217,8 @@ buffer/review: update changelog, write a build-in-public post, plan next week.
 |---|---|
 | D1 | Monorepo setup (pnpm + Turborepo), TS config, ESLint/Prettier, Docker Compose (Postgres, Redis), CI skeleton |
 | D2 | NestJS API skeleton, config module, health check, Drizzle setup, first migration |
-| D3 | Auth: signup/login, argon2, JWT access + refresh tokens, invites |
-| D4 | Org/membership tables, RBAC guard, RLS policies + `app.org_id` per-request transaction context |
+| D3 | Auth (identity): users + sessions, signup/login/refresh/logout/me, argon2id, JWT access + rotating refresh tokens with reuse detection, default-deny auth guard, RFC 7807 errors, rate limits ✅ |
+| D4 | Org/membership tables, RBAC guard, RLS policies + `app.org_id` per-request transaction context, invites (moved from D3: they need orgs) |
 | D5 | Multi-location: locations (geo, radius, timezone), manager location scopes, departments, roles CRUD; cross-tenant isolation tests + manager-cannot-see-other-location tests |
 | D6 | Employees CRUD + roles + availability + location assignments; React app shell (Vite, router, auth pages, org setup wizard, location switcher) |
 

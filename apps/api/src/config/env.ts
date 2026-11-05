@@ -1,11 +1,25 @@
 import { z } from 'zod';
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  HOST: z.string().min(1).default('0.0.0.0'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
-  DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
-});
+const DEV_SECRET_PREFIX = 'dev-only';
+
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    HOST: z.string().min(1).default('0.0.0.0'),
+    PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+    DATABASE_URL: z.url({ protocol: /^postgres(ql)?$/ }),
+    JWT_ACCESS_SECRET: z.string().min(32, 'Must be at least 32 characters'),
+    ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+    REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+    WEB_ORIGIN: z.url().default('http://localhost:5173'),
+  })
+  .refine(
+    (env) => env.NODE_ENV !== 'production' || !env.JWT_ACCESS_SECRET.startsWith(DEV_SECRET_PREFIX),
+    {
+      path: ['JWT_ACCESS_SECRET'],
+      message: 'The development secret must not be used in production',
+    },
+  );
 
 export type Env = z.infer<typeof envSchema>;
 

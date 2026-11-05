@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "default": "./dist/testing/index.js"
     }
   },
   "files": [
@@ -24,7 +28,8 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.4",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "uuid": "^14.0.3"
   },
   "devDependencies": {
     "@shiftora/config": "workspace:*",
@@ -36,5 +41,13 @@
     "testcontainers": "^12.2.1",
     "typescript": "~6.0.3",
     "vitest": "^4.1.12"
+  },
+  "peerDependencies": {
+    "@testcontainers/postgresql": "^12.2.1"
+  },
+  "peerDependenciesMeta": {
+    "@testcontainers/postgresql": {
+      "optional": true
+    }
   }
 }

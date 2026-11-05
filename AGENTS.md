@@ -88,7 +88,13 @@ failures honestly with output; don't skip or delete failing tests to go green.
   (`set_config(..., true)` = transaction-local). Workers must set it from the job's `orgId`.
 - Every new endpoint needs an RBAC guard (`owner`/`manager`/`employee`/`kiosk`) and an
   integration test proving another org's data is invisible.
-- Never log secrets, tokens, phone numbers in full, or precise coordinates.
+- Never log secrets, tokens, phone numbers in full, or precise coordinates. That includes
+  passwords, refresh cookies and `Authorization` headers.
+- Every route requires a valid access token by default (global `JwtAuthGuard`). Use
+  `@Public()` only for genuinely public endpoints, and get the caller with `@CurrentUser()`.
+- Throw `AppException(status, code, detail)` with a code from `errorCodes`
+  (`packages/shared`) for expected errors; the global filter renders RFC 7807. Validate
+  bodies with `@Body(new ZodValidationPipe(schema))` using schemas from `packages/shared`.
 
 ### Multi-location and plans
 - Assume an org has many locations. Location-bound tables carry `location_id`; managers and

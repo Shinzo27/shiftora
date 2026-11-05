@@ -21,7 +21,7 @@ async function startApp(execute: () => Promise<unknown>): Promise<NestFastifyApp
   }).compile();
 
   app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
-  configureApp(app);
+  await configureApp(app, { webOrigin: 'http://localhost:5173' });
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;

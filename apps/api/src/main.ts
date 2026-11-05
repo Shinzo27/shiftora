@@ -11,7 +11,7 @@ import { configureApp } from './configure-app.js';
 loadEnvFile();
 
 const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
-configureApp(app);
-
 const config = app.get(AppConfig);
+await configureApp(app, config);
+
 await app.listen(config.port, config.host);

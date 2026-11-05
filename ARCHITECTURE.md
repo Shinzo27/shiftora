@@ -34,7 +34,8 @@
 | UI | Tailwind CSS + shadcn/ui; dnd-kit for drag-and-drop | Accessible primitives; robust DnD |
 | Mobile | **PWA** (vite-plugin-pwa / Workbox), IndexedDB for offline queue | No app-store friction; WhatsApp link opens straight into it |
 | Dates | `date-fns` + `date-fns-tz` (or Luxon) | IANA zone math and DST handling |
-| Auth | JWT access (15 min) + rotating refresh tokens (httpOnly cookie), argon2 | Standard, explainable |
+| Auth | JWT access (15 min, `jose`, HS256) + rotating refresh tokens with reuse detection (httpOnly cookie, stored as SHA-256), argon2id (`@node-rs/argon2`) | Standard, explainable |
+| Rate limiting | `@nestjs/throttler` (in-memory now, Redis store in week 4) | Throttled requests go through Nest's exception filter, so 429s use the same error format |
 | Email | Resend or AWS SES | Cheap, good deliverability |
 | WhatsApp / SMS | **Meta WhatsApp Cloud API** (direct, decided); SMS via Twilio/MSG91 | WhatsApp-first positioning; no BSP markup |
 | Billing | **Razorpay Subscriptions** (INR) behind a `BillingProvider` interface; own GST invoice PDFs (pdfkit or react-pdf) | INR, UPI AutoPay; coupons and GST invoices stay under our control |
@@ -105,7 +106,7 @@
 
 | Module | Owns | Publishes events |
 |---|---|---|
-| `auth` | users, sessions, refresh tokens, invites | `user.invited` |
+| `auth` | users, sessions (refresh tokens), default-deny `JwtAuthGuard`, `@Public()` | — |
 | `tenancy` | org context per request, RLS session vars, RBAC guard | — |
 | `org` | organizations, locations, departments, roles, memberships, manager location scopes | `location.created` |
 | `billing` | plans, subscriptions, entitlements (employee/location limits, message quotas), coupons, GST invoices, Razorpay webhooks | `subscription.changed`, `payment.captured`, `invoice.issued` |
@@ -129,7 +130,10 @@ All tenant tables have `org_id uuid not null` and an RLS policy. Primary keys ar
 
 ```
 organizations(id, name, plan, created_at)
-users(id, email, phone, password_hash, created_at)                 -- global, no RLS
+-- platform tables (no org_id, no RLS: a person can belong to several orgs)
+users(id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
+sessions(id, user_id, family_id, token_hash unique, expires_at, revoked_at, replaced_by,
+         user_agent, ip, created_at)               -- one row per refresh token (§7.11)
 memberships(org_id, user_id, role: owner|manager|employee|kiosk)
 membership_locations(org_id, user_id, location_id)   -- manager/kiosk scope; empty for owner = all
 subscriptions(org_id, plan: free|pro, extra_locations int, status: active|past_due|cancelled,
@@ -385,6 +389,27 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   permission level. Monthly partitions keep it fast. Optional later: hash chain
   (`hash = sha256(prev_hash || row)`) for tamper evidence.
 
+### 7.11 Authentication and sessions
+- **Signup/login** return a 15-minute access token (JWT, HS256, `sub` = user id,
+  `iss: shiftora`, `aud: shiftora-api`) in the body, and set a refresh token cookie
+  `shiftora_rt` (`HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`, `Secure` in production,
+  30 days). The web app keeps the access token in memory only.
+- **Refresh tokens** are 32 random bytes; only their SHA-256 is stored in `sessions`. Every
+  refresh revokes the presented row and inserts a new one in the same `family_id` (one family =
+  one login) inside one transaction. The conditional `UPDATE … WHERE revoked_at IS NULL`
+  makes concurrent refreshes safe: exactly one wins.
+- **Reuse detection:** presenting an already-rotated token means it was copied, so the whole
+  family is revoked and the user must log in again. Consequence for the web app: refreshes
+  must be single-flight across tabs (`navigator.locks`), or two tabs refreshing at once would
+  look like reuse.
+- **Login errors** are identical for unknown email and wrong password, and unknown emails are
+  verified against a dummy hash so timing doesn't reveal accounts.
+- **Default deny:** `JwtAuthGuard` is a global guard; routes opt out with `@Public()`
+  (health, signup, login, refresh, logout). Org and role checks are added on day 4.
+- **Errors:** a global filter renders every error as RFC 7807 `application/problem+json`
+  with a stable `code` (`packages/shared/src/problem.ts`); unexpected errors become a generic 500.
+- Not yet: email verification and password reset (need the email queue, week 4), 2FA.
+
 ## 8. API conventions
 
 - REST, JSON, `/api/v1/...`; resources nested under org context from the token, not the URL.
@@ -413,7 +438,7 @@ GET  /audit?entity=shift&entityId=
 
 - RBAC roles: `owner`, `manager` (optionally scoped to locations), `employee`, `kiosk`.
   Enforced by Nest guards; RLS is the second line of defence.
-- Rate limiting per IP and per user on auth and clock-in endpoints (Redis).
+- Rate limiting per IP on signup/login/refresh (10/min/route, in-memory today) and later on clock-in; Redis-backed from week 4. Behind a proxy, enable Fastify `trustProxy` so `request.ip` is the client, not the load balancer.
 - Provider webhooks verified by signature; secrets in env/secret manager; QR secrets encrypted at rest.
 - PII minimisation: location only at clock events; selfies opt-in with retention; data export
   and deletion per employee.
