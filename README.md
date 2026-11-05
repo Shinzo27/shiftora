@@ -4,7 +4,8 @@ Shift scheduling and attendance for small businesses, clinics first: weekly sche
 WhatsApp notifications, geofenced/QR clock-in from a PWA, shift swaps and payroll-ready
 timesheets.
 
-> Work in progress. See [PRD.md](PRD.md) for the product, [ARCHITECTURE.md](ARCHITECTURE.md)
+> Work in progress. Start with [PROJECT_PLAN.md](PROJECT_PLAN.md) (full context, status and
+> day-by-day plan). Details: [PRD.md](PRD.md) for the product, [ARCHITECTURE.md](ARCHITECTURE.md)
 > for the design and [AGENTS.md](AGENTS.md) for contribution rules.
 
 ## Stack

@@ -1,8 +1,8 @@
 # AGENTS.md
 
 Instructions for AI coding agents (Claude Code, Codex, Cursor, etc.) working in this repo.
-Read `PRD.md` for *what* we're building and `ARCHITECTURE.md` for *how*. This file is the
-rules of the road.
+Read `PROJECT_PLAN.md` first (full context, current status, day-by-day plan), then `PRD.md`
+for *what* we're building and `ARCHITECTURE.md` for *how*. This file is the rules of the road.
 
 ## Project in one paragraph
 
