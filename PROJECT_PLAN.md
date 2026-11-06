@@ -73,11 +73,12 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W1 D2 | NestJS API skeleton, config, health checks, Drizzle, migration `0000_foundation` | ✅ Done | `ec72b13` |
 | W1 D3 | Auth: signup/login/refresh/logout/me, argon2id, JWT + rotating refresh tokens, default-deny guard, RFC 7807 errors, rate limits | ✅ Done | `fb0274f` |
 | W1 D4 | Tenancy: orgs, memberships, invites, RLS policies, per-request tenant transaction, roles, audit table | ✅ Done | `24bcf1b` |
-| **W1 D5** | **Multi-location: locations, departments, job roles, manager location scopes** | ⏭ **Next** | |
-| W1 D6 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
+| W1 D5 | Multi-location: locations, departments, job roles, manager location scopes, same-org foreign keys | ✅ Done | (uncommitted) |
+| **W1 D6** | **Employees, availability, time off; web app shell** | ⏭ **Next** | |
+| W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 3 migrations, 107 automated tests (56 unit, 51 integration against real
-Postgres), 16 API endpoints.
+Numbers today: 4 migrations, 153 automated tests (76 unit, 77 integration against real
+Postgres), 30 API endpoints.
 
 Working agreement: **the owner commits and pushes**; agents prepare changes, run every check,
 and propose a Conventional Commit message. Ask before adding a dependency.
@@ -207,6 +208,10 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | UUIDv7 primary keys generated in the app (Postgres 16 has no `uuidv7()`) | 2026-11-05 |
 | — | Invites moved from Day 3 to Day 4 (they need orgs) | 2026-11-05 |
+| — | Location scope rule: owners see every location; anyone else is limited to their `membership_locations` rows, or sees every location if they have none. Hidden locations answer 404 | 2026-11-06 |
+| — | Child tables reference `(org_id, location_id)` → `locations (org_id, id)` (same-org foreign keys), because FK checks ignore RLS | 2026-11-06 |
+| — | Locations are never deleted, only made `read_only`; plan limits (Free = 1 location) move to W8 D2 with billing | 2026-11-06 |
+| — | Table naming: **`job_roles`** for work roles (Nurse, Receptionist), distinct from the `member_role` access enum; **`time_off`** instead of `unavailability`; referencing columns are `job_role_id` | 2026-11-06 |
 
 ---
 
@@ -459,13 +464,14 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0002)
+### 10.1 Implemented (migrations 0000–0003)
 
 | Migration | Contents |
 |---|---|
 | `0000_foundation` | extensions `btree_gist`, `citext`; default grants to `app_user`; `current_org_id()` |
 | `0001_auth` | `users`, `sessions` (platform tables, no RLS) |
 | `0002_tenancy` | `member_role` enum; `organizations`, `memberships`, `invites`, `audit_events`; `current_user_id()`; RLS policies; audit append-only |
+| `0003_locations` | `location_status` enum; `locations`, `departments`, `job_roles`, `membership_locations`; same-org composite FKs; coordinate/radius CHECKs; RLS |
 
 ```
 users          (id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
@@ -475,6 +481,11 @@ memberships    (id, org_id, user_id, role owner|manager|employee|kiosk, …)    
 invites        (id, org_id, email citext, role, token_hash unique, invited_by,
                 expires_at, accepted_at, accepted_by, revoked_at, created_at)    RLS, one open per (org, email)
 audit_events   (id, org_id, actor_user_id, action, entity, entity_id, before, after, created_at)   RLS, append-only
+locations      (id, org_id, name citext, address, latitude, longitude, radius_m 25–1000, timezone,
+                status active|read_only, …)                                      RLS, unique (org_id, name)
+departments    (id, org_id, location_id, name citext, …)                         RLS, unique (location_id, name)
+job_roles      (id, org_id, name citext, …)                                      RLS, unique (org_id, name)
+membership_locations (org_id, user_id, location_id, created_at)                  RLS, PK all three
 ```
 
 IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
@@ -483,8 +494,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 
 | Week | Tables |
 |---|---|
-| W1 D5 | `locations` (name, address, lat, lng, radius_m, timezone, status), `departments`, `job_roles` (Nurse, Receptionist…; name avoids clashing with member roles), `membership_locations` |
-| W1 D6 | `employees` (optional user link, hourly_rate_minor, max_weekly_minutes, min_rest_minutes, notify_channel), `employee_job_roles`, `employee_locations`, `availability` (weekday + local times), `unavailability` |
+| W1 D6 | `employees` (optional user link, hourly_rate_minor, max_weekly_minutes, min_rest_minutes, notify_channel), `employee_job_roles`, `employee_locations`, `availability` (weekday + local times), `time_off` |
 | W2 | `shift_templates`, `schedules` (draft/published, version), `shifts` (starts_at/ends_at timestamptz, **exclusion constraint** against double-booking), `outbox` |
 | W3 | `time_entries` (method gps/qr/manual, geo, accuracy, client_event_id unique, flags) |
 | W4 | `notifications`, `deliveries`, `message_usage` |
@@ -523,12 +533,22 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /invites` | token + org | owner, manager |
 | `DELETE /invites/:id` | token + org | owner, manager |
 | `POST /invites/accept` | token | the invited email only |
+| `GET /locations`, `GET /locations/:id` | token + org | any member (filtered by their location scope) |
+| `POST /locations` | token + org | owner |
+| `PATCH /locations/:id` | token + org | owner, manager in scope (`status` owner only; read-only locations accept only a status change) |
+| `GET /locations/:locationId/departments` | token + org | any member in scope |
+| `POST /locations/:locationId/departments`, `PATCH`/`DELETE /departments/:id` | token + org | owner, manager in scope |
+| `GET /job-roles` | token + org | any member |
+| `POST /job-roles`, `PATCH`/`DELETE /job-roles/:id` | token + org | owner, manager |
+| `GET /members/:userId/locations` | token + org | owner, manager |
+| `PUT /members/:userId/locations` | token + org | owner (empty list = all locations) |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
 `auth.unauthenticated`, `auth.email_taken`, `auth.invalid_credentials`,
 `auth.invalid_refresh_token`, `auth.forbidden`, `org.required`, `org.not_member`,
 `org.member_not_found`, `org.last_owner`, `invite.invalid`, `invite.email_mismatch`,
-`invite.already_member`.
+`invite.already_member`, `conflict.name_taken`, `location.not_found`, `location.read_only`,
+`location.owner_unrestricted`, `department.not_found`, `job_role.not_found`.
 
 ### 11.2 Conventions
 
@@ -588,8 +608,8 @@ Legend: ✅ done · ⏭ next · ☐ planned
 | D2 | ✅ | NestJS 12 API on Fastify; Zod-validated config; health checks; Drizzle + `pg`; `app_owner`/`app_user` roles; `0000_foundation` | `/health/ready` 200 against local DB; Testcontainers test green |
 | D3 | ✅ | `users`, `sessions`; signup/login/refresh/logout/me; argon2id; JWT + rotating refresh with reuse detection; global auth guard; RFC 7807; Zod pipe; throttler; `packages/shared` | 5 parallel refreshes → exactly one 200 |
 | D4 | ✅ | `organizations`, `memberships`, `invites`, `audit_events`; RLS policies; `TenancyInterceptor` + `RequestContext`; `@Roles`, `@WithoutOrg`; invite flow; last-owner protection; ADR 014 | Isolation, role and concurrency tests green |
-| **D5** | ⏭ | **Locations** (name, address, lat/lng, `radius_m`, IANA `timezone`, `active`/`read_only`) with validation (valid IANA zone, radius 25–1000 m); **departments**; **job roles** (`job_roles`: Nurse, Receptionist…); **manager location scopes** (`membership_locations`, enforced in repositories); CRUD APIs + audit; first plan limit (Free = 1 active location) | Manager scoped to location A can't read/write location B (test); isolation tests per table |
-| D6 | ☐ | **Employees** (optional link to a user, hourly rate in paise, max weekly minutes, min rest, notify channel), employee ↔ job roles, employee ↔ locations, recurring **availability** (weekday + local times) and time off; CRUD APIs. **Web shell**: Vite + React + Router + TanStack Query + Tailwind/shadcn; login/signup; org picker; location switcher; API client that adds `X-Org-Id` and refreshes the token single-flight across tabs (`navigator.locks`) | Sign up → create org → add location → add employee, in the browser |
+| D5 | ✅ | `locations` (lat/lng, `radius_m` 25–1000, IANA `timezone`, `active`/`read_only`), `departments`, `job_roles`, `membership_locations`; same-org composite foreign keys; `LocationAccess` (scope rule); CRUD APIs + audit. Plan limit moved to W8 D2 (needs billing) | Scoped manager gets 404 for other locations; cross-org FK attack rejected by the DB |
+| **D6** | ⏭ | **Employees** (optional link to a user, hourly rate in paise, max weekly minutes, min rest, notify channel), employee ↔ job roles, employee ↔ locations, recurring **availability** (weekday + local times) and time off; CRUD APIs. **Web shell**: Vite + React + Router + TanStack Query + Tailwind/shadcn; login/signup; org picker; location switcher; API client that adds `X-Org-Id` and refreshes the token single-flight across tabs (`navigator.locks`) | Sign up → create org → add location → add employee, in the browser |
 
 ### Week 2: Schedule builder, shifts, publish
 

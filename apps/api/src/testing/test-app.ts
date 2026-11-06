@@ -68,7 +68,7 @@ export interface ApiResponse {
   json<T = Record<string, unknown>>(): T;
 }
 
-type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 let clientCounter = 0;
 
@@ -108,6 +108,29 @@ export class TestUser {
       json: <T>() => body as T,
     };
   }
+}
+
+/** Creates an org owned by `owner` and returns its id. */
+export async function createOrg(owner: TestUser, name = 'Sunrise Clinic'): Promise<string> {
+  const res = await owner.call('POST', '/orgs', { body: { name } });
+  if (res.status !== 201) throw new Error(`create org failed: ${res.status}`);
+  return res.json<{ id: string }>().id;
+}
+
+/** Signs up a new user and brings them into `org` with `role` through a real invite. */
+export async function addMember(
+  app: NestFastifyApplication,
+  owner: TestUser,
+  org: string,
+  role: 'owner' | 'manager' | 'employee',
+): Promise<TestUser> {
+  const user = await signUp(app, `New ${role}`);
+  const invite = await owner.call('POST', '/invites', { org, body: { email: user.email, role } });
+  if (invite.status !== 201) throw new Error(`invite failed: ${invite.status}`);
+  const code = invite.json<{ code: string }>().code;
+  const accepted = await user.call('POST', '/invites/accept', { body: { code } });
+  if (accepted.status !== 200) throw new Error(`accept failed: ${accepted.status}`);
+  return user;
 }
 
 let emailCounter = 0;

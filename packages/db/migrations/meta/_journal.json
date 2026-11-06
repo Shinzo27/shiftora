@@ -22,6 +22,13 @@
       "when": 1793860328895,
       "tag": "0002_tenancy",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793947448435,
+      "tag": "0003_locations",
+      "breakpoints": true
     }
   ]
 }

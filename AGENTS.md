@@ -103,9 +103,11 @@ failures honestly with output; don't skip or delete failing tests to go green.
   bodies with `@Body(new ZodValidationPipe(schema))` using schemas from `packages/shared`.
 
 ### Multi-location and plans
-- Assume an org has many locations. Location-bound tables carry `location_id`; managers and
-  kiosks are scoped to their `membership_locations`, and every endpoint that takes or returns
-  location data must respect that scope (with a test).
+- Assume an org has many locations. Location-bound tables carry `location_id` with a
+  **same-org foreign key** `(org_id, location_id) → locations (org_id, id)` (FK checks ignore
+  RLS). Every endpoint that takes or returns location data checks access through
+  `LocationAccess` (`assertAccess` / `scope`), answers 404 outside the caller's scope, and has a
+  scoped-manager test.
 - Overlap, max-hours, rest and overtime are computed per employee **across all locations**.
 - Plan limits (Free ≤ 10 employees and 1 location; Pro ₹999 incl. 1 location, +₹999 per extra
   location; WhatsApp/auto-scheduler Pro-only) go through `EntitlementService`, server-side.
@@ -174,8 +176,13 @@ failures honestly with output; don't skip or delete failing tests to go green.
   Never edit a migration that has been merged.
 - Frontend: TanStack Query for server state, no global store unless needed; Tailwind +
   shadcn/ui components; forms with react-hook-form + Zod; mobile-first for employee screens.
-- Naming: tables `snake_case` plural; TS `camelCase`; events `entity.past_tense`
+- Naming: tables `snake_case` plural; link tables `<singular>_<plural>` (`employee_locations`);
+  enums singular (`member_role`); columns `snake_case` (Drizzle maps to `camelCase` in TS);
+  instants end in `_at`, money in `_minor`, durations in `_minutes`; events `entity.past_tense`
   (`schedule.published`).
+- Two kinds of "role", never mixed up: `member_role` (owner/manager/employee/kiosk, what a
+  user may DO, on `memberships`) and `job_roles` (Nurse, Receptionist…, what an employee IS,
+  used by scheduling; referenced as `job_role_id`). Time away from work is `time_off`.
 - Commits: Conventional Commits (`feat(scheduling): ...`, `fix(attendance): ...`).
 - New architectural decision → add an ADR in `docs/adr/` and update the table in `ARCHITECTURE.md`.
 

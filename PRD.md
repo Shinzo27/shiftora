@@ -71,7 +71,7 @@ engineering blog posts, 3 resume bullets backed by real numbers.
 | # | Feature | Key requirements / acceptance criteria |
 |---|---|---|
 | F1 | **Multi-tenant orgs, multi-location from day one**, with departments and roles | Signup creates an org; owner invites users by email/phone; every row belongs to exactly one org; RLS blocks cross-org reads even if the app forgets a filter (covered by automated test). An org has **1..N locations**, each with lat/lng, geofence radius and its own IANA time zone. Managers can be scoped to specific locations; employees can be assigned to several locations; a location switcher is in the UI from the start. Max-hours, overlap and overtime checks count an employee's hours **across all locations** in the org. |
-| F2 | **Employee profiles** | Roles/skills (many-to-many), hourly rate, max weekly hours, recurring weekly availability + date-specific unavailability, contact channel preference. |
+| F2 | **Employee profiles** | Job roles/skills (many-to-many, e.g. Nurse, Receptionist), hourly rate, max weekly hours, recurring weekly availability + time off, contact channel preference. |
 | F3 | **Drag-and-drop weekly schedule builder** | Week view per location, rows by employee or by role; create shifts from templates; drag to move/assign; warnings for availability conflicts, overlap, max-hours and min-rest violations; schedule is `draft` until **Publish**, which notifies affected employees. Edits after publish notify only changed employees. Live updates for other managers viewing the board. |
 | F4 | **Geofenced clock in/out (PWA)** | Employee taps Clock In; browser location checked server-side against location radius; outside the geofence → rejected or flagged (configurable). Location captured only at clock-in/out. Early/late tolerance configurable. |
 | F5 | **Shift swap and drop requests** | Employee requests swap (with a named colleague) or drop; colleague accepts (for swaps); manager approves/rejects; validation re-runs on approval (role, overlap, hours). |
@@ -219,7 +219,7 @@ buffer/review: update changelog, write a build-in-public post, plan next week.
 | D2 | NestJS API skeleton, config module, health check, Drizzle setup, first migration |
 | D3 | Auth (identity): users + sessions, signup/login/refresh/logout/me, argon2id, JWT access + rotating refresh tokens with reuse detection, default-deny auth guard, RFC 7807 errors, rate limits ✅ |
 | D4 | Org/membership tables, RBAC (`@Roles`), RLS policies + per-request tenant transaction, invites (moved from D3: they need orgs), audit events table ✅ |
-| D5 | Multi-location: locations (geo, radius, timezone), manager location scopes, departments, roles CRUD; cross-tenant isolation tests + manager-cannot-see-other-location tests |
+| D5 | Multi-location: locations (geo, radius, timezone), manager location scopes, departments, job roles CRUD; cross-tenant isolation tests + manager-cannot-see-other-location tests ✅ (plan limit moved to week 8 D2) |
 | D6 | Employees CRUD + roles + availability + location assignments; React app shell (Vite, router, auth pages, org setup wizard, location switcher) |
 
 ### Week 2 — Schedule builder, shifts, publish flow

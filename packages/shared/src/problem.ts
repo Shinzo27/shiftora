@@ -16,6 +16,12 @@ export const errorCodes = {
   inviteInvalid: 'invite.invalid',
   inviteEmailMismatch: 'invite.email_mismatch',
   alreadyMember: 'invite.already_member',
+  nameTaken: 'conflict.name_taken',
+  locationNotFound: 'location.not_found',
+  locationReadOnly: 'location.read_only',
+  ownerUnrestricted: 'location.owner_unrestricted',
+  departmentNotFound: 'department.not_found',
+  jobRoleNotFound: 'job_role.not_found',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

@@ -108,9 +108,14 @@ describe('every tenant table is protected', () => {
        order by 1`,
     );
 
+    // Adding a tenant table? Add it here too, after giving it RLS in its migration.
     expect(tables.map((t) => t.table)).toEqual([
       'audit_events',
+      'departments',
       'invites',
+      'job_roles',
+      'locations',
+      'membership_locations',
       'memberships',
       'organizations',
     ]);

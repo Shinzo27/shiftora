@@ -140,7 +140,8 @@ memberships(id, org_id, user_id, role: owner|manager|employee|kiosk, created_at,
                                                    -- unique (org_id, user_id)
 invites(id, org_id, email citext, role, token_hash unique, invited_by, expires_at,
         accepted_at, accepted_by, revoked_at, created_at)  -- one open invite per (org, email)
-membership_locations(org_id, user_id, location_id)   -- manager/kiosk scope; empty for owner = all
+membership_locations(org_id, user_id, location_id)   -- restricts a non-owner to these locations;
+                                                      -- no rows = all locations; owners always all
 subscriptions(org_id, plan: free|pro, extra_locations int, status: active|past_due|cancelled,
               provider, provider_sub_id, provider_plan_id, current_period_end, grace_until,
               coupon_redemption_id?)
@@ -158,22 +159,23 @@ coupons(id, code unique (case-insensitive), discount_type: percent|fixed, percen
         first_time_only bool, status: active|paused, created_by, created_at)
 coupon_redemptions(id, coupon_id, org_id, redeemed_at, months_remaining?,
                    unique(coupon_id, org_id))
-locations(id, org_id, name, lat, lng, radius_m, timezone, qr_secret_enc, budget_weekly_minor,
-          status: active|read_only)
-departments(id, org_id, location_id, name)
-roles(id, org_id, name, requires_credential_type?)
+locations(id, org_id, name citext, address, latitude, longitude, radius_m 25–1000, timezone,
+          status: active|read_only, …)     -- later: qr_secret_enc, budget_weekly_minor
+departments(id, org_id, location_id, name citext)   -- FK (org_id, location_id) → locations (org_id, id)
+job_roles(id, org_id, name, requires_credential_type?)      -- Nurse, Receptionist… (what someone IS;
+                                                           -- not member_role, which is what they may DO)
 employees(id, org_id, user_id?, name, phone, hourly_rate_minor, currency,
           max_weekly_minutes, min_rest_minutes, notify_channel, active)
-employee_roles(org_id, employee_id, role_id)
+employee_job_roles(org_id, employee_id, job_role_id)
 employee_locations(org_id, employee_id, location_id, is_primary)
 availability(id, org_id, employee_id, weekday, start_local, end_local)     -- recurring, local time
-unavailability(id, org_id, employee_id, starts_at, ends_at, reason)        -- UTC instants
+time_off(id, org_id, employee_id, starts_at, ends_at, reason)              -- UTC instants
 credentials(id, org_id, employee_id, type, number, expires_on)
 
-shift_templates(id, org_id, location_id, role_id, name, start_local, end_local, days_mask)
-coverage_requirements(id, org_id, location_id, role_id, weekday, start_local, end_local, count)
+shift_templates(id, org_id, location_id, job_role_id, name, start_local, end_local, days_mask)
+coverage_requirements(id, org_id, location_id, job_role_id, weekday, start_local, end_local, count)
 schedules(id, org_id, location_id, week_start_date, status: draft|published, version, published_at)
-shifts(id, org_id, schedule_id, location_id, role_id, employee_id?,
+shifts(id, org_id, schedule_id, location_id, job_role_id, employee_id?,
        starts_at timestamptz, ends_at timestamptz, break_minutes,
        status: open|assigned|cancelled, version int, notes)
   -- EXCLUDE USING gist (employee_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
@@ -241,9 +243,18 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
 - The org is the tenant boundary (RLS); the **location** is the operational unit. Every
   location-bound table (`shifts`, `schedules`, `time_entries`, `coverage_requirements`,
   `shift_templates`, `departments`) carries `location_id`.
-- Location scoping for managers/kiosks is enforced by the RBAC guard + repository filter
-  (`location_id = ANY(:allowedLocationIds)`). Owners see all locations. Tests assert a
-  location-scoped manager can't read or write another location.
+- **Location scope** (`apps/api/src/modules/locations/location-access.service.ts`): owners see
+  every location; anyone else is limited to their `membership_locations` rows, or sees every
+  location if they have none. Only owners assign scopes (`PUT /members/:userId/locations`).
+  Every location-bound read or write goes through `LocationAccess.assertAccess()` (or filters
+  by `scope()`); a location outside the scope answers **404**, exactly like one that doesn't
+  exist, so ids can't be probed. Tests assert a scoped manager can't read or write another location.
+- **Same-org foreign keys:** Postgres checks foreign keys *without* RLS, so a plain
+  `location_id → locations.id` key would let org A attach rows to org B's location by id.
+  Child tables reference the pair `(org_id, location_id) → locations (org_id, id)` instead;
+  every future location-bound table (`shifts`, `schedules`, `time_entries`…) must do the same.
+- Locations are never deleted (history points at them); they become `read_only`, which
+  accepts no changes except an owner re-activating it.
 - Each location has its own IANA zone, so one org can span time zones; week boundaries are
   computed per location.
 - Employees can work at several locations (`employee_locations`). Overlap (exclusion
