@@ -86,6 +86,8 @@ export const schedules = pgTable(
     unique('schedules_location_week_unique').on(t.locationId, t.weekStart),
     // Target for same-org foreign keys from shifts (W2 D2).
     unique('schedules_org_id_id_unique').on(t.orgId, t.id),
+    // A shift must sit in its schedule's location, so the key it references includes it.
+    unique('schedules_org_id_id_location_unique').on(t.orgId, t.id, t.locationId),
     check('schedules_week_starts_monday', sql`extract(isodow from ${t.weekStart}) = 1`),
     check(
       'schedules_published_has_time',

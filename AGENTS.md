@@ -148,6 +148,9 @@ Do this before writing any code, whatever tool or model you are:
   (0005). Name unique constraints explicitly or drizzle-kit uses camelCase names.
 - **New tenant table → add it to the list in `packages/db/src/__tests__/tenancy-rls.int.test.ts`**
   (the test fails on purpose until you do).
+- **drizzle-kit emits constraints in the wrong order for composite foreign keys:** a
+  `UNIQUE (org_id, id, …)` added in the same migration lands *after* the FK that needs it
+  (0006: moved above by hand). Same file: re-check every `SET NULL` on a multi-column key.
 - **Postgres `time` columns come back as `HH:MM:SS`**; the API speaks `HH:MM`.
 - **Zod 4 runs `.superRefine` on the object even when a field already failed**, so
   cross-field checks must tolerate malformed fields (see `shiftTemplateIssue`).

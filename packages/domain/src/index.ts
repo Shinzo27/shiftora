@@ -2,6 +2,27 @@ export type { SlotIssue, WeeklySlot, Weekday } from './availability/weekly.js';
 export { parseLocalTime, validateWeeklySlots } from './availability/weekly.js';
 export type { AssignableRole, MemberRole } from './tenancy/roles.js';
 export { assignableRoles, canAssignRole, memberRoles } from './tenancy/roles.js';
+export type {
+  AvailabilitySlot,
+  ShiftHours,
+  ShiftSpan,
+  ShiftValidationInput,
+  ShiftWarning,
+  ShiftWarningCode,
+  TimeOffPeriod,
+} from './scheduling/validation.js';
+export {
+  availabilityWarnings,
+  formatMinutes,
+  maxWeeklyHoursWarnings,
+  minRestWarnings,
+  overlapWarnings,
+  paidMinutes,
+  spansOverlap,
+  timeOffWarnings,
+  totalPaidMinutes,
+  validateShift,
+} from './scheduling/validation.js';
 export type { Clock } from './time/clock.js';
 export { fixedClock } from './time/clock.js';
 export { addSeconds } from './time/duration.js';

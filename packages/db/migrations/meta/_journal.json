@@ -43,6 +43,13 @@
       "when": 1793956620678,
       "tag": "0005_scheduling",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793981153006,
+      "tag": "0006_shifts",
+      "breakpoints": true
     }
   ]
 }

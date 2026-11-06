@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-06 (Week 2, Day 1 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-06 (Week 2, Day 2 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -75,31 +75,37 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W1 D4 | Tenancy: orgs, memberships, invites, RLS policies, per-request tenant transaction, roles, audit table | ✅ Done | `24bcf1b` |
 | W1 D5 | Multi-location: locations, departments, job roles, manager location scopes, same-org foreign keys | ✅ Done | `69fa19c` |
 | W1 D6 | Employees, availability, time off; web app shell (React) verified in a browser | ✅ Done | `4161e7b` |
-| W1 UI | UI foundation: shadcn/ui design system, theme, dark mode, app shell, restyle existing pages | ✅ Done | (uncommitted) |
-| W2 D1 | Time helpers on native Temporal (local → UTC, DST, weeks), shift templates, schedules | ✅ Done | (uncommitted) |
-| **W2 D2** | **`shifts` with an exclusion constraint (no double-booking); validation as pure functions** | ⏭ **Next** | |
+| W1 UI | UI foundation: shadcn/ui design system, theme, dark mode, app shell, restyle existing pages | ✅ Done | `95af937` |
+| W2 D1 | Time helpers on native Temporal (local → UTC, DST, weeks), shift templates, schedules | ✅ Done | `a2ca31f` |
+| W2 D2 | `shifts` with an exclusion constraint (no double-booking), shift CRUD API, conflict checks as pure functions | ✅ Done | (uncommitted) |
+| **W2 D3** | **Week board UI: rows by employee, shift create/edit in a Sheet (react-hook-form + Zod)** | ⏭ **Next** | |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 6 migrations, 265 automated tests (143 unit, 122 integration against real
-Postgres), 47 API endpoints, a React web app on shadcn/ui (login, orgs, locations, employees;
+Numbers today: 7 migrations, 337 automated tests (178 unit, 159 integration against real
+Postgres), 52 API endpoints, a React web app on shadcn/ui (login, orgs, locations, employees;
 light and dark; Lighthouse accessibility 100).
 
 ### Handoff note (update at the end of every session)
 
-> Last session: 2026-11-06, on the first dev machine (Claude Code).
+> Last session: 2026-11-06 (Hermes, second dev machine).
 >
-> - **Done:** W1 UI foundation day and W2 D1 (time helpers, shift templates, schedules).
->   All checks green: 143 unit + 122 integration tests, lint, typecheck, build. UI verified
->   in Chrome (light/dark, desktop/phone, Lighthouse accessibility 100).
-> - **Uncommitted at hand-off:** the W1 UI and W2 D1 work (the owner commits before moving
->   machines; check `git log` to confirm). Suggested messages:
->   `feat(web): shadcn/ui design system, app shell, dark mode and restyled pages` and
->   `feat(scheduling): time helpers on Temporal, shift templates and weekly schedules`.
-> - **Next:** W2 D2 (`shifts` + exclusion constraint against double-booking; validation as
->   pure functions in `packages/domain`). See §14.
+> - **Done:** W2 D2: the `shifts` table (migration `0006_shifts`) with a Postgres exclusion
+>   constraint against double-booking, conflict checks as pure functions in
+>   `packages/domain/src/scheduling/validation.ts`, and the shifts API
+>   (`GET/POST /shifts`, `GET/PATCH/DELETE /shifts/:id`). All checks green: 178 unit +
+>   159 integration tests, lint, typecheck, build; the flow was also exercised against the
+>   running API (create, 409 on overlap, warnings, version conflict, delete).
+> - **Uncommitted at hand-off:** W2 D2 (the owner commits). Suggested message:
+>   `feat(scheduling): shifts with no double-booking and conflict warnings`.
+> - **Next:** W2 D3, the week board in `apps/web` (rows by employee, colour per job role,
+>   today marker, shift create/edit in a Sheet with react-hook-form + Zod; server-side `q`
+>   on `GET /employees` if the picker needs it). See §14.
 > - **Open questions for the owner:** none.
-> - **Watch out for:** Temporal in browsers (check before the web calls the time helpers,
->   W2 D3); local dev data is disposable (start fresh with `pnpm db:migrate`).
+> - **Watch out for:** warnings come back on POST/PATCH only (the board shows them when a
+>   manager edits, not on load — D4 decides whether the list response carries them);
+>   `Temporal` in browsers (check before the web calls `packages/domain/time`, W2 D3).
+>   On a machine with `core.autocrlf=true`, `pnpm format:check` fails on CRLF files; CI is
+>   fine. Integration tests must run with `--no-file-parallelism` on a slow Docker host.
 
 Working agreement: **the owner commits and pushes**; agents prepare changes, run every check,
 and propose a Conventional Commit message. Ask before adding a dependency.
@@ -241,6 +247,12 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Time maths on **native Temporal** instead of date-fns-tz/Luxon (no dependency; IANA/DST rules come from the platform). DST: skipped local times move forward, repeated ones take the first occurrence ("compatible"). Weeks run **Monday–Sunday** in the location's zone (`WEEK_STARTS_ON`); a per-org setting can come later | 2026-11-06 |
 | — | One schedule per location and week (`unique (location_id, week_start)`, Monday CHECK); its API reports the week's real UTC bounds (167–169 h around DST). Templates keep local `time`s; deleting a job role clears it from templates via `ON DELETE SET NULL (job_role_id)` | 2026-11-06 |
 | — | Table naming: **`job_roles`** for work roles (Nurse, Receptionist), distinct from the `member_role` access enum; **`time_off`** instead of `unavailability`; referencing columns are `job_role_id` | 2026-11-06 |
+| — | **Shifts take local date + HH:MM times**, the server converts with the location's zone (clients never do time zone maths); the response carries both the instants and the wall clock | 2026-11-06 |
+| — | **Overlap is the only hard shift conflict** (409, and a DB exclusion constraint as the last word); availability, time off, max weekly hours and min rest come back as `warnings` on the write — PRD F3 calls them warnings, and a manager may knowingly overrule one | 2026-11-06 |
+| — | A shift belongs to its schedule's **location**, enforced by a 3-column same-org FK `(org_id, schedule_id, location_id) → schedules (org_id, id, location_id)`; another branch means another shift | 2026-11-06 |
+| — | A shift counts towards the week it **starts** in (local date), so a Sunday-night shift stays in its own week; weekly hours subtract unpaid breaks and count every location | 2026-11-06 |
+| — | `shifts.job_role_id` is nullable (a template may have none) and cleared when the role is deleted; **archived employees cannot be scheduled** (409 `employee.archived`) | 2026-11-06 |
+| — | POST/PATCH a shift return **`{ shift, warnings }`**, the one place where a write answers with more than the resource | 2026-11-06 |
 
 ---
 
@@ -515,6 +527,7 @@ Fastify
 | `0003_locations` | `location_status` enum; `locations`, `departments`, `job_roles`, `membership_locations`; same-org composite FKs; coordinate/radius CHECKs; RLS |
 | `0004_employees` | `employee_status`, `notify_channel` enums; `employees`, `employee_job_roles`, `employee_locations`, `availability`, `time_off`; same-org FKs; CHECKs; RLS |
 | `0005_scheduling` | `schedule_status` enum; `shift_templates`, `schedules`; same-org FKs (job role FK `ON DELETE SET NULL (job_role_id)`, hand-edited); Monday, break and time CHECKs; RLS |
+| `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
 ```
 users          (id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
@@ -539,7 +552,15 @@ time_off       (id, org_id, employee_id, starts_at, ends_at, reason?, …)      
 shift_templates (id, org_id, location_id, name citext, start_time time, end_time time,
                 break_minutes 0–240, job_role_id?, …)                RLS, unique (location_id, name), start ≠ end
 schedules      (id, org_id, location_id, week_start date (Monday), status draft|published,
-                version ≥ 1, published_at?, published_by?, …)   RLS, unique (location_id, week_start)
+                version ≥ 1, published_at?, published_by?, …)   RLS, unique (location_id, week_start),
+                                                          unique (org_id, id, location_id)   ← FK target
+shifts         (id, org_id, schedule_id, location_id, job_role_id?, employee_id?,
+                starts_at, ends_at timestamptz, break_minutes 0–240, status open|assigned|cancelled,
+                version ≥ 1, notes?, …)                         RLS, FK (org_id, schedule_id, location_id),
+                FK (org_id, employee_id), FK (org_id, job_role_id),
+                CHECK ends_at > starts_at, break < elapsed, status matches assignee,
+                EXCLUDE USING gist (employee_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
+                  WHERE status = 'assigned'                     ← no double-booking, in the database
 ```
 
 IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
@@ -548,7 +569,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 
 | Week | Tables |
 |---|---|
-| W2 | ~~`shift_templates`, `schedules`~~ (done, 0005), `shifts` (starts_at/ends_at timestamptz, **exclusion constraint** against double-booking), `outbox` |
+| W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), `outbox` |
 | W3 | `time_entries` (method gps/qr/manual, geo, accuracy, client_event_id unique, flags) |
 | W4 | `notifications`, `deliveries`, `message_usage` |
 | W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
@@ -603,6 +624,11 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `POST /shift-templates`, `PATCH`/`DELETE /shift-templates/:id` | token + org | owner, manager (in scope; location writable) |
 | `GET /schedules?locationId=&weekStart=`, `GET /schedules/:id` | token + org | owner, manager (in scope); includes the week's UTC `startsAt`/`endsAt` |
 | `POST /schedules` | token + org | owner, manager (in scope); draft; one per location and week (409) |
+| `GET /shifts?scheduleId=` | token + org | owner, manager (in scope); one week's shifts in time order |
+| `GET /shifts/:id` | token + org | owner, manager (in scope) |
+| `POST /shifts` | token + org | owner, manager (in scope); `{ shift, warnings }`; overlap → 409; date outside the week → 400 |
+| `PATCH /shifts/:id` | token + org | owner, manager (in scope); partial, `version` → 409 when stale; `{ shift, warnings }` |
+| `DELETE /shifts/:id` | token + org | owner, manager (in scope); audited |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
 `auth.unauthenticated`, `auth.email_taken`, `auth.invalid_credentials`,
@@ -610,7 +636,8 @@ Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_
 `org.member_not_found`, `org.last_owner`, `invite.invalid`, `invite.email_mismatch`,
 `invite.already_member`, `conflict.name_taken`, `location.not_found`, `location.read_only`,
 `location.owner_unrestricted`, `department.not_found`, `job_role.not_found`, `conflict.duplicate`,
-`employee.not_found`, `time_off.not_found`, `shift_template.not_found`, `schedule.not_found`.
+`employee.not_found`, `employee.archived`, `time_off.not_found`, `shift_template.not_found`,
+`schedule.not_found`, `shift.not_found`, `shift.overlap`, `shift.version_conflict`.
 
 ### 11.2 Conventions
 
@@ -624,9 +651,9 @@ clients may retry (clock-in, claim, swap; from week 3); OpenAPI generation plann
 
 | Kind | Tool | Where | Today |
 |---|---|---|---|
-| Unit | Vitest | `*.test.ts` next to code | 56 |
-| Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 17 |
-| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 34 |
+| Unit | Vitest | `*.test.ts` next to code | 178 |
+| Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 53 |
+| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 106 |
 | E2E | Playwright | planned with the web app | — |
 | Property | fast-check | planned for pay rules and scheduler | — |
 
@@ -702,8 +729,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
 | D1 | ✅ | Time helpers in `packages/domain/time` (local wall-clock + zone → UTC, week boundaries per location, overnight shifts, DST gaps/overlaps); `shift_templates`, `schedules` (week, draft/published, version) | Tests for Europe/London, America/New_York and Asia/Kolkata incl. both DST transitions |
-| D2 | ☐ | `shifts` (timestamptz range, status open/assigned/cancelled, version) with **exclusion constraint** (no double-booking across locations); validation as pure functions: overlap, availability, max weekly hours, min rest | Double-booking rejected by the DB; validation unit tests |
-| D3 | ☐ | Week board UI with shadcn components (rows by employee; filter by location/department; colour per job role; today marker; sticky header), shift create/edit in a Sheet using **react-hook-form + Zod** (first complex form); date navigation with shadcn Calendar | Manager builds a week by hand; the board feels as polished as a commercial product |
+| D2 | ✅ | `shifts` (timestamptz range, open/assigned/cancelled, version) with **exclusion constraint** (no double-booking, across locations); shift CRUD API (local times in, instants out, `{ shift, warnings }`); conflict checks as pure functions in `packages/domain/src/scheduling`: overlap, availability, time off, max weekly hours, min rest | Double-booking rejected by the DB (integration test) and by the API with a friendly 409; 28 validation unit tests |
+| D3 | ⏭ | Week board UI with shadcn components (rows by employee; filter by location/department; colour per job role; today marker; sticky header), shift create/edit in a Sheet using **react-hook-form + Zod** (first complex form); date navigation with shadcn Calendar | Manager builds a week by hand; the board feels as polished as a commercial product |
 | D4 | ☐ | Drag-and-drop (dnd-kit) with drag overlay and smooth animation (Motion), optimistic updates, conflict warnings as badges/tooltips, optimistic concurrency (`version` → 409 shown as a toast + refetch) | Two managers editing: the stale one gets a clear toast and refetches |
 | D5 | ☐ | Publish flow (draft → published, diff of changed employees); `outbox` table + `schedule.published` event in the same transaction | Publishing writes exactly one outbox row; edits after publish produce a diff |
 | D6 | ☐ | Socket.IO + Redis adapter, room per org/location/week; Playwright E2E for the build-and-publish happy path | Second browser sees changes live |
@@ -846,6 +873,7 @@ invoice format sign-off with a CA (values are config, not code).
 | Employee search filters only the pages already loaded; add server-side `q` to `GET /employees` when lists get long | W2 D3 |
 | Browser E2E tests (Playwright) for login → org → location → employee | W2 D6 |
 | Domain time helpers use `Temporal`; check browser support (Safari) before the web calls them, else add `temporal-polyfill` (ask first) | W2 D3 |
+| Shift warnings are computed on write only; decide whether `GET /shifts` should return them per row (needed for badges on load) | W2 D4 |
 
 ---
 

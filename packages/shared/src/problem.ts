@@ -24,9 +24,15 @@ export const errorCodes = {
   jobRoleNotFound: 'job_role.not_found',
   duplicate: 'conflict.duplicate',
   employeeNotFound: 'employee.not_found',
+  employeeArchived: 'employee.archived',
   timeOffNotFound: 'time_off.not_found',
   shiftTemplateNotFound: 'shift_template.not_found',
   scheduleNotFound: 'schedule.not_found',
+  shiftNotFound: 'shift.not_found',
+  /** The employee is already working at that time (also enforced by the database). */
+  shiftOverlap: 'shift.overlap',
+  /** Someone else changed the shift since this version was read. */
+  shiftVersionConflict: 'shift.version_conflict',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

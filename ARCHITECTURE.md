@@ -175,11 +175,15 @@ credentials(id, org_id, employee_id, type, number, expires_on)
 shift_templates(id, org_id, location_id, job_role_id, name, start_local, end_local, days_mask)
 coverage_requirements(id, org_id, location_id, job_role_id, weekday, start_local, end_local, count)
 schedules(id, org_id, location_id, week_start_date, status: draft|published, version, published_at)
-shifts(id, org_id, schedule_id, location_id, job_role_id, employee_id?,
-       starts_at timestamptz, ends_at timestamptz, break_minutes,
+shifts(id, org_id, schedule_id, location_id, job_role_id?, employee_id?,
+       starts_at timestamptz, ends_at timestamptz, break_minutes 0–240,
        status: open|assigned|cancelled, version int, notes)
+  -- FK (org_id, schedule_id, location_id) → schedules (org_id, id, location_id):
+  --   a shift is always in its schedule's week AND location
+  -- FK (org_id, employee_id) → employees (org_id, id) ON DELETE RESTRICT (archived, not deleted)
+  -- CHECK ends_at > starts_at, break shorter than the range, status matches the assignee
   -- EXCLUDE USING gist (employee_id WITH =, tstzrange(starts_at, ends_at) WITH &&)
-  --   WHERE status = 'assigned'   → DB-level guarantee: no double-booking
+  --   WHERE status = 'assigned'   → DB-level guarantee: no double-booking (migration 0006)
 
 shift_requests(id, org_id, type: swap|drop|pickup, shift_id, requester_id,
                target_employee_id?, target_shift_id?, status, decided_by, decided_at)
@@ -326,6 +330,27 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
 - Every shift mutation emits a realtime event to room `org:{org}:loc:{loc}:week:{date}`
   after commit. Optimistic concurrency: shift updates send `version`; a stale version → 409,
   the client refetches.
+
+### 7.3a Shift conflicts: one hard rule, four warnings
+
+A shift is placed with a local date and wall-clock times (`09:00`–`17:00` on a date); the API
+converts them with the location's zone, so no client does time zone maths and the response
+carries both instants and wall clock. Validation is a pure function
+(`packages/domain/src/scheduling/validation.ts`) over plain values — the candidate shift, the
+employee's availability, time off and other shifts, and their limits:
+
+| Check | Outcome | Notes |
+|---|---|---|
+| Overlap | **409 `shift.overlap`** | Exclusion constraint in Postgres is the last word; the service pre-check names the shift in the way |
+| Availability | warning `unavailable` | Weekly wall-clock pattern; an overnight slot covers the next morning, Sunday night covers Monday; no recorded availability = no restriction |
+| Time off | warning `time_off` | Exact UTC instants |
+| Max weekly hours | warning `max_weekly_hours` | Paid minutes (breaks deducted), summed across **all** locations for the week the shift starts in |
+| Min rest | warning `min_rest` | Gap on either side; skipped when the employee has no rule |
+
+Rationale in [ADR 015](docs/adr/015-shift-conflict-policy.md). Warnings are never stored: they
+are recomputed from the employee's current rules, and a write returns `{ shift, warnings }`.
+The database window for the checks is the schedule's week plus two days each side (the largest
+allowed rest rule), queried once per employee.
 
 ### 7.4 Open shifts and swaps: concurrency
 - Claiming an open shift:
@@ -528,3 +553,4 @@ GET  /audit?entity=shift&entityId=
 | 012 | Coupon engine owned by Shiftora (platform-admin managed, random/custom codes) | Accepted (2026-11-03) |
 | 013 | Message quotas: 1,000 WhatsApp + 200 SMS per paid location/month, fall back to push/email | Accepted (2026-11-03) |
 | 014 | Org selected per request with `X-Org-Id`; role loaded from the DB each request (not token claims) | Accepted (2026-11-05) |
+| 015 | Shift overlap blocks (DB exclusion constraint + 409); availability, time off, weekly hours and min rest are returned as warnings | Accepted (2026-11-06) |

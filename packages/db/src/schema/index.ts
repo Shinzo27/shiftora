@@ -10,3 +10,4 @@ export * from './organizations.js';
 export * from './sessions.js';
 export * from './users.js';
 export * from './scheduling.js';
+export * from './shifts.js';
