@@ -84,6 +84,23 @@ Numbers today: 6 migrations, 265 automated tests (143 unit, 122 integration agai
 Postgres), 47 API endpoints, a React web app on shadcn/ui (login, orgs, locations, employees;
 light and dark; Lighthouse accessibility 100).
 
+### Handoff note (update at the end of every session)
+
+> Last session: 2026-11-06, on the first dev machine (Claude Code).
+>
+> - **Done:** W1 UI foundation day and W2 D1 (time helpers, shift templates, schedules).
+>   All checks green: 143 unit + 122 integration tests, lint, typecheck, build. UI verified
+>   in Chrome (light/dark, desktop/phone, Lighthouse accessibility 100).
+> - **Uncommitted at hand-off:** the W1 UI and W2 D1 work (the owner commits before moving
+>   machines; check `git log` to confirm). Suggested messages:
+>   `feat(web): shadcn/ui design system, app shell, dark mode and restyled pages` and
+>   `feat(scheduling): time helpers on Temporal, shift templates and weekly schedules`.
+> - **Next:** W2 D2 (`shifts` + exclusion constraint against double-booking; validation as
+>   pure functions in `packages/domain`). See §14.
+> - **Open questions for the owner:** none.
+> - **Watch out for:** Temporal in browsers (check before the web calls the time helpers,
+>   W2 D3); local dev data is disposable (start fresh with `pnpm db:migrate`).
+
 Working agreement: **the owner commits and pushes**; agents prepare changes, run every check,
 and propose a Conventional Commit message. Ask before adding a dependency.
 

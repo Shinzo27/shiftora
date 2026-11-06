@@ -27,6 +27,15 @@ pnpm dev           # web on http://localhost:5173 (proxies /api), API on :4000
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
 
+## Continuing with an AI coding agent
+
+Any agent (Claude Code, OpenCode, Codex, Cursor…) can pick up where the last session left
+off. After cloning, give it:
+
+> Read AGENTS.md and follow "Start of every session" to collect the context. Then do the
+> next day marked ⏭ in PROJECT_PLAN.md §14, following "How to work a day". Don't commit;
+> give me a summary and a commit message at the end, and update the handoff note.
+
 ## Repository layout
 
 ```

@@ -77,6 +77,41 @@ Before saying a task is done: `pnpm lint && pnpm typecheck && pnpm test` must pa
 `pnpm test:int` if you touched SQL, migrations, tenancy, concurrency or queues. Report
 failures honestly with output; don't skip or delete failing tests to go green.
 
+## Start of every session ("collect the context")
+
+Do this before writing any code, whatever tool or model you are:
+
+1. Read, in order: this file → `PROJECT_PLAN.md` §2 (status + **Handoff note**) → the next
+   day's row in `PROJECT_PLAN.md` §14 (marked ⏭) → §5 decisions and §18 follow-ups → the
+   `ARCHITECTURE.md` sections that day touches → `PRD.md` only for product questions.
+2. Look at the repo state: `git status`, `git log --oneline -10`. Uncommitted work from a
+   previous session is the owner's to commit; don't revert or redo it.
+3. Check the machine works: `pnpm install`, `pnpm infra:up`, `pnpm db:migrate`, then
+   `pnpm lint && pnpm typecheck && pnpm test && pnpm test:int`. If it's a new machine,
+   follow `PROJECT_PLAN.md` §8.1 first. Fix or report anything red before new work.
+4. Read the code you will extend: the closest existing module is the template (e.g. a new
+   API module copies `apps/api/src/modules/job-roles` / `locations` patterns; a new page
+   copies `apps/web/src/pages/employees-page.tsx`).
+5. Tell the owner in a few lines: what the next day is, what you'll build, any decision you
+   need from them (with options and your recommendation). Then work through
+   "How to work a day" below without stopping for routine choices.
+6. End every session by updating the **Handoff note** in `PROJECT_PLAN.md` §2.
+
+## Working with the owner
+
+- Pratham (GitHub Shinzo27): ~1 year of professional JS/TS, multi-tenant HRM background.
+  Shiftora is a portfolio project: **he must be able to explain every line in an interview**.
+  Prefer clear, small, well-named code; short comments on *why*, not *what*.
+- He has used **Prisma a lot and is learning Drizzle and NestJS** in depth: when you use a
+  Drizzle or Nest pattern that differs from Prisma/Express habits, say so in one line in
+  your summary.
+- He decides quickly when given **numbered questions with a recommended option**. Ask only
+  for real product/architecture decisions; pick sensible defaults for the rest and say so.
+- Business/legal items (GST sign-off with a CA, domain/trademark) are deferred on purpose.
+- Summaries in plain language: what changed, what was verified (with numbers), what's left,
+  trade-offs, and a proposed Conventional Commit message. **He commits and pushes himself.**
+- When he says "go" / "next day", do the ⏭ day from §14 end to end.
+
 ## How to work a day (the workflow this repo was built with)
 
 1. Read the day's row in `PROJECT_PLAN.md` §14 (tasks + "done when") and the relevant
@@ -98,7 +133,7 @@ failures honestly with output; don't skip or delete failing tests to go green.
    should click through.
 6. Run everything: `pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int
    && pnpm build`. Report failures honestly.
-7. Update the docs in the same change: `PROJECT_PLAN.md` (§3 status table and "Numbers
+7. Update the docs in the same change: `PROJECT_PLAN.md` (§2 status table and handoff note and "Numbers
    today", §5 decisions with the date, §10 data model, §11 endpoints and error codes, §14 day
    ✅ and next day ⏭, §18 follow-ups), plus `ARCHITECTURE.md`/`AGENTS.md` if a design or
    rule changed. Docs are how the next session (human or agent) knows where things stand.
