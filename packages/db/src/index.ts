@@ -7,4 +7,20 @@ export type { Transaction } from './tenant-context.js';
 export { setOrgContext, setTenantContext } from './tenant-context.js';
 // Query helpers re-exported so apps build queries with the same drizzle-orm instance
 // as the schema (a second copy would make the column types incompatible).
-export { and, asc, count, eq, gt, inArray, isNull, ne, sql } from 'drizzle-orm';
+export {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  exists,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  lt,
+  lte,
+  ne,
+  or,
+  sql,
+} from 'drizzle-orm';

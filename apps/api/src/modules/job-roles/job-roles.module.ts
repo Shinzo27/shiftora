@@ -10,5 +10,6 @@ import { JobRolesService } from './job-roles.service.js';
   imports: [DatabaseModule, AuditModule],
   controllers: [JobRolesController],
   providers: [JobRolesService, JobRolesRepository],
+  exports: [JobRolesService],
 })
 export class JobRolesModule {}

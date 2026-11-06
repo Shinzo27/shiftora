@@ -18,7 +18,11 @@ export const jobRoles = pgTable(
     name: citext().notNull(),
     ...timestamps,
   },
-  (t) => [unique('job_roles_org_name_unique').on(t.orgId, t.name)],
+  (t) => [
+    unique('job_roles_org_name_unique').on(t.orgId, t.name),
+    // Target for same-org foreign keys (employee_job_roles, later shifts).
+    unique('job_roles_org_id_id_unique').on(t.orgId, t.id),
+  ],
 );
 
 export type JobRoleRow = typeof jobRoles.$inferSelect;

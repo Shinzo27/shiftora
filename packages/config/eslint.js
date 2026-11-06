@@ -26,6 +26,11 @@ export function createConfig({ tsconfigRootDir }) {
           },
         ],
         '@typescript-eslint/consistent-type-imports': 'error',
+        // `const { id, ...rest } = row` to drop fields is fine; unused `_`-prefixed args too.
+        '@typescript-eslint/no-unused-vars': [
+          'error',
+          { ignoreRestSiblings: true, argsIgnorePattern: '^_' },
+        ],
       },
     },
     {

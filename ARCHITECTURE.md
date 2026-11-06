@@ -31,7 +31,7 @@
 | Queue | BullMQ on Redis 7 | Retries, backoff, delayed + repeatable jobs, rate limiting |
 | Realtime | Socket.IO + Redis adapter | Live schedule board across API instances |
 | Web app | React 18 + Vite + TanStack Query + React Router | Fast dev loop; server-state caching |
-| UI | Tailwind CSS + shadcn/ui; dnd-kit for drag-and-drop | Accessible primitives; robust DnD |
+| UI | Tailwind CSS + **shadcn/ui** (Radix) with a themed design system and dark mode; lucide icons, sonner toasts, cmdk, TanStack Table, Vaul, Motion; dnd-kit for drag-and-drop; react-hook-form for complex forms | Accessible primitives we own and can restyle; attractive, consistent UI; robust DnD |
 | Mobile | **PWA** (vite-plugin-pwa / Workbox), IndexedDB for offline queue | No app-store friction; WhatsApp link opens straight into it |
 | Dates | `date-fns` + `date-fns-tz` (or Luxon) | IANA zone math and DST handling |
 | Auth | JWT access (15 min, `jose`, HS256) + rotating refresh tokens with reuse detection (httpOnly cookie, stored as SHA-256), argon2id (`@node-rs/argon2`) | Standard, explainable |
@@ -167,7 +167,7 @@ job_roles(id, org_id, name, requires_credential_type?)      -- Nurse, Receptioni
 employees(id, org_id, user_id?, name, phone, hourly_rate_minor, currency,
           max_weekly_minutes, min_rest_minutes, notify_channel, active)
 employee_job_roles(org_id, employee_id, job_role_id)
-employee_locations(org_id, employee_id, location_id, is_primary)
+employee_locations(org_id, employee_id, location_id)   -- (is_primary dropped until clock-in needs it)
 availability(id, org_id, employee_id, weekday, start_local, end_local)     -- recurring, local time
 time_off(id, org_id, employee_id, starts_at, ends_at, reason)              -- UTC instants
 credentials(id, org_id, employee_id, type, number, expires_on)

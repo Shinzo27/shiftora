@@ -113,6 +113,32 @@ describe('same-org foreign keys', () => {
     ).rejects.toSatisfy((e) => pgCode(e) === '23503');
   });
 
+  it("rejects giving my employee another org's job role (0004)", async () => {
+    const roleB = newId();
+    await as(
+      { user: RAVI, org: ORG_B },
+      () =>
+        db.query(`insert into job_roles (id, org_id, name) values ($1, $2, 'Surgeon')`, [
+          roleB,
+          ORG_B,
+        ]),
+      { commit: true },
+    );
+    await expect(
+      as({ user: ASHA, org: ORG_A }, async () => {
+        const employee = newId();
+        await db.query(`insert into employees (id, org_id, name) values ($1, $2, 'Nina')`, [
+          employee,
+          ORG_A,
+        ]);
+        await db.query(
+          `insert into employee_job_roles (org_id, employee_id, job_role_id) values ($1, $2, $3)`,
+          [ORG_A, employee, roleB],
+        );
+      }),
+    ).rejects.toSatisfy((e) => pgCode(e) === '23503');
+  });
+
   it('accepts a department at my own location', async () => {
     await expect(
       as({ user: ASHA, org: ORG_A }, () => insertDepartment(ORG_A, LOC_A)),

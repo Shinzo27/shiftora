@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, schema } from '@shiftora/db';
+import { and, asc, eq, inArray, schema } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -25,6 +25,16 @@ export class JobRolesRepository {
       .where(and(eq(jobRoles.orgId, this.context.orgId), eq(jobRoles.id, id)))
       .limit(1);
     return row ?? null;
+  }
+
+  /** How many of these ids are job roles of the current org. */
+  async countExisting(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const rows = await this.context.tx
+      .select({ id: jobRoles.id })
+      .from(jobRoles)
+      .where(and(eq(jobRoles.orgId, this.context.orgId), inArray(jobRoles.id, ids)));
+    return rows.length;
   }
 
   async create(name: string): Promise<JobRoleRecord> {

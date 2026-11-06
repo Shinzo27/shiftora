@@ -195,6 +195,7 @@ message; check Meta's current rate card before launch). Typical use is about 30 
 | Performance | Schedule board for 100 employees × 7 days loads < 1 s; clock-in p95 < 300 ms. |
 | Observability | OpenTelemetry traces, structured JSON logs, Grafana dashboards for API latency, queue depth, delivery success. |
 | Accessibility | Employee PWA usable on low-end Android over 3G; WCAG AA for core flows. |
+| Look and feel | Attractive, modern product UI (shadcn/ui design system, dark mode, smooth interactions); polished enough to demo to clinics and recruiters. |
 
 ## 10. Risks and mitigations
 
@@ -220,7 +221,7 @@ buffer/review: update changelog, write a build-in-public post, plan next week.
 | D3 | Auth (identity): users + sessions, signup/login/refresh/logout/me, argon2id, JWT access + rotating refresh tokens with reuse detection, default-deny auth guard, RFC 7807 errors, rate limits ✅ |
 | D4 | Org/membership tables, RBAC (`@Roles`), RLS policies + per-request tenant transaction, invites (moved from D3: they need orgs), audit events table ✅ |
 | D5 | Multi-location: locations (geo, radius, timezone), manager location scopes, departments, job roles CRUD; cross-tenant isolation tests + manager-cannot-see-other-location tests ✅ (plan limit moved to week 8 D2) |
-| D6 | Employees CRUD + roles + availability + location assignments; React app shell (Vite, router, auth pages, org setup wizard, location switcher) |
+| D6 | Employees CRUD + roles + availability + location assignments; React app shell (Vite, router, auth pages, org setup wizard, location switcher) ✅ |
 
 ### Week 2 — Schedule builder, shifts, publish flow
 | Day | Tasks |

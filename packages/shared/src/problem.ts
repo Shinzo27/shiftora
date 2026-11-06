@@ -22,6 +22,9 @@ export const errorCodes = {
   ownerUnrestricted: 'location.owner_unrestricted',
   departmentNotFound: 'department.not_found',
   jobRoleNotFound: 'job_role.not_found',
+  duplicate: 'conflict.duplicate',
+  employeeNotFound: 'employee.not_found',
+  timeOffNotFound: 'time_off.not_found',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

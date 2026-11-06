@@ -25,6 +25,17 @@ export class JobRolesService {
     return (await this.jobRoles.list()).map(toJobRole);
   }
 
+  /** For other modules: throws 404 unless every id is a job role of this org. */
+  async assertAllExist(ids: string[]): Promise<void> {
+    if ((await this.jobRoles.countExisting(ids)) !== ids.length) {
+      throw new AppException(
+        404,
+        errorCodes.jobRoleNotFound,
+        'One or more job roles do not exist.',
+      );
+    }
+  }
+
   async create(name: string): Promise<JobRole> {
     const row = await this.withUniqueName(() => this.jobRoles.create(name));
     await this.audit.record({

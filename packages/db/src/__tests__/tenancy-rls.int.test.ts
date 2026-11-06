@@ -111,13 +111,18 @@ describe('every tenant table is protected', () => {
     // Adding a tenant table? Add it here too, after giving it RLS in its migration.
     expect(tables.map((t) => t.table)).toEqual([
       'audit_events',
+      'availability',
       'departments',
+      'employee_job_roles',
+      'employee_locations',
+      'employees',
       'invites',
       'job_roles',
       'locations',
       'membership_locations',
       'memberships',
       'organizations',
+      'time_off',
     ]);
     for (const t of tables) {
       expect(t, t.table).toMatchObject({ enabled: true, forced: true });

@@ -22,7 +22,7 @@ pnpm install
 cp .env.example .env
 pnpm infra:up      # Postgres on :5433, Redis on :6379, Mailpit UI on :8025
 pnpm db:migrate
-pnpm dev           # API on http://localhost:4000/api/v1/health/ready
+pnpm dev           # web on http://localhost:5173 (proxies /api), API on :4000
                    # auth: POST /api/v1/auth/{signup,login,refresh,logout}, GET /api/v1/auth/me
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
@@ -32,6 +32,7 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
 apps/
   api/       NestJS 12 (Fastify) HTTP API
+  web/       React + Vite web app (manager dashboard)
 packages/
   config/    shared TypeScript and ESLint presets
   shared/    Zod schemas and API types shared by api, worker and web

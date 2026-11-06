@@ -9,6 +9,12 @@ describe('createLocationRequest', () => {
     expect(createLocationRequest.parse(valid).radiusM).toBe(100);
   });
 
+  it('stores the current name of a legacy time zone', () => {
+    expect(createLocationRequest.parse({ ...valid, timezone: 'Asia/Calcutta' }).timezone).toBe(
+      'Asia/Kolkata',
+    );
+  });
+
   it('turns an empty address into null', () => {
     expect(createLocationRequest.parse({ ...valid, address: '  ' }).address).toBeNull();
   });

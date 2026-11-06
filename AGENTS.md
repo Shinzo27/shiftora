@@ -40,7 +40,7 @@ pnpm infra:up          # postgres (localhost:5433), redis (6379), mailpit (smtp 
 pnpm infra:down
 pnpm db:migrate        # apply migrations (runs as app_owner via MIGRATION_DATABASE_URL)
 pnpm db:generate       # drizzle-kit: write the next migration from packages/db/src/schema
-pnpm dev               # api (http://localhost:4000/api/v1) + worker + web via turbo
+pnpm dev               # web (http://localhost:5173, proxies /api) + api (:4000) via turbo
 pnpm format            # prettier --write (pnpm format:check in CI)
 pnpm lint && pnpm typecheck
 pnpm test              # unit (vitest)
@@ -174,8 +174,16 @@ failures honestly with output; don't skip or delete failing tests to go green.
 - Migrations: forward-only SQL files in `packages/db/migrations`, named
   `NNNN_short_description.sql`; include RLS policy, indexes and grants in the same file.
   Never edit a migration that has been merged.
-- Frontend: TanStack Query for server state, no global store unless needed; Tailwind +
-  shadcn/ui components; forms with react-hook-form + Zod; mobile-first for employee screens.
+- Frontend (`apps/web`): TanStack Query for server state, no global store; call the API only
+  through `src/lib/api.ts` (it adds the token and `X-Org-Id` and refreshes single-flight); never
+  store the access token in localStorage. UI is built from **shadcn/ui** components and the theme
+  tokens (no one-off colours); icons from lucide-react, toasts with sonner, tables with TanStack
+  Table, animation with Motion. Every screen needs skeleton, empty and error states, dark mode and
+  a phone layout. Validate forms with the shared Zod schemas (react-hook-form for complex forms,
+  from the shift editor on). Mobile-first for employee screens.
+- Approved UI libraries (no need to ask): shadcn/ui and its Radix deps, lucide-react, sonner,
+  cmdk, @tanstack/react-table, react-day-picker, vaul, motion, @dnd-kit/*, recharts,
+  @fontsource-variable/inter, react-hook-form, @hookform/resolvers. Anything else: ask.
 - Naming: tables `snake_case` plural; link tables `<singular>_<plural>` (`employee_locations`);
   enums singular (`member_role`); columns `snake_case` (Drizzle maps to `camelCase` in TS);
   instants end in `_at`, money in `_minor`, durations in `_minutes`; events `entity.past_tense`

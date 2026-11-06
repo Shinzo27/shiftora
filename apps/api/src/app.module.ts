@@ -4,6 +4,7 @@ import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
+import { EmployeesModule } from './modules/employees/employees.module.js';
 import { InvitesModule } from './modules/invites/invites.module.js';
 import { JobRolesModule } from './modules/job-roles/job-roles.module.js';
 import { LocationsModule } from './modules/locations/locations.module.js';
@@ -20,6 +21,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     InvitesModule,
     LocationsModule,
     JobRolesModule,
+    EmployeesModule,
     HealthModule,
   ],
 })

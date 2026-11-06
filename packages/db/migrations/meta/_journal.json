@@ -29,6 +29,13 @@
       "when": 1793947448435,
       "tag": "0003_locations",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793948811739,
+      "tag": "0004_employees",
+      "breakpoints": true
     }
   ]
 }

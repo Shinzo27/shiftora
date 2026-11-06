@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isValidTimeZone } from './timezone.js';
+import { isValidTimeZone, normalizeTimeZone } from './timezone.js';
 
 describe('isValidTimeZone', () => {
   it.each([
@@ -19,4 +19,16 @@ describe('isValidTimeZone', () => {
       expect(isValidTimeZone(zone)).toBe(false);
     },
   );
+});
+
+describe('normalizeTimeZone', () => {
+  it.each([
+    ['Asia/Calcutta', 'Asia/Kolkata'],
+    ['Europe/Kiev', 'Europe/Kyiv'],
+    ['Asia/Kolkata', 'Asia/Kolkata'],
+    ['Europe/London', 'Europe/London'],
+  ])('%s → %s', (zone, expected) => {
+    expect(normalizeTimeZone(zone)).toBe(expected);
+    expect(isValidTimeZone(expected)).toBe(true);
+  });
 });

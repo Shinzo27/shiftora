@@ -1,4 +1,4 @@
-import { isValidTimeZone } from '@shiftora/domain';
+import { isValidTimeZone, normalizeTimeZone } from '@shiftora/domain';
 import { z } from 'zod';
 
 const name = z.string().trim().min(1, 'Required').max(100, 'At most 100 characters');
@@ -18,7 +18,8 @@ const radiusM = z.number().int().min(25, 'At least 25 m').max(1000, 'At most 100
 const timezone = z
   .string()
   .trim()
-  .refine(isValidTimeZone, 'Unknown time zone: use an IANA name such as Asia/Kolkata');
+  .refine(isValidTimeZone, 'Unknown time zone: use an IANA name such as Asia/Kolkata')
+  .transform(normalizeTimeZone);
 
 export const locationStatus = z.enum(['active', 'read_only']);
 export type LocationStatus = z.output<typeof locationStatus>;
