@@ -2,7 +2,8 @@
   "extends": "@shiftora/config/tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
-    "outDir": "dist"
+    "outDir": "dist",
+    "lib": ["ES2024", "esnext.temporal"]
   },
   "include": ["src"]
 }

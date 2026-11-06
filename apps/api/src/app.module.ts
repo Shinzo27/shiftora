@@ -9,6 +9,7 @@ import { InvitesModule } from './modules/invites/invites.module.js';
 import { JobRolesModule } from './modules/job-roles/job-roles.module.js';
 import { LocationsModule } from './modules/locations/locations.module.js';
 import { OrgsModule } from './modules/orgs/orgs.module.js';
+import { SchedulingModule } from './modules/scheduling/scheduling.module.js';
 import { TenancyModule } from './modules/tenancy/tenancy.module.js';
 
 @Module({
@@ -22,6 +23,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     LocationsModule,
     JobRolesModule,
     EmployeesModule,
+    SchedulingModule,
     HealthModule,
   ],
 })

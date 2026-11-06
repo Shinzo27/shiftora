@@ -3,3 +3,4 @@ export * from './employees.js';
 export * from './locations.js';
 export * from './orgs.js';
 export * from './problem.js';
+export * from './scheduling.js';

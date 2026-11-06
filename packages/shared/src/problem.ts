@@ -25,6 +25,8 @@ export const errorCodes = {
   duplicate: 'conflict.duplicate',
   employeeNotFound: 'employee.not_found',
   timeOffNotFound: 'time_off.not_found',
+  shiftTemplateNotFound: 'shift_template.not_found',
+  scheduleNotFound: 'schedule.not_found',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

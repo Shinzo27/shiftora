@@ -9,3 +9,4 @@ export * from './memberships.js';
 export * from './organizations.js';
 export * from './sessions.js';
 export * from './users.js';
+export * from './scheduling.js';

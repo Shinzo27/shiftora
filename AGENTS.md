@@ -184,6 +184,11 @@ failures honestly with output; don't skip or delete failing tests to go green.
 - Approved UI libraries (no need to ask): shadcn/ui and its Radix deps, lucide-react, sonner,
   cmdk, @tanstack/react-table, react-day-picker, vaul, motion, @dnd-kit/*, recharts,
   @fontsource-variable/inter, react-hook-form, @hookform/resolvers. Anything else: ask.
+- Adding a shadcn component: `pnpm dlx shadcn@latest add <name>` from `apps/web`, then
+  `pnpm format`. Colours come from the tokens in `src/index.css` (`primary`, `muted`,
+  `brand`, `success`, `warning`, `chart-1..5`…); never hard-code a Tailwind palette colour.
+  Theme: `useTheme()` from `src/lib/theme.tsx` (not next-themes). Org/location state:
+  `useOrg()` from `src/lib/org-context.ts`.
 - Naming: tables `snake_case` plural; link tables `<singular>_<plural>` (`employee_locations`);
   enums singular (`member_role`); columns `snake_case` (Drizzle maps to `camelCase` in TS);
   instants end in `_at`, money in `_minor`, durations in `_minutes`; events `entity.past_tense`

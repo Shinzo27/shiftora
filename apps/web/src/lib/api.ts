@@ -11,6 +11,8 @@ import type {
   OrgSummary,
   Page,
   SignupRequest,
+  UpdateEmployeeRequest,
+  UpdateLocationRequest,
 } from '@shiftora/shared';
 
 import { ApiClient } from './api-client.js';
@@ -59,6 +61,8 @@ export const locationsApi = {
   list: (orgId: string) => api.get<Location[]>('/locations', { orgId }),
   create: (orgId: string, body: CreateLocationRequest) =>
     api.post<Location>('/locations', { orgId, body }),
+  update: (orgId: string, id: string, body: UpdateLocationRequest) =>
+    api.patch<Location>(`/locations/${id}`, { orgId, body }),
 };
 
 export const jobRolesApi = {
@@ -76,4 +80,6 @@ export const employeesApi = {
   },
   create: (orgId: string, body: CreateEmployeeRequest) =>
     api.post<Employee>('/employees', { orgId, body }),
+  update: (orgId: string, id: string, body: UpdateEmployeeRequest) =>
+    api.patch<Employee>(`/employees/${id}`, { orgId, body }),
 };

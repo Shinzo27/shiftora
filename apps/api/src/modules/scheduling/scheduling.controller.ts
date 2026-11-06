@@ -1,0 +1,93 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  createScheduleRequest,
+  createShiftTemplateRequest,
+  listSchedulesQuery,
+  listShiftTemplatesQuery,
+  updateShiftTemplateRequest,
+  type CreateScheduleRequest,
+  type CreateShiftTemplateRequest,
+  type ListSchedulesQuery,
+  type ListShiftTemplatesQuery,
+  type Schedule,
+  type ShiftTemplate,
+  type UpdateShiftTemplateRequest,
+} from '@shiftora/shared';
+
+import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
+import { Roles } from '../tenancy/decorators.js';
+import { SchedulesService } from './schedules.service.js';
+import { ShiftTemplatesService } from './shift-templates.service.js';
+
+/**
+ * Building schedules is a manager's job. Employees will read their own published shifts
+ * through "my shifts" (W3), not these routes.
+ */
+@Roles('owner', 'manager')
+@Controller()
+export class SchedulingController {
+  constructor(
+    private readonly templates: ShiftTemplatesService,
+    private readonly schedules: SchedulesService,
+  ) {}
+
+  @Get('shift-templates')
+  listTemplates(
+    @Query(new ZodValidationPipe(listShiftTemplatesQuery)) query: ListShiftTemplatesQuery,
+  ): Promise<ShiftTemplate[]> {
+    return this.templates.list(query);
+  }
+
+  @Post('shift-templates')
+  @HttpCode(201)
+  createTemplate(
+    @Body(new ZodValidationPipe(createShiftTemplateRequest)) body: CreateShiftTemplateRequest,
+  ): Promise<ShiftTemplate> {
+    return this.templates.create(body);
+  }
+
+  @Patch('shift-templates/:id')
+  updateTemplate(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateShiftTemplateRequest)) body: UpdateShiftTemplateRequest,
+  ): Promise<ShiftTemplate> {
+    return this.templates.update(id, body);
+  }
+
+  @Delete('shift-templates/:id')
+  @HttpCode(204)
+  removeTemplate(@Param('id', ParseUUIDPipe) id: string): Promise<void> {
+    return this.templates.remove(id);
+  }
+
+  @Get('schedules')
+  listSchedules(
+    @Query(new ZodValidationPipe(listSchedulesQuery)) query: ListSchedulesQuery,
+  ): Promise<Schedule[]> {
+    return this.schedules.list(query);
+  }
+
+  @Get('schedules/:id')
+  getSchedule(@Param('id', ParseUUIDPipe) id: string): Promise<Schedule> {
+    return this.schedules.get(id);
+  }
+
+  @Post('schedules')
+  @HttpCode(201)
+  createSchedule(
+    @Body(new ZodValidationPipe(createScheduleRequest)) body: CreateScheduleRequest,
+  ): Promise<Schedule> {
+    return this.schedules.create(body);
+  }
+}

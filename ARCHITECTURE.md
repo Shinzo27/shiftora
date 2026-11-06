@@ -33,7 +33,7 @@
 | Web app | React 18 + Vite + TanStack Query + React Router | Fast dev loop; server-state caching |
 | UI | Tailwind CSS + **shadcn/ui** (Radix) with a themed design system and dark mode; lucide icons, sonner toasts, cmdk, TanStack Table, Vaul, Motion; dnd-kit for drag-and-drop; react-hook-form for complex forms | Accessible primitives we own and can restyle; attractive, consistent UI; robust DnD |
 | Mobile | **PWA** (vite-plugin-pwa / Workbox), IndexedDB for offline queue | No app-store friction; WhatsApp link opens straight into it |
-| Dates | `date-fns` + `date-fns-tz` (or Luxon) | IANA zone math and DST handling |
+| Dates | Native `Temporal` (Node 26) in `packages/domain/time` | IANA zone math and DST handling with no dependency; plain values in and out |
 | Auth | JWT access (15 min, `jose`, HS256) + rotating refresh tokens with reuse detection (httpOnly cookie, stored as SHA-256), argon2id (`@node-rs/argon2`) | Standard, explainable |
 | Rate limiting | `@nestjs/throttler` (in-memory now, Redis store in week 4) | Throttled requests go through Nest's exception filter, so 429s use the same error format |
 | Email | Resend or AWS SES | Cheap, good deliverability |
@@ -314,6 +314,10 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
   is always computed from UTC instants. Nonexistent local times (e.g. 02:30 on spring-forward)
   are shifted forward; ambiguous ones take the earlier offset. Covered by fixed test cases
   for zones with DST (Europe/London, America/New_York) and without (Asia/Kolkata).
+- Implementation: `packages/domain/src/time/zoned.ts` (`toInstant`, `toLocal`, `shiftTimes`,
+  `weekBounds`, `localDayBounds`, `startOfWeek`, `nominalMinutes`) on native `Temporal` with
+  `disambiguation: 'compatible'`. Weeks run Monday–Sunday in the location's zone; a schedule
+  week is 167, 168 or 169 hours long.
 
 ### 7.3 Schedule publishing and live board
 - Edits to a `draft` schedule are silent. `Publish` bumps `schedules.version`, computes a diff

@@ -1,38 +1,60 @@
 import { useQuery } from '@tanstack/react-query';
-import { createContext, useContext, useState } from 'react';
-import { Link, NavLink, Outlet, useParams } from 'react-router';
+import {
+  CalendarDays,
+  ChevronsUpDown,
+  Clock,
+  IndianRupee,
+  MapPin,
+  Plus,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { useState } from 'react';
+import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
-import { Button, ErrorBanner, Loading } from '../components/ui.js';
-import { locationsApi, orgsApi } from '../lib/api.js';
-import { errorMessage } from '../lib/forms.js';
-import { useLogout, useSession } from '../lib/session.js';
+import { CommandMenu } from '@/components/command-menu';
+import { LogoMark } from '@/components/logo';
+import { ErrorState } from '@/components/page';
+import { Badge } from '@/components/ui/badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Separator } from '@/components/ui/separator';
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuBadge,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from '@/components/ui/sidebar';
+import { Skeleton } from '@/components/ui/skeleton';
+import { UserMenu } from '@/components/user-menu';
+import { locationsApi, orgsApi } from '@/lib/api';
+import { OrgContext, readStoredLocation, storeLocation, useOrg } from '@/lib/org-context';
 
-interface OrgContextValue {
-  orgId: string;
-  role: 'owner' | 'manager' | 'employee' | 'kiosk';
-  /** The location chosen in the header switcher, or null for "All locations". */
-  locationId: string | null;
-}
-
-const OrgContext = createContext<OrgContextValue | null>(null);
-
-export function useOrg(): OrgContextValue {
-  const value = useContext(OrgContext);
-  if (!value) throw new Error('useOrg() used outside OrgLayout');
-  return value;
-}
-
-const storageKey = (orgId: string) => `shiftora:location:${orgId}`;
-
-function readStoredLocation(orgId: string): string | null {
-  try {
-    return localStorage.getItem(storageKey(orgId));
-  } catch {
-    return null; // storage can be blocked; the switcher still works for this visit
-  }
-}
-
-/** Everything under /o/:orgId: header with org, location switcher and navigation. */
+/** Everything under /o/:orgId: sidebar, top bar with switchers, and the page. */
 export function OrgLayout() {
   const { orgId = '' } = useParams();
   // `key` resets the selected location when switching organisations.
@@ -40,8 +62,6 @@ export function OrgLayout() {
 }
 
 function OrgShell({ orgId }: { orgId: string }) {
-  const session = useSession();
-  const logout = useLogout();
   const org = useQuery({ queryKey: ['org', orgId], queryFn: () => orgsApi.current(orgId) });
   const locations = useQuery({
     queryKey: ['locations', orgId],
@@ -49,78 +69,243 @@ function OrgShell({ orgId }: { orgId: string }) {
     enabled: org.isSuccess,
   });
   const [stored, setStored] = useState(() => readStoredLocation(orgId));
-  // Ignore a remembered location that no longer exists or is now out of scope.
-  const locationId = locations.data?.some((l) => l.id === stored) ? stored : null;
 
-  function selectLocation(id: string) {
-    const value = id || null;
-    setStored(value);
-    try {
-      if (value) localStorage.setItem(storageKey(orgId), value);
-      else localStorage.removeItem(storageKey(orgId));
-    } catch {
-      // ignore: convenience only
-    }
-  }
-
-  if (org.isPending) return <Loading />;
-  if (org.isError) {
+  const failed = org.isError ? org : locations.isError ? locations : null;
+  if (failed) {
     return (
-      <main className="mx-auto mt-16 max-w-md space-y-4 px-4">
-        <ErrorBanner message={errorMessage(org.error)} />
-        <Link className="text-teal-700 underline" to="/orgs">
-          Back to your organisations
-        </Link>
+      <main className="mx-auto mt-24 max-w-md px-4">
+        <ErrorState error={failed.error} onRetry={() => void failed.refetch()} />
+        <p className="mt-4 text-center text-sm">
+          <Link className="text-primary underline-offset-4 hover:underline" to="/orgs">
+            Back to your organisations
+          </Link>
+        </p>
       </main>
     );
   }
+  if (!org.isSuccess || !locations.isSuccess) return <ShellSkeleton />;
 
-  const navClass = ({ isActive }: { isActive: boolean }) =>
-    `rounded-md px-3 py-2 text-sm font-medium ${isActive ? 'bg-teal-50 text-teal-800' : 'text-slate-600 hover:text-slate-900'}`;
+  const list = locations.data;
+  // Ignore a remembered location that no longer exists or is now out of scope.
+  const locationId = list.some((l) => l.id === stored) ? stored : null;
+
+  function selectLocation(id: string | null) {
+    setStored(id);
+    storeLocation(orgId, id);
+  }
 
   return (
-    <OrgContext.Provider value={{ orgId, role: org.data.role, locationId }}>
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-4 px-4 py-3">
-          <Link to="/orgs" className="font-bold text-teal-800">
-            Shiftora
-          </Link>
-          <span className="text-sm text-slate-500">
-            {org.data.name} · <span className="capitalize">{org.data.role}</span>
-          </span>
-          <label className="ml-auto flex items-center gap-2 text-sm">
-            <span className="text-slate-500">Location</span>
-            <select
-              aria-label="Location"
-              className="rounded-md border border-slate-300 px-2 py-1.5"
-              value={locationId ?? ''}
-              onChange={(event) => selectLocation(event.target.value)}
-            >
-              <option value="">All locations</option>
-              {locations.data?.map((location) => (
-                <option key={location.id} value={location.id}>
-                  {location.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <span className="text-sm text-slate-600">{session.data?.name}</span>
-          <Button variant="secondary" onClick={() => logout.mutate()}>
-            Log out
-          </Button>
-        </div>
-        <nav className="mx-auto flex max-w-5xl gap-1 px-4 pb-2">
-          <NavLink to="locations" className={navClass}>
-            Locations
-          </NavLink>
-          <NavLink to="employees" className={navClass}>
-            Employees
-          </NavLink>
-        </nav>
-      </header>
-      <main className="mx-auto max-w-5xl space-y-6 px-4 py-6">
-        <Outlet />
-      </main>
+    <OrgContext.Provider
+      value={{
+        orgId,
+        org: org.data,
+        role: org.data.role,
+        locations: list,
+        locationId,
+        selectLocation,
+      }}
+    >
+      <SidebarProvider>
+        <AppSidebar />
+        <SidebarInset>
+          <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <SidebarTrigger className="-ml-1" />
+            <Separator
+              orientation="vertical"
+              className="mr-1 data-[orientation=vertical]:h-4 data-[orientation=vertical]:self-center"
+            />
+            <LocationSwitcher />
+            <div className="ml-auto flex items-center gap-2">
+              <CommandMenu />
+            </div>
+          </header>
+          {/* SidebarInset is the page's <main>; this is just the content column. */}
+          <div className="mx-auto w-full max-w-6xl flex-1 space-y-6 p-4 sm:p-6 lg:p-8">
+            <Outlet />
+          </div>
+        </SidebarInset>
+      </SidebarProvider>
     </OrgContext.Provider>
+  );
+}
+
+interface NavItem {
+  label: string;
+  to: string;
+  icon: LucideIcon;
+  /** Shown but disabled until the feature ships. */
+  soon?: boolean;
+  managersOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
+  { label: 'Schedule', to: 'schedule', icon: CalendarDays, soon: true },
+  { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
+  { label: 'Locations', to: 'locations', icon: MapPin },
+  { label: 'Timesheets', to: 'timesheets', icon: Clock, soon: true },
+  { label: 'Payroll', to: 'payroll', icon: IndianRupee, soon: true },
+];
+
+function AppSidebar() {
+  const { role } = useOrg();
+  const { pathname } = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const canManage = role === 'owner' || role === 'manager';
+
+  return (
+    <Sidebar collapsible="icon" variant="inset">
+      <SidebarHeader>
+        <OrgSwitcher />
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Workspace</SidebarGroupLabel>
+          <SidebarMenu>
+            {navItems
+              .filter((item) => canManage || !item.managersOnly)
+              .map((item) => (
+                <SidebarMenuItem key={item.to}>
+                  {item.soon ? (
+                    <>
+                      <SidebarMenuButton tooltip={`${item.label} (coming soon)`} disabled>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                      <SidebarMenuBadge>
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                          Soon
+                        </Badge>
+                      </SidebarMenuBadge>
+                    </>
+                  ) : (
+                    <SidebarMenuButton
+                      asChild
+                      tooltip={item.label}
+                      isActive={pathname.endsWith(`/${item.to}`)}
+                    >
+                      <NavLink to={item.to} onClick={() => isMobile && setOpenMobile(false)}>
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </NavLink>
+                    </SidebarMenuButton>
+                  )}
+                </SidebarMenuItem>
+              ))}
+          </SidebarMenu>
+        </SidebarGroup>
+      </SidebarContent>
+      <SidebarFooter>
+        <UserMenu side={isMobile ? 'top' : 'right'} />
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
+  );
+}
+
+/** Org name + role in the sidebar header; opens a menu to switch or create an org. */
+function OrgSwitcher() {
+  const { org, orgId } = useOrg();
+  const navigate = useNavigate();
+  const { isMobile } = useSidebar();
+  const orgs = useQuery({ queryKey: ['orgs'], queryFn: orgsApi.list });
+
+  return (
+    <SidebarMenu>
+      <SidebarMenuItem>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <LogoMark />
+              <span className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">{org.name}</span>
+                <span className="truncate text-xs capitalize text-muted-foreground">
+                  {org.role}
+                </span>
+              </span>
+              <ChevronsUpDown className="ml-auto" />
+            </SidebarMenuButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            className="w-(--radix-dropdown-menu-trigger-width) min-w-56"
+            side={isMobile ? 'bottom' : 'right'}
+            align="start"
+          >
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              Organisations
+            </DropdownMenuLabel>
+            {orgs.data?.map((item) => (
+              <DropdownMenuItem
+                key={item.id}
+                onSelect={() => void navigate(`/o/${item.id}`)}
+                className={item.id === orgId ? 'font-medium' : undefined}
+              >
+                <span className="flex size-6 items-center justify-center rounded-md border text-xs">
+                  {item.name.slice(0, 1).toUpperCase()}
+                </span>
+                <span className="truncate">{item.name}</span>
+                <span className="ml-auto text-xs capitalize text-muted-foreground">
+                  {item.role}
+                </span>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => void navigate('/orgs?new=1')}>
+              <Plus /> Create organisation
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </SidebarMenuItem>
+    </SidebarMenu>
+  );
+}
+
+const ALL = 'all';
+
+function LocationSwitcher() {
+  const { locations, locationId, selectLocation } = useOrg();
+  if (!locations.length) return null;
+
+  return (
+    <Select
+      value={locationId ?? ALL}
+      onValueChange={(value) => selectLocation(value === ALL ? null : value)}
+    >
+      <SelectTrigger
+        size="sm"
+        aria-label="Location"
+        className="w-auto max-w-56 gap-2 border-none shadow-none"
+      >
+        <MapPin className="text-muted-foreground" />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent align="start">
+        <SelectItem value={ALL}>All locations</SelectItem>
+        {locations.map((location) => (
+          <SelectItem key={location.id} value={location.id}>
+            {location.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function ShellSkeleton() {
+  return (
+    <div className="flex min-h-svh" aria-busy="true" aria-label="Loading">
+      <div className="hidden w-64 space-y-3 border-r p-4 md:block">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-8 w-2/3" />
+        <Skeleton className="h-8 w-3/4" />
+      </div>
+      <div className="flex-1 space-y-6 p-8">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    </div>
   );
 }

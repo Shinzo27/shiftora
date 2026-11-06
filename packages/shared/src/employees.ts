@@ -87,7 +87,8 @@ export interface Page<T> {
   nextCursor: string | null;
 }
 
-const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM (24-hour)');
+/** A wall-clock time, "HH:MM" (24-hour). */
+export const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM (24-hour)');
 
 export const weeklySlot = z.object({
   /** ISO weekday: 1 = Monday … 7 = Sunday. */

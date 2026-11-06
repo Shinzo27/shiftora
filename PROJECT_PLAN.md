@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-05 (end of Week 1, Day 4) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-06 (Week 2, Day 1 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -73,14 +73,16 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W1 D2 | NestJS API skeleton, config, health checks, Drizzle, migration `0000_foundation` | ✅ Done | `ec72b13` |
 | W1 D3 | Auth: signup/login/refresh/logout/me, argon2id, JWT + rotating refresh tokens, default-deny guard, RFC 7807 errors, rate limits | ✅ Done | `fb0274f` |
 | W1 D4 | Tenancy: orgs, memberships, invites, RLS policies, per-request tenant transaction, roles, audit table | ✅ Done | `24bcf1b` |
-| W1 D5 | Multi-location: locations, departments, job roles, manager location scopes, same-org foreign keys | ✅ Done | (uncommitted) |
-| W1 D6 | Employees, availability, time off; web app shell (React) verified in a browser | ✅ Done | (uncommitted) |
-| **W1 UI** | **UI foundation: shadcn/ui design system, theme, dark mode, app shell, restyle existing pages** | ⏭ **Next** | |
-| W2 D1 | Time helpers (local → UTC, DST), shift templates, schedules | Planned | |
+| W1 D5 | Multi-location: locations, departments, job roles, manager location scopes, same-org foreign keys | ✅ Done | `69fa19c` |
+| W1 D6 | Employees, availability, time off; web app shell (React) verified in a browser | ✅ Done | `4161e7b` |
+| W1 UI | UI foundation: shadcn/ui design system, theme, dark mode, app shell, restyle existing pages | ✅ Done | (uncommitted) |
+| W2 D1 | Time helpers on native Temporal (local → UTC, DST, weeks), shift templates, schedules | ✅ Done | (uncommitted) |
+| **W2 D2** | **`shifts` with an exclusion constraint (no double-booking); validation as pure functions** | ⏭ **Next** | |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 5 migrations, 204 automated tests (109 unit, 95 integration against real
-Postgres), 39 API endpoints, a React web app (login, orgs, locations, employees).
+Numbers today: 6 migrations, 265 automated tests (143 unit, 122 integration against real
+Postgres), 47 API endpoints, a React web app on shadcn/ui (login, orgs, locations, employees;
+light and dark; Lighthouse accessibility 100).
 
 Working agreement: **the owner commits and pushes**; agents prepare changes, run every check,
 and propose a Conventional Commit message. Ask before adding a dependency.
@@ -218,6 +220,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Legacy time-zone names (`Asia/Calcutta`) are normalised to current ones (`Asia/Kolkata`) on input | 2026-11-06 |
 | — | Web dev server proxies `/api` to the API (same origin, no CORS in development) | 2026-11-06 |
 | — | Locations are never deleted, only made `read_only`; plan limits (Free = 1 location) move to W8 D2 with billing | 2026-11-06 |
+| — | UI foundation as built: shadcn/ui (`radix-nova` style, Radix base) with components copied into `apps/web/src/components/ui`; TanStack Table **v9** (`useTable` + `tableFeatures`); a small local `ThemeProvider` (`src/lib/theme.tsx`) instead of `next-themes` (which injects a `<script>` React 19 warns about), with a no-flash snippet in `index.html`; shadcn's `cn` package replaces clsx + tailwind-merge; `?new=1` in the URL opens an "add" sheet (used by ⌘K and onboarding) | 2026-11-06 |
+| — | Time maths on **native Temporal** instead of date-fns-tz/Luxon (no dependency; IANA/DST rules come from the platform). DST: skipped local times move forward, repeated ones take the first occurrence ("compatible"). Weeks run **Monday–Sunday** in the location's zone (`WEEK_STARTS_ON`); a per-org setting can come later | 2026-11-06 |
+| — | One schedule per location and week (`unique (location_id, week_start)`, Monday CHECK); its API reports the week's real UTC bounds (167–169 h around DST). Templates keep local `time`s; deleting a job role clears it from templates via `ON DELETE SET NULL (job_role_id)` | 2026-11-06 |
 | — | Table naming: **`job_roles`** for work roles (Nurse, Receptionist), distinct from the `member_role` access enum; **`time_off`** instead of `unavailability`; referencing columns are `job_role_id` | 2026-11-06 |
 
 ---
@@ -266,7 +271,7 @@ version younger than 7 days) and `allowBuilds` (install scripts denied for esbui
 | Web app (in use) | React 19.3 + Vite 8.3 + React Router 8.5 + TanStack Query 5.105 + Tailwind 4.3 | Week 1 D6 |
 | UI components (approved) | **shadcn/ui** (Radix primitives, copied into `apps/web/src/components/ui`), lucide-react icons, sonner (toasts), cmdk (⌘K palette), TanStack Table (data tables), react-day-picker (shadcn Calendar/date picker), Vaul (mobile drawers), Motion (animations), dnd-kit (schedule board), shadcn Charts / Recharts (labour cost, dashboards), Inter Variable via @fontsource; **react-hook-form** + Zod resolver for complex forms | W1 UI day → W2+ |
 | PWA | vite-plugin-pwa (Workbox), IndexedDB for offline queue | Week 3 |
-| Dates | date-fns + date-fns-tz (or Luxon) for IANA zone maths | Week 2 D1 |
+| Dates | **Native `Temporal`** (Node 26, TS `esnext.temporal`) inside `packages/domain/time`; its API takes and returns plain values (`YYYY-MM-DD`, `HH:MM`, `Date`). No date library | Week 2 D1 |
 | Email | Resend or AWS SES (Mailpit locally) | Week 4 |
 | WhatsApp / SMS | Meta WhatsApp Cloud API; Twilio or MSG91 | Week 4 |
 | Push | Web Push (VAPID) | Week 4 |
@@ -473,7 +478,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0004)
+### 10.1 Implemented (migrations 0000–0005)
 
 | Migration | Contents |
 |---|---|
@@ -482,6 +487,7 @@ Fastify
 | `0002_tenancy` | `member_role` enum; `organizations`, `memberships`, `invites`, `audit_events`; `current_user_id()`; RLS policies; audit append-only |
 | `0003_locations` | `location_status` enum; `locations`, `departments`, `job_roles`, `membership_locations`; same-org composite FKs; coordinate/radius CHECKs; RLS |
 | `0004_employees` | `employee_status`, `notify_channel` enums; `employees`, `employee_job_roles`, `employee_locations`, `availability`, `time_off`; same-org FKs; CHECKs; RLS |
+| `0005_scheduling` | `schedule_status` enum; `shift_templates`, `schedules`; same-org FKs (job role FK `ON DELETE SET NULL (job_role_id)`, hand-edited); Monday, break and time CHECKs; RLS |
 
 ```
 users          (id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
@@ -503,6 +509,10 @@ employee_job_roles (org_id, employee_id, job_role_id)                           
 employee_locations (org_id, employee_id, location_id)                            RLS, PK all three
 availability   (id, org_id, employee_id, weekday 1–7, start_local time, end_local time)   RLS
 time_off       (id, org_id, employee_id, starts_at, ends_at, reason?, …)         RLS, ends_at > starts_at
+shift_templates (id, org_id, location_id, name citext, start_time time, end_time time,
+                break_minutes 0–240, job_role_id?, …)                RLS, unique (location_id, name), start ≠ end
+schedules      (id, org_id, location_id, week_start date (Monday), status draft|published,
+                version ≥ 1, published_at?, published_by?, …)   RLS, unique (location_id, week_start)
 ```
 
 IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
@@ -511,7 +521,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 
 | Week | Tables |
 |---|---|
-| W2 | `shift_templates`, `schedules` (draft/published, version), `shifts` (starts_at/ends_at timestamptz, **exclusion constraint** against double-booking), `outbox` |
+| W2 | ~~`shift_templates`, `schedules`~~ (done, 0005), `shifts` (starts_at/ends_at timestamptz, **exclusion constraint** against double-booking), `outbox` |
 | W3 | `time_entries` (method gps/qr/manual, geo, accuracy, client_event_id unique, flags) |
 | W4 | `notifications`, `deliveries`, `message_usage` |
 | W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
@@ -562,6 +572,10 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `POST /employees`, `GET`/`PATCH /employees/:id` | token + org | owner, manager (in scope); archive with `status` |
 | `GET`/`PUT /employees/:id/availability` | token + org | owner, manager (in scope); PUT replaces the week |
 | `GET`/`POST /employees/:id/time-off`, `DELETE /time-off/:id` | token + org | owner, manager (in scope) |
+| `GET /shift-templates?locationId=` | token + org | owner, manager (in scope); returns `paidMinutes` |
+| `POST /shift-templates`, `PATCH`/`DELETE /shift-templates/:id` | token + org | owner, manager (in scope; location writable) |
+| `GET /schedules?locationId=&weekStart=`, `GET /schedules/:id` | token + org | owner, manager (in scope); includes the week's UTC `startsAt`/`endsAt` |
+| `POST /schedules` | token + org | owner, manager (in scope); draft; one per location and week (409) |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
 `auth.unauthenticated`, `auth.email_taken`, `auth.invalid_credentials`,
@@ -569,7 +583,7 @@ Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_
 `org.member_not_found`, `org.last_owner`, `invite.invalid`, `invite.email_mismatch`,
 `invite.already_member`, `conflict.name_taken`, `location.not_found`, `location.read_only`,
 `location.owner_unrestricted`, `department.not_found`, `job_role.not_found`, `conflict.duplicate`,
-`employee.not_found`, `time_off.not_found`.
+`employee.not_found`, `time_off.not_found`, `shift_template.not_found`, `schedule.not_found`.
 
 ### 11.2 Conventions
 
@@ -654,13 +668,13 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D4 | ✅ | `organizations`, `memberships`, `invites`, `audit_events`; RLS policies; `TenancyInterceptor` + `RequestContext`; `@Roles`, `@WithoutOrg`; invite flow; last-owner protection; ADR 014 | Isolation, role and concurrency tests green |
 | D5 | ✅ | `locations` (lat/lng, `radius_m` 25–1000, IANA `timezone`, `active`/`read_only`), `departments`, `job_roles`, `membership_locations`; same-org composite foreign keys; `LocationAccess` (scope rule); CRUD APIs + audit. Plan limit moved to W8 D2 (needs billing) | Scoped manager gets 404 for other locations; cross-org FK attack rejected by the DB |
 | D6 | ✅ | `employees` (separate from users; optional link to a member), `employee_job_roles`, `employee_locations`, `availability` (weekly local times, overnight allowed, overlap check in `packages/domain`), `time_off`; employees API with cursor pagination and location scopes. **Web shell** (`apps/web`): Vite + React + React Router + TanStack Query + Tailwind; login/signup, org picker, location switcher, locations and employees pages; API client with `X-Org-Id` and single-flight refresh across tabs | Done in Chrome: signup → org → location → employee |
-| **UI** | ⏭ | **UI foundation** (see [§14.1](#141-ui-and-design-system)): init shadcn/ui; brand theme tokens (teal primary, neutral greys) in CSS variables with **dark mode**; Inter Variable font (self-hosted); lucide icons; new app shell (collapsible sidebar, top bar with org + location switcher, user menu, mobile drawer); sonner toasts; skeleton loaders; empty states with illustrations/icons; restyle login/signup (split-screen hero), org picker, locations and employees (TanStack Table data table with search, sort, row actions; add/edit in a Sheet); command palette (⌘K) for navigation | The four existing pages look production-grade in light and dark mode, on desktop and phone; Lighthouse accessibility ≥ 95 |
+| **UI** | ✅ | **UI foundation** (see [§14.1](#141-ui-and-design-system)): init shadcn/ui; brand theme tokens (teal primary, neutral greys) in CSS variables with **dark mode**; Inter Variable font (self-hosted); lucide icons; new app shell (collapsible sidebar, top bar with org + location switcher, user menu, mobile drawer); sonner toasts; skeleton loaders; empty states with illustrations/icons; restyle login/signup (split-screen hero), org picker, locations and employees (TanStack Table data table with search, sort, row actions; add/edit in a Sheet); command palette (⌘K) for navigation | The four existing pages look production-grade in light and dark mode, on desktop and phone; Lighthouse accessibility ≥ 95 |
 
 ### Week 2: Schedule builder, shifts, publish
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ☐ | Time helpers in `packages/domain/time` (local wall-clock + zone → UTC, week boundaries per location, overnight shifts, DST gaps/overlaps); `shift_templates`, `schedules` (week, draft/published, version) | Tests for Europe/London, America/New_York and Asia/Kolkata incl. both DST transitions |
+| D1 | ✅ | Time helpers in `packages/domain/time` (local wall-clock + zone → UTC, week boundaries per location, overnight shifts, DST gaps/overlaps); `shift_templates`, `schedules` (week, draft/published, version) | Tests for Europe/London, America/New_York and Asia/Kolkata incl. both DST transitions |
 | D2 | ☐ | `shifts` (timestamptz range, status open/assigned/cancelled, version) with **exclusion constraint** (no double-booking across locations); validation as pure functions: overlap, availability, max weekly hours, min rest | Double-booking rejected by the DB; validation unit tests |
 | D3 | ☐ | Week board UI with shadcn components (rows by employee; filter by location/department; colour per job role; today marker; sticky header), shift create/edit in a Sheet using **react-hook-form + Zod** (first complex form); date navigation with shadcn Calendar | Manager builds a week by hand; the board feels as polished as a commercial product |
 | D4 | ☐ | Drag-and-drop (dnd-kit) with drag overlay and smooth animation (Motion), optimistic updates, conflict warnings as badges/tooltips, optimistic concurrency (`version` → 409 shown as a toast + refetch) | Two managers editing: the stale one gets a clear toast and refetches |
@@ -801,6 +815,10 @@ invoice format sign-off with a CA (values are config, not code).
 | Enable Fastify `trustProxy` behind the load balancer (or every request shares one IP for rate limits) | W8 D1 |
 | Audit log partitioning and owner UI | W7 D4 |
 | `auth.int.test.ts` could reuse `src/testing/test-app.ts` | Any time |
+| Web bundle is ~770 kB (one chunk): split per route with React Router `lazy` | W3 D1 (PWA) |
+| Employee search filters only the pages already loaded; add server-side `q` to `GET /employees` when lists get long | W2 D3 |
+| Browser E2E tests (Playwright) for login → org → location → employee | W2 D6 |
+| Domain time helpers use `Temporal`; check browser support (Safari) before the web calls them, else add `temporal-polyfill` (ask first) | W2 D3 |
 
 ---
 
