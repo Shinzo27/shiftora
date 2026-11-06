@@ -77,6 +77,58 @@ Before saying a task is done: `pnpm lint && pnpm typecheck && pnpm test` must pa
 `pnpm test:int` if you touched SQL, migrations, tenancy, concurrency or queues. Report
 failures honestly with output; don't skip or delete failing tests to go green.
 
+## How to work a day (the workflow this repo was built with)
+
+1. Read the day's row in `PROJECT_PLAN.md` §14 (tasks + "done when") and the relevant
+   sections of `ARCHITECTURE.md`. Check §5 (decisions) and §18 (follow-ups) for anything
+   that affects the day. If a business rule is unclear, ask; don't invent one.
+2. Build bottom-up in this order: `packages/domain` (pure functions + unit tests) →
+   `packages/shared` (Zod schemas + tests) → `packages/db` (schema → `pnpm db:generate` →
+   review and hand-edit the SQL → RLS section → integration tests) → API module
+   (repository → service → controller → module → integration tests) → web.
+3. Write tests first or alongside; follow the existing test files as templates
+   (`packages/db/src/__tests__/*.int.test.ts`, `apps/api/src/modules/*/__tests__/*.int.test.ts`
+   with `src/testing/test-app.ts`). Every new endpoint: role test (403), other-org test
+   (404/invisible), scoped-manager test (404), and an audit-row check for writes.
+4. Prove important tests can fail: temporarily break the code they guard (remove a scope
+   filter, change a DST option), see the test go red, then restore the file exactly.
+5. For UI work, run the app (`pnpm dev`) and check it in a real browser: the happy path,
+   validation errors, light and dark mode, a 390 px phone width, no console errors, and a
+   Lighthouse accessibility score ≥ 95. If your tool has no browser, list what the owner
+   should click through.
+6. Run everything: `pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int
+   && pnpm build`. Report failures honestly.
+7. Update the docs in the same change: `PROJECT_PLAN.md` (§3 status table and "Numbers
+   today", §5 decisions with the date, §10 data model, §11 endpoints and error codes, §14 day
+   ✅ and next day ⏭, §18 follow-ups), plus `ARCHITECTURE.md`/`AGENTS.md` if a design or
+   rule changed. Docs are how the next session (human or agent) knows where things stand.
+8. Don't commit or push. Summarise what changed, what you verified and any trade-offs, and
+   propose a Conventional Commit message. The owner commits from the personal account.
+
+## Known gotchas (learned the hard way)
+
+- **drizzle-kit output needs review.** It once emitted a `UNIQUE (org_id, id)` after the
+  foreign key that needed it (0004: moved up by hand). On a composite same-org FK, a plain
+  `ON DELETE SET NULL` would also null `org_id`; write `ON DELETE SET NULL (column)` by hand
+  (0005). Name unique constraints explicitly or drizzle-kit uses camelCase names.
+- **New tenant table → add it to the list in `packages/db/src/__tests__/tenancy-rls.int.test.ts`**
+  (the test fails on purpose until you do).
+- **Postgres `time` columns come back as `HH:MM:SS`**; the API speaks `HH:MM`.
+- **Zod 4 runs `.superRefine` on the object even when a field already failed**, so
+  cross-field checks must tolerate malformed fields (see `shiftTemplateIssue`).
+- **Time:** use `packages/domain/src/time/zoned.ts` (`toInstant`, `toLocal`, `shiftTimes`,
+  `weekBounds`, `startOfWeek`…), built on native `Temporal` (Node 26). Never add date
+  libraries or do `Date` arithmetic for days/weeks.
+- **Web:** TanStack Table is **v9** (`useTable` + `tableFeatures`, not `useReactTable`);
+  read `node_modules/@tanstack/react-table/skills/` for the API. shadcn's `CommandDialog`
+  needs its content wrapped in `<Command>`. Theme comes from `src/lib/theme.tsx`, not
+  next-themes (React 19 warns about its injected script). Generated shadcn files may need
+  small lint fixes (e.g. `hooks/use-mobile.ts` uses `useSyncExternalStore`).
+- **Nest + Vitest:** tests compile with SWC (`unplugin-swc`); esbuild would drop the
+  decorator metadata DI needs.
+- `pnpm-workspace.yaml` blocks package versions younger than 7 days; if an install fails on
+  that, use the previous version or wait, don't remove the setting.
+
 ## Non-negotiable rules
 
 ### Tenancy and security

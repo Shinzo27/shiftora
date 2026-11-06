@@ -334,17 +334,27 @@ imports from `apps/`.
 npm install -g pnpm@12          # corepack 0.32 can't run pnpm 12
 docker context use default      # if the CLI points at a Docker Desktop that isn't running
 
-# Clone with the PERSONAL GitHub account (SSH alias github-personal → Shinzo27's key)
+# Clone with the PERSONAL GitHub account. Add this to ~/.ssh/config first (key path is yours):
+#   Host github-personal
+#     HostName github.com
+#     User git
+#     IdentityFile ~/.ssh/<personal key>
+#     IdentitiesOnly yes
 git clone git@github-personal:Shinzo27/shiftora.git && cd shiftora
 git config user.name "Shinzo27"
 git config user.email "20bmiit031@gmail.com"     # repo-local, never --global
 
 pnpm install
 cp .env.example .env
-pnpm infra:up
+pnpm infra:up                   # Docker must be running
+pnpm build                      # packages are used from dist/; dev/test also build them first
 pnpm db:migrate
 pnpm dev                        # http://localhost:4000/api/v1/health/ready → 200
+pnpm lint && pnpm typecheck && pnpm test && pnpm test:int   # all green = machine is ready
 ```
+
+Ports 5433 (Postgres) and 4000 (API) were chosen because 5432/3000 were busy on the first
+machine; change them in `.env` and `infra/docker-compose.yml` if your machine differs.
 
 ### 8.2 Commands
 
