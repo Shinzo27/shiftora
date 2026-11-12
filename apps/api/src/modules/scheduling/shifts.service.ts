@@ -5,6 +5,7 @@ import {
   shiftTimes,
   toLocal,
   validateShift,
+  type PlannableShift,
   weekBounds,
   weekDates,
   type ShiftWarning,
@@ -125,6 +126,25 @@ export class ShiftsService {
    *
    * No location-scope check: these are shifts already assigned to the caller.
    */
+  /**
+   * The employee's shifts within a day of `at`, in the plain shape the matcher takes. Used when
+   * a punch arrives without a shift id — the phone usually sends one, a lock-screen widget or a
+   * manual entry does not.
+   */
+  async shiftsAround(employeeId: string, at: Date, windowHours = 24): Promise<PlannableShift[]> {
+    const from = new Date(at.getTime() - windowHours * 60 * 60 * 1000);
+    const to = new Date(at.getTime() + windowHours * 60 * 60 * 1000);
+    const rows = await this.shifts.forEmployee(employeeId, from, to);
+    return rows.map((row) => ({ id: row.id, startsAt: row.startsAt, endsAt: row.endsAt }));
+  }
+
+  /** Shifts assigned to these people in a window: the timesheet's "planned" column. */
+  async assignedIn(employeeIds: string[], from: Date, to: Date): Promise<ShiftRecord[]> {
+    if (employeeIds.length === 0) return [];
+    const rows = await this.shifts.forEmployees(employeeIds, from, to);
+    return rows.filter((row) => row.employeeId !== null);
+  }
+
   /**
    * Attendance's one question: is this shift really this employee's, at this location?
    * Answered as 404 (not 400) so a punch cannot be used to probe which shift ids exist.

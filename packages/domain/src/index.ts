@@ -1,3 +1,5 @@
+export type { PlannableShift, PunchState, ShiftMatch } from './attendance/match.js';
+export { matchShift, workedMinutes } from './attendance/match.js';
 export type { Coordinates, GeofenceFlag, GeofenceResult } from './attendance/geofence.js';
 export {
   checkGeofence,

@@ -41,6 +41,8 @@ export const errorCodes = {
   attendanceAlreadyClockedIn: 'attendance.already_clocked_in',
   /** The login has no staff profile, so there is nothing to clock in as. */
   attendanceNotLinked: 'attendance.not_linked',
+  /** A punch that does not exist (or is not in the caller's scope). */
+  timeEntryNotFound: 'time_entry.not_found',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

@@ -2,10 +2,13 @@ import { Body, Controller, Get, Headers, HttpCode, Post, Query } from '@nestjs/c
 import {
   clockInRequest,
   clockOutRequest,
+  attendanceQuery,
   myTimeEntriesQuery,
   type ClockInRequest,
   type ClockOutRequest,
   type ClockResult,
+  type Attendance,
+  type AttendanceQuery,
   type MyTimeEntries,
   type MyTimeEntriesQuery,
 } from '@shiftora/shared';
@@ -13,6 +16,7 @@ import {
 import { AppException } from '../../common/app-exception.js';
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { errorCodes } from '@shiftora/shared';
+import { Roles } from '../tenancy/decorators.js';
 import { AttendanceService } from './attendance.service.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -48,6 +52,13 @@ export class AttendanceController {
   }
 
   /** The caller's own punches in a local-date range: what the clock screen and week view read. */
+  /** A manager's view of one location: who punched, against which shift, and the totals. */
+  @Get('attendance')
+  @Roles('owner', 'manager')
+  list(@Query(new ZodValidationPipe(attendanceQuery)) query: AttendanceQuery): Promise<Attendance> {
+    return this.attendance.listForLocation(query);
+  }
+
   @Get('me/time-entries')
   mine(
     @Query(new ZodValidationPipe(myTimeEntriesQuery)) query: MyTimeEntriesQuery,

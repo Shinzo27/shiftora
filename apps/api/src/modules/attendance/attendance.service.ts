@@ -1,8 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { checkGeofence, deviceSkewFlag, toLocal, type GeofenceFlag } from '@shiftora/domain';
+import {
+  checkGeofence,
+  deviceSkewFlag,
+  matchShift,
+  toLocal,
+  type GeofenceFlag,
+} from '@shiftora/domain';
 import { newId } from '@shiftora/db';
 import {
   errorCodes,
+  type Attendance,
+  type AttendanceQuery,
+  type AttendanceRow,
   type ClockInRequest,
   type ClockOutRequest,
   type ClockResult,
@@ -17,9 +26,11 @@ import { RequestContext } from '../../database/request-context.js';
 import { AuditService } from '../audit/audit.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { EmployeeRecord } from '../employees/employees.repository.js';
+import { LocationAccess } from '../locations/location-access.service.js';
 import { LocationsRepository, type LocationRecord } from '../locations/locations.repository.js';
 import { OrgsRepository } from '../orgs/orgs.repository.js';
 import { ShiftsService } from '../scheduling/shifts.service.js';
+import type { ShiftRecord } from '../scheduling/shifts.repository.js';
 import { TimeEntriesRepository, type TimeEntryRow } from './time-entries.repository.js';
 
 const notLinked = () =>
@@ -30,7 +41,7 @@ const notLinked = () =>
   );
 
 /**
- * Clocking in and out.
+ * Clocking in and out, and the manager's view of what happened.
  *
  * The decision that matters is the geofence, and it is made here — on the server, from the
  * organisation's own copy of the location's coordinates, never from a number the device sends
@@ -42,6 +53,10 @@ const notLinked = () =>
  *
  * Punches are idempotent by `Idempotency-Key` (`client_event_id`): a phone that retries after a
  * dead connection gets the row it already created, marked `created: false`.
+ *
+ * **Lateness is derived, never stored.** A punch knows its shift; the difference between the two
+ * is computed on read with the organisation's grace, so correcting a punch later cannot leave a
+ * stale flag behind.
  */
 @Injectable()
 export class AttendanceService {
@@ -51,6 +66,7 @@ export class AttendanceService {
     private readonly locations: LocationsRepository,
     private readonly orgs: OrgsRepository,
     private readonly shifts: ShiftsService,
+    private readonly access: LocationAccess,
     private readonly context: RequestContext,
     private readonly audit: AuditService,
   ) {}
@@ -67,10 +83,19 @@ export class AttendanceService {
     // A retry of a punch already stored: answer with that row instead of refusing a duplicate.
     const key = idempotencyKey ?? newId();
     const existing = await this.entries.findByClientEventId(key);
-    if (existing) return { entry: this.toEntry(existing, location), created: false };
+    if (existing) return { entry: await this.entryView(existing, location), created: false };
 
-    if (input.shiftId) {
-      await this.shifts.assertPunchable(input.shiftId, employee.id, location.id);
+    const receivedAt = new Date();
+    const deviceTime = input.at ? new Date(input.at) : receivedAt;
+    const grace = await this.orgs.attendanceGraceMinutes();
+
+    // The app sends the shift it is showing; anything else (a widget, a manual punch) is matched
+    // here — the employee's shift starting nearest to the punch, if one is within reach.
+    let shiftId = input.shiftId ?? null;
+    if (shiftId) {
+      await this.shifts.assertPunchable(shiftId, employee.id, location.id);
+    } else {
+      shiftId = await this.matchShiftId(employee.id, deviceTime, grace);
     }
 
     const open = await this.entries.findOpen(employee.id);
@@ -82,8 +107,6 @@ export class AttendanceService {
       );
     }
 
-    const receivedAt = new Date();
-    const deviceTime = input.at ? new Date(input.at) : receivedAt;
     const check = checkGeofence({
       from: { latitude: input.latitude, longitude: input.longitude },
       to: { latitude: location.latitude, longitude: location.longitude },
@@ -102,7 +125,7 @@ export class AttendanceService {
     const row = await this.insertPunch({
       employeeId: employee.id,
       locationId: location.id,
-      shiftId: input.shiftId ?? null,
+      shiftId,
       clockInAt: deviceTime,
       deviceTime,
       method: input.method ?? 'gps',
@@ -129,7 +152,7 @@ export class AttendanceService {
       },
     });
 
-    return { entry: this.toEntry(row, location), created: true };
+    return { entry: await this.entryView(row, location), created: true };
   }
 
   async clockOut(input: ClockOutRequest): Promise<ClockResult> {
@@ -201,7 +224,7 @@ export class AttendanceService {
       },
     });
 
-    return { entry: this.toEntry(row, location), created: false };
+    return { entry: await this.entryView(row, location), created: false };
   }
 
   /**
@@ -212,24 +235,22 @@ export class AttendanceService {
     const employee = await this.employees.findByUserId(this.context.userId);
     if (!employee) return { items: [] };
 
-    const from = new Date(`${query.from}T00:00:00Z`);
-    const to = new Date(`${query.to}T00:00:00Z`);
-    from.setUTCDate(from.getUTCDate() - 1);
-    to.setUTCDate(to.getUTCDate() + 2);
-
+    const { from, to } = windowOf(query.from, query.to);
     const rows = await this.entries.forEmployee(employee.id, from, to);
     if (rows.length === 0) return { items: [] };
 
-    const locations = await this.locations.findByIds([
-      ...new Set(rows.map((row) => row.locationId)),
+    const [byLocation, grace, shiftById] = await Promise.all([
+      this.locations.findByIds([...new Set(rows.map((row) => row.locationId))]),
+      this.orgs.attendanceGraceMinutes(),
+      this.shiftsById(rows),
     ]);
-    const byId = new Map(locations.map((location) => [location.id, location]));
+    const locationById = new Map(byLocation.map((location) => [location.id, location]));
 
     const items = rows
       .flatMap((row) => {
-        const location = byId.get(row.locationId);
+        const location = locationById.get(row.locationId);
         if (!location) return [];
-        const entry = this.toEntry(row, location);
+        const entry = this.toEntry(row, location, shiftById.get(row.shiftId ?? '') ?? null, grace);
         if (entry.date < query.from || entry.date > query.to) return [];
         return [entry];
       })
@@ -238,7 +259,85 @@ export class AttendanceService {
     return { items };
   }
 
+  /**
+   * A manager's view of one location over a range: who punched, against which shift, how late,
+   * and what it adds up to. Scoped by `LocationAccess` like every other location read.
+   */
+  async listForLocation(query: AttendanceQuery): Promise<Attendance> {
+    const location = await this.access.assertAccess(query.locationId);
+    const { from, to } = windowOf(query.from, query.to);
+
+    const rows = await this.entries.forLocation(location.id, from, to);
+    const employeeIds = [...new Set(rows.map((row) => row.employeeId))];
+    const [employees, assigned, grace] = await Promise.all([
+      this.employees.findMany(employeeIds),
+      this.shifts.assignedIn(employeeIds, from, to),
+      this.orgs.attendanceGraceMinutes(),
+    ]);
+    const shiftById = new Map(assigned.map((shift) => [shift.id, shift]));
+
+    const items: AttendanceRow[] = rows
+      .flatMap((row) => {
+        const entry = this.toEntry(row, location, shiftById.get(row.shiftId ?? '') ?? null, grace);
+        if (entry.date < query.from || entry.date > query.to) return [];
+        return [
+          { ...entry, employeeName: employees.get(row.employeeId)?.name ?? 'Former employee' },
+        ];
+      })
+      .sort((a, b) => a.clockInAt.localeCompare(b.clockInAt));
+
+    return {
+      locationId: location.id,
+      locationName: location.name,
+      from: query.from,
+      to: query.to,
+      items,
+      totals: totalsOf(items, assigned),
+    };
+  }
+
   // --------------------------------------------------------------------------- helpers
+
+  /** The shift this punch most plausibly belongs to, or null when nobody was rostered. */
+  private async matchShiftId(employeeId: string, at: Date, grace: number): Promise<string | null> {
+    const around = await this.shifts.shiftsAround(employeeId, at);
+    return matchShift(at, around, grace).shift?.id ?? null;
+  }
+
+  /** One punch with its shift and derived lateness. */
+  private async entryView(row: TimeEntryRow, location: LocationRecord): Promise<TimeEntry> {
+    const [shiftById, grace] = await Promise.all([
+      this.shiftsById([row]),
+      this.orgs.attendanceGraceMinutes(),
+    ]);
+    return this.toEntry(row, location, shiftById.get(row.shiftId ?? '') ?? null, grace);
+  }
+
+  /** The shifts behind a set of punches, fetched in one query. */
+  private async shiftsById(rows: TimeEntryRow[]): Promise<Map<string, ShiftRecord>> {
+    const ids = new Set(rows.map((row) => row.shiftId).filter((id): id is string => id !== null));
+    if (ids.size === 0) return new Map();
+
+    const employeeIds = [...new Set(rows.map((row) => row.employeeId))];
+    const span = rows.reduce(
+      (acc, row) => {
+        const start = row.clockInAt.getTime();
+        const end = row.clockOutAt?.getTime() ?? start;
+        return {
+          from: Math.min(acc.from, start - 2 * 60 * 60 * 1000),
+          to: Math.max(acc.to, end + 2 * 60 * 60 * 1000),
+        };
+      },
+      { from: Number.POSITIVE_INFINITY, to: Number.NEGATIVE_INFINITY },
+    );
+
+    const shifts = await this.shifts.assignedIn(
+      employeeIds,
+      new Date(span.from),
+      new Date(span.to),
+    );
+    return new Map(shifts.filter((shift) => ids.has(shift.id)).map((shift) => [shift.id, shift]));
+  }
 
   /**
    * Inserts the punch. A unique violation here would abort the transaction, so the recovery is a
@@ -272,11 +371,17 @@ export class AttendanceService {
     return employee;
   }
 
-  /** One punch in the caller's own wall clock; `minutes` keeps counting while it is open. */
-  private toEntry(row: TimeEntryRow, location: LocationRecord): TimeEntry {
+  /** One punch in the location's own wall clock; `minutes` keeps counting while it is open. */
+  private toEntry(
+    row: TimeEntryRow,
+    location: LocationRecord,
+    shift: ShiftRecord | null,
+    graceMinutes: number,
+  ): TimeEntry {
     const start = toLocal(row.clockInAt, location.timezone);
     const end = row.clockOutAt ? toLocal(row.clockOutAt, location.timezone) : null;
     const until = row.clockOutAt ?? new Date();
+    const against = shift ? matchShift(row.clockInAt, [shift], graceMinutes) : null;
 
     return {
       id: row.id,
@@ -284,6 +389,13 @@ export class AttendanceService {
       locationId: row.locationId,
       locationName: location.name,
       shiftId: row.shiftId,
+      shift: shift
+        ? {
+            id: shift.id,
+            startTime: toLocal(shift.startsAt, location.timezone).time,
+            endTime: toLocal(shift.endsAt, location.timezone).time,
+          }
+        : null,
       clockInAt: row.clockInAt.toISOString(),
       clockOutAt: row.clockOutAt?.toISOString() ?? null,
       date: start.date,
@@ -295,8 +407,48 @@ export class AttendanceService {
       accuracyM: row.inAccuracyM,
       flags: row.flags as TimeEntry['flags'],
       edited: row.edited,
+      lateMinutes: against?.lateMinutes ?? 0,
+      earlyMinutes: against?.earlyMinutes ?? 0,
+      state: against?.state ?? 'unscheduled',
     };
   }
+}
+
+/** The SQL window for a local-date range: a day wider at each end, then filtered per row. */
+function windowOf(fromDate: string, toDate: string): { from: Date; to: Date } {
+  const from = new Date(`${fromDate}T00:00:00Z`);
+  const to = new Date(`${toDate}T00:00:00Z`);
+  from.setUTCDate(from.getUTCDate() - 1);
+  to.setUTCDate(to.getUTCDate() + 2);
+  return { from, to };
+}
+
+/** Worked and rostered minutes per person: what a timesheet adds up. */
+function totalsOf(items: AttendanceRow[], assigned: ShiftRecord[]): Attendance['totals'] {
+  const totals = new Map<string, Attendance['totals'][number]>();
+
+  for (const item of items) {
+    const row = totals.get(item.employeeId) ?? {
+      employeeId: item.employeeId,
+      employeeName: item.employeeName,
+      workedMinutes: 0,
+      plannedMinutes: 0,
+    };
+    row.workedMinutes += item.minutes;
+    totals.set(item.employeeId, row);
+  }
+
+  for (const shift of assigned) {
+    if (!shift.employeeId) continue;
+    const row = totals.get(shift.employeeId);
+    if (!row) continue;
+    row.plannedMinutes += Math.max(
+      0,
+      Math.round((shift.endsAt.getTime() - shift.startsAt.getTime()) / 60_000),
+    );
+  }
+
+  return [...totals.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName));
 }
 
 /** The same flag twice (outside the fence at both ends) is one fact. */

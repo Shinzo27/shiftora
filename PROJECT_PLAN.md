@@ -84,11 +84,12 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | `a531452` |
 | W3 D1 | `/me` API (profile, my shifts, my time off); PWA (manifest, icons, service worker, offline shell); route-level code splitting; the staff app: bottom tabs, shift cards, Vaul drawer | ✅ Done | `9dc1630` |
 | W3 D2 | `time_entries` (`0008`) with geofence policy, unique `client_event_id` and one open punch per person; `POST /clock-in`, `POST /clock-out`, `GET /me/time-entries`; haversine fence as pure domain maths; `Idempotency-Key` | ✅ Done | `bcea665` |
-| W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | (uncommitted) |
+| W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | `a72e065` |
+| W3 D4 | Punch ↔ shift matching as pure domain maths, per-org early/late grace (`0009`), derived state/late/early on every read, and the manager Timesheets page (week per branch, badges, worked-vs-rostered totals) | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 9 migrations, 431 automated tests (226 unit, 205 integration against real
-Postgres) plus 5 Playwright end-to-end tests, 61 API endpoints, a React web app on shadcn/ui
+Numbers today: 10 migrations, 450 automated tests (236 unit, 214 integration against real
+Postgres) plus 5 Playwright end-to-end tests, 62 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
@@ -134,9 +135,22 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   with 25P02. Punches now take a per-employee advisory lock before the checks, and the catch is
 >   a bare 409 that touches nothing. Regression tests cover the concurrent double clock-in and
 >   two simultaneous retries of the *same* Idempotency-Key.
-> - **Next:** W3 D4 — match punches to shifts with early/late tolerance, then surface the flags
->   to managers (the timesheet is D5). `time_entries` already carries `shift_id`, `flags` and
->   `edited`, so the schema does not change.
+> - **W3 D4 — matching, lateness and the manager view.** A punch is matched to the employee’s
+>   shift whose start is nearest (within ±2 h of the shift) by a pure function in
+>   `packages/domain/src/attendance/match.ts`; the app still sends the shift it is showing, so
+>   matching only runs for a widget or a manual punch. Early/late comes from the organisation’s
+>   grace (`organizations.attendance_grace_minutes`, default 5, migration `0009`) and is**derived
+>   on every read**, never stored — so correcting a punch in D5 cannot leave a stale flag.
+>   `GET /attendance?locationId&from&to` (owner/manager, location-scoped) returns the punches
+>   with employee names, the rostered shift, and per-person worked-vs-rostered totals; the
+>   disabled "Timesheets" nav item is now a real page at `/o/:orgId/timesheets`.
+> - **Checks (D4):** 9 new integration tests (match by nearest start, lateness beyond the grace,
+>   the org’s own grace, early, unscheduled, the employee’s own list, and the manager feed incl.
+>   totals and a manager scoped to another branch). In Chrome: a punch 35 minutes after its
+>   shift start reads "rostered 14:51–23:30 / 15:31 – … / 35 min late", totals show
+>   worked vs rostered; axe 0 violations at 1440 and 390 px, no horizontal overflow.
+> - **Next:** W3 D5 — the timesheet itself: manager corrections with a required reason, audited
+>   before/after, and the edit history shown on the entry.
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
 >   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
 >   `reject` mode will need a manager override path eventually.
@@ -826,7 +840,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D1 | ✅ | `/me` API for self-service reads; PWA (manifest, generated icons, service worker, offline shell); route-level `lazy()` splitting; staff app with bottom tabs, day-grouped shift cards and a Vaul drawer | Installable (Chrome: no installability errors), shell paints offline, axe 0 violations at 390×844; verified as a linked employee in Chrome |
 | D2 | ✅ | `time_entries` (`0008`); clock-in/out API with server-side haversine geofence (`radius + min(accuracy, 100 m)`); `Idempotency-Key`; `organizations.geofence_policy`; `GET /me/time-entries` | Outside the fence → flagged by default, rejected when the org chooses; a retried punch is one row (20 integration tests incl. the two-simultaneous-punches race) |
 | D3 | ✅ | Clock-in UI on the staff app (clock card): location requested on tap, permission / insecure-context / timeout / no-fix states each with a next step, a confirm step for a poor fix, flagged-punch notes, live elapsed time | Verified in Chrome at 390×844 with a placed device: inside the fence, 2 km away (flagged), ±400 m (confirm then flag), permission denied; axe 0 violations; 3 Playwright tests cover the same paths |
-| D4 | ☐ | Match entries to shifts; early/late tolerance; flags (outside fence, device-time skew) | Flags visible to managers |
+| D4 | ✅ | Match entries to shifts (nearest start within ±2 h, pure domain function); early/late tolerance as an org setting (`attendance_grace_minutes`, default 5); flags from the punch plus derived lateness on every read; Timesheets page per branch and week with worked-vs-rostered totals | Flags visible to managers: verified in Chrome (a 35-minute-late punch reads "35 min late"), axe 0 violations at 1440 and 390 px; 9 new integration tests (grace, early, unscheduled, out-of-scope manager) |
 | D5 | ☐ | Timesheet per pay period; manager edits need a reason (audited) | Edited entry shows before/after in audit |
 | D6 | ☐ | Buffer; tests for the clock-in path; seed script for a "demo clinic" tenant (`pnpm db:seed`) | Demo data in one command |
 

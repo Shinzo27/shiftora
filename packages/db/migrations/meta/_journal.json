@@ -64,6 +64,13 @@
       "when": 1794469796756,
       "tag": "0008_time_entries",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794477338752,
+      "tag": "0009_attendance_grace",
+      "breakpoints": true
     }
   ]
 }

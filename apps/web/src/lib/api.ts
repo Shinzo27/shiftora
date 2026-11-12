@@ -1,4 +1,5 @@
 import type {
+  Attendance,
   AuthResponse,
   AuthUser,
   ClockInRequest,
@@ -142,6 +143,9 @@ export const attendanceApi = {
     api.post<ClockResult>('/clock-out', { orgId, body }),
   entries: (orgId: string, from: string, to: string) =>
     api.get<MyTimeEntries>(`/me/time-entries?from=${from}&to=${to}`, { orgId }),
+  /** A manager's view of one location for a local-date range. */
+  list: (orgId: string, locationId: string, from: string, to: string) =>
+    api.get<Attendance>(`/attendance?locationId=${locationId}&from=${from}&to=${to}`, { orgId }),
 };
 
 /** Everything a signed-in person may ask about themselves, whatever their role. */

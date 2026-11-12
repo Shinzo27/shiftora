@@ -142,7 +142,7 @@ const navItems: NavItem[] = [
   { label: 'Schedule', to: 'schedule', icon: CalendarDays, managersOnly: true },
   { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
   { label: 'Locations', to: 'locations', icon: MapPin },
-  { label: 'Timesheets', to: 'timesheets', icon: Clock, soon: true },
+  { label: 'Timesheets', to: 'timesheets', icon: Clock, managersOnly: true },
   { label: 'Payroll', to: 'payroll', icon: IndianRupee, soon: true },
 ];
 

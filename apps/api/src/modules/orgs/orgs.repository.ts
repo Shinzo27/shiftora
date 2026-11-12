@@ -35,6 +35,16 @@ export class OrgsRepository {
     return row?.policy ?? 'flag';
   }
 
+  /** Minutes of early/late slack that still count as on time (W3 D4). */
+  async attendanceGraceMinutes(): Promise<number> {
+    const [row] = await this.context.tx
+      .select({ minutes: organizations.attendanceGraceMinutes })
+      .from(organizations)
+      .where(eq(organizations.id, this.context.orgId))
+      .limit(1);
+    return row?.minutes ?? 5;
+  }
+
   async findById(id: string): Promise<OrgRecord | null> {
     const [org] = await this.context.tx
       .select()

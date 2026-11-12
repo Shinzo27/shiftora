@@ -9,12 +9,16 @@ const instant = z.iso.datetime({ offset: true });
 export const attendanceMethod = z.enum(['gps', 'qr', 'manual']);
 export type AttendanceMethod = z.output<typeof attendanceMethod>;
 
-/** What an organisation does when someone punches in outside the fence. */
+/** What an organisation does when someone punches in outside the location's radius. */
 export const geofencePolicy = z.enum(['flag', 'reject']);
 export type GeofencePolicy = z.output<typeof geofencePolicy>;
 
 export const attendanceFlag = z.enum(['outside_geofence', 'low_accuracy', 'device_skew']);
 export type AttendanceFlag = z.output<typeof attendanceFlag>;
+
+/** How a punch compares with the shift it was matched to. */
+export const punchState = z.enum(['on_time', 'early', 'late', 'unscheduled']);
+export type PunchState = z.output<typeof punchState>;
 
 const latitude = z.number().min(-90).max(90);
 const longitude = z.number().min(-180).max(180);
@@ -43,6 +47,14 @@ export const clockOutRequest = z.object({
 });
 export type ClockOutRequest = z.output<typeof clockOutRequest>;
 
+/** The shift a punch was matched to, in the words a manager reads: 09:00–17:00. */
+export const matchedShift = z.object({
+  id: z.uuid(),
+  startTime: localTime,
+  endTime: localTime,
+});
+export type MatchedShift = z.output<typeof matchedShift>;
+
 /** One worked period as staff and managers see it. */
 export const timeEntry = z.object({
   id: z.uuid(),
@@ -50,6 +62,8 @@ export const timeEntry = z.object({
   locationId: z.uuid(),
   locationName: z.string(),
   shiftId: z.uuid().nullable(),
+  /** Null when nobody was rostered then: an extra shift still gets recorded. */
+  shift: matchedShift.nullable(),
   clockInAt: z.iso.datetime(),
   clockOutAt: z.iso.datetime().nullable(),
   /** The punch on the location's wall clock, so the app never does zone maths. */
@@ -64,6 +78,10 @@ export const timeEntry = z.object({
   accuracyM: z.number().int(),
   flags: z.array(attendanceFlag),
   edited: z.boolean(),
+  /** Against the matched shift, beyond the organisation's grace: 0 when on time. */
+  lateMinutes: z.number().int(),
+  earlyMinutes: z.number().int(),
+  state: punchState,
 });
 export type TimeEntry = z.output<typeof timeEntry>;
 
@@ -81,3 +99,69 @@ export type MyTimeEntriesQuery = z.output<typeof myTimeEntriesQuery>;
 
 export const myTimeEntries = z.object({ items: z.array(timeEntry) });
 export type MyTimeEntries = z.output<typeof myTimeEntries>;
+
+/** A manager's view of one punch: the entry, plus whose it is. */
+export const attendanceRow = timeEntry.extend({ employeeName: z.string() });
+export type AttendanceRow = z.output<typeof attendanceRow>;
+
+export const attendanceQuery = z
+  .object({ locationId: z.uuid(), from: localDate, to: localDate })
+  .refine((query) => query.from <= query.to, {
+    path: ['to'],
+    message: 'The end of the range must not be before the start',
+  });
+export type AttendanceQuery = z.output<typeof attendanceQuery>;
+
+/** The range's punches, plus the per-employee totals a timesheet prints. */
+export const attendance = z.object({
+  locationId: z.uuid(),
+  locationName: z.string(),
+  from: localDate,
+  to: localDate,
+  items: z.array(attendanceRow),
+  totals: z.array(
+    z.object({
+      employeeId: z.uuid(),
+      employeeName: z.string(),
+      /** Minutes actually worked in the range; an open punch counts up to now. */
+      workedMinutes: z.number().int(),
+      /** Minutes rostered for that person in the same range. */
+      plannedMinutes: z.number().int(),
+    }),
+  ),
+});
+export type Attendance = z.output<typeof attendance>;
+
+/** A manager's correction: what changed, and why. Both end up in the audit trail. */
+export const updateTimeEntryRequest = z
+  .object({
+    clockInAt: instant.optional(),
+    clockOutAt: instant.nullable().optional(),
+    reason: z.string().trim().min(3, 'Say why, in a few words').max(300),
+  })
+  .refine((body) => body.clockInAt !== undefined || body.clockOutAt !== undefined, {
+    message: 'Send the time that changed',
+  });
+export type UpdateTimeEntryRequest = z.output<typeof updateTimeEntryRequest>;
+
+/** One correction, read back from the audit trail: what it was, what it became, and why. */
+export const timeEntryEdit = z.object({
+  at: z.iso.datetime(),
+  by: z.string().nullable(),
+  reason: z.string().nullable(),
+  before: z.object({
+    clockInAt: z.iso.datetime().nullable(),
+    clockOutAt: z.iso.datetime().nullable(),
+  }),
+  after: z.object({
+    clockInAt: z.iso.datetime().nullable(),
+    clockOutAt: z.iso.datetime().nullable(),
+  }),
+});
+export type TimeEntryEdit = z.output<typeof timeEntryEdit>;
+
+export const timeEntryWithEdits = z.object({
+  entry: attendanceRow,
+  edits: z.array(timeEntryEdit),
+});
+export type TimeEntryWithEdits = z.output<typeof timeEntryWithEdits>;
