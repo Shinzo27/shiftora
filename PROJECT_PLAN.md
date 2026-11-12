@@ -83,11 +83,12 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 D5 | Publish: `schedule_publications` + `outbox` (`0007`), publish-preview and publish endpoints, the diff against the last publication, the Publish dialog, `publishedVersion` and the "Unpublished changes" badge | ✅ Done | `a531452` |
 | W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | `a531452` |
 | W3 D1 | `/me` API (profile, my shifts, my time off); PWA (manifest, icons, service worker, offline shell); route-level code splitting; the staff app: bottom tabs, shift cards, Vaul drawer | ✅ Done | `9dc1630` |
-| W3 D2 | `time_entries` (`0008`) with geofence policy, unique `client_event_id` and one open punch per person; `POST /clock-in`, `POST /clock-out`, `GET /me/time-entries`; haversine fence as pure domain maths; `Idempotency-Key` | ✅ Done | (uncommitted) |
+| W3 D2 | `time_entries` (`0008`) with geofence policy, unique `client_event_id` and one open punch per person; `POST /clock-in`, `POST /clock-out`, `GET /me/time-entries`; haversine fence as pure domain maths; `Idempotency-Key` | ✅ Done | `bcea665` |
+| W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 9 migrations, 423 automated tests (219 unit, 204 integration against real
-Postgres) plus 2 Playwright end-to-end tests, 61 API endpoints, a React web app on shadcn/ui
+Numbers today: 9 migrations, 430 automated tests (226 unit, 204 integration against real
+Postgres) plus 5 Playwright end-to-end tests, 61 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
@@ -116,10 +117,21 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   edge, device skew, the two-simultaneous-punches race (201 + 409), key retries
 >   (`created: false`), closing a punch twice, a punch claiming someone else's shift, and a
 >   location from another org.
-> - **Next:** W3 D3 — the clock-in UI: geolocation permission and error states, low-accuracy
->   handling, the button states on the staff app. **Geolocation needs a secure context**, so
->   localhost is fine but a phone on `http://192.168.x.x:5173` is not: decide between mkcert and
->   a tunnel before testing on a real device.
+> - **W3 D3 — the clock card.** On "My shifts": the branch, the shift if there is one, and a
+>   single button. A position is requested **on tap**, never on load — a prompt on load gets
+>   refused and the browser remembers the refusal. Every failure becomes a sentence with a next
+>   step: permission blocked, an insecure page (a phone on plain `http`), a timeout, no fix. A
+>   fix worse than ±100 m is confirmed before sending ("Clock in anyway?"), and a punch the
+>   server flagged says so on the card. The key for `Idempotency-Key` survives retries, and the
+>   elapsed timer is keyed by punch id so a stale tick cannot label a new one.
+> - **Checks (D3):** in Chrome at 390×844 with the device placed by CDP — inside the fence gave
+>   "On the clock · just now · since 14:45"; 2 km away was recorded with "outside the branch
+>   radius"; ±400 m asked first, then recorded "low-accuracy position"; revoked permission gave
+>   "Location is blocked for this site…". axe 0 violations in both card states. Three Playwright
+>   tests (real Chromium, permission granted, device placed) cover the same paths in CI.
+> - **Next:** W3 D4 — match punches to shifts with early/late tolerance, then surface the flags
+>   to managers (the timesheet is D5). `time_entries` already carries `shift_id`, `flags` and
+>   `edited`, so the schema does not change.
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
 >   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
 >   `reject` mode will need a manager override path eventually.
@@ -283,6 +295,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **`GET /schedules/:id/conflicts`** returns the week's advisories in one request (`shiftId → warnings`), computed from three batched queries; the board badges chips from it instead of asking per shift | 2026-11-12 |
 | — | **What was published is a table, not a jsonb snapshot on the schedule** (`schedule_publications`): the audit trail of what staff were told, an audience for the notification worker, and the diff becomes a plain comparison against the latest row | 2026-11-12 |
 | — | **`schedules.published_version` is a second counter, not a boolean**: `version > published_version` answers "has the board changed since staff were told?" without diffing, and the CHECK constraint keeps it honest | 2026-11-12 |
+| — | **Location is asked for on tap, never on page load**: a prompt that appears the moment the staff app opens gets refused, and the browser remembers the refusal for the origin — which reads as a broken app, not a cautious one | 2026-11-12 |
+| — | **A fix worse than ±100 m is confirmed, not silently sent**: the card asks first ("Clock in anyway?") because the manager will see the flag either way; the server still decides, and the same data still lands in the row | 2026-11-12 |
+| — | **The clock card lives on "My shifts", not in a tab of its own**: clocking in is the one thing done on arrival, and a fourth tab for one button would cost a tap every shift | 2026-11-12 |
 | — | **The geofence policy is the tenant's, and it flags by default** (`organizations.geofence_policy`: `flag` \| `reject`): a clinic would rather have the punch with an `outside_geofence` flag than an employee who cannot start work because their phone drifted | 2026-11-12 |
 | — | **The server measures the distance, never the device**: coordinates are stored and `in_distance_m` is computed from the organisation's own copy of the location, so the client's arithmetic is never an input to the decision | 2026-11-12 |
 | — | **`Idempotency-Key` *is* the punch's `client_event_id`**, unique per org: a retry after a dead connection returns the row it created (`created: false`) instead of a duplicate or a 409. One open punch per employee is a partial unique index, not a service check | 2026-11-12 |
@@ -805,7 +820,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 |---|---|---|---|
 | D1 | ✅ | `/me` API for self-service reads; PWA (manifest, generated icons, service worker, offline shell); route-level `lazy()` splitting; staff app with bottom tabs, day-grouped shift cards and a Vaul drawer | Installable (Chrome: no installability errors), shell paints offline, axe 0 violations at 390×844; verified as a linked employee in Chrome |
 | D2 | ✅ | `time_entries` (`0008`); clock-in/out API with server-side haversine geofence (`radius + min(accuracy, 100 m)`); `Idempotency-Key`; `organizations.geofence_policy`; `GET /me/time-entries` | Outside the fence → flagged by default, rejected when the org chooses; a retried punch is one row (20 integration tests incl. the two-simultaneous-punches race) |
-| D3 | ☐ | Clock-in UI: geolocation permission and error states, low-accuracy handling | Works on a real phone |
+| D3 | ✅ | Clock-in UI on the staff app (clock card): location requested on tap, permission / insecure-context / timeout / no-fix states each with a next step, a confirm step for a poor fix, flagged-punch notes, live elapsed time | Verified in Chrome at 390×844 with a placed device: inside the fence, 2 km away (flagged), ±400 m (confirm then flag), permission denied; axe 0 violations; 3 Playwright tests cover the same paths |
 | D4 | ☐ | Match entries to shifts; early/late tolerance; flags (outside fence, device-time skew) | Flags visible to managers |
 | D5 | ☐ | Timesheet per pay period; manager edits need a reason (audited) | Edited entry shows before/after in audit |
 | D6 | ☐ | Buffer; tests for the clock-in path; seed script for a "demo clinic" tenant (`pnpm db:seed`) | Demo data in one command |

@@ -432,13 +432,22 @@ page (130 kB gzip) instead of the whole app (339 kB before).
 - **Policy is the tenant's** (`organizations.geofence_policy`): `flag` (default) records the punch
   with an `outside_geofence` flag and lets the manager decide; `reject` answers 422 so nobody
   starts a shift untracked. A ±400 m fix does not widen the fence: accuracy counts up to 100 m.
+- **On the phone:** a punch is one tap on "My shifts" — the card names the branch and today's
+  shift, shows a live "on the clock" timer while the punch is open, and the same button closes
+  it. The idempotency key is minted per intent on the client and reused across retries of it.
 - **Idempotent punches:** the device's `Idempotency-Key` is stored as `client_event_id`, unique
   per org — a retry after a dead connection returns the row it created (`created: false`), never
   a duplicate. One open punch per employee is a **partial unique index**, so two simultaneous
   clock-ins cannot both win (the loser gets 409).
 - **Time is the device's claim plus the server's fact:** `clock_in_at` is the device's time,
   `received_at` the server's; a gap over five minutes is a `device_skew` flag, never a rejection.
-- **Planned (W3 D3+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
+- **The clock screen** (W3 D3) asks for a position only when the button is pressed, and turns
+  every failure into a sentence with a next step: no permission ("allow it in browser
+  settings"), an insecure page (a phone on plain `http://192.168.x.x`, where the browser never
+  even prompts), a timeout, or no fix at all. A fix worse than ±100 m is confirmed before it is
+  sent, and a punch the server flagged says so on the card — the person who will be questioned
+  is told first.
+- **Planned (W3 D4+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
   IndexedDB, and shift matching with early/late tolerance.
 - **Rotating QR (kiosk):** tablet shows `HMAC_SHA256(location.qr_secret, floor(now/30s))`
   truncated, plus the location id. Server accepts the current or previous window only, and a

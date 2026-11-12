@@ -1,6 +1,9 @@
 import type {
   AuthResponse,
   AuthUser,
+  ClockInRequest,
+  ClockOutRequest,
+  ClockResult,
   CreateEmployeeRequest,
   CreateLocationRequest,
   CreateOrgRequest,
@@ -12,6 +15,7 @@ import type {
   LoginRequest,
   Me,
   MyShifts,
+  MyTimeEntries,
   OrgSummary,
   Page,
   PublishPreview,
@@ -123,6 +127,21 @@ export const shiftsApi = {
   update: (orgId: string, id: string, body: UpdateShiftRequest) =>
     api.patch<ShiftWriteResult>(`/shifts/${id}`, { orgId, body }),
   remove: (orgId: string, id: string) => api.delete<void>(`/shifts/${id}`, { orgId }),
+};
+
+/** Clocking in and out, and reading back the punches. */
+export const attendanceApi = {
+  /** `idempotencyKey` is generated per punch by the caller: a retry returns the same row. */
+  clockIn: (orgId: string, body: ClockInRequest, idempotencyKey: string) =>
+    api.post<ClockResult>('/clock-in', {
+      orgId,
+      body,
+      headers: { 'idempotency-key': idempotencyKey },
+    }),
+  clockOut: (orgId: string, body: ClockOutRequest = {}) =>
+    api.post<ClockResult>('/clock-out', { orgId, body }),
+  entries: (orgId: string, from: string, to: string) =>
+    api.get<MyTimeEntries>(`/me/time-entries?from=${from}&to=${to}`, { orgId }),
 };
 
 /** Everything a signed-in person may ask about themselves, whatever their role. */

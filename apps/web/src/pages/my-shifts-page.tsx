@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarDays, Clock, Info, MapPin, Moon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { ClockCard } from '@/components/clock/clock-card';
 import { DefinitionRow } from '@/components/definition-row';
 import { ErrorState } from '@/components/page';
 import {
@@ -42,7 +43,8 @@ export function MyShiftsPage() {
   const to = addDays(today, DAYS_AHEAD);
 
   const me = useQuery({ queryKey: ['me', orgId], queryFn: () => meApi.get(orgId) });
-  const linked = me.data?.profile != null;
+  const profile = me.data?.profile ?? null;
+  const linked = profile !== null;
   const shifts = useQuery({
     queryKey: ['me-shifts', orgId, from, to],
     queryFn: () => meApi.shifts(orgId, from, to),
@@ -86,7 +88,7 @@ export function MyShiftsPage() {
 
   if (me.isError) return <ErrorState error={me.error} onRetry={() => void me.refetch()} />;
 
-  if (!linked) {
+  if (!profile) {
     return (
       <section className="rounded-xl border bg-background p-5 text-center">
         <Info className="mx-auto size-8 text-muted-foreground" aria-hidden="true" />
@@ -102,15 +104,22 @@ export function MyShiftsPage() {
   return (
     <>
       <header className="mb-4">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Hi, {me.data.profile?.name.split(' ')[0]}
-        </h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Hi, {profile.name.split(' ')[0]}</h1>
         <p className="text-sm text-muted-foreground">
           {nextSeven.length === 0
             ? 'No shifts in the next seven days.'
             : `${nextSeven.length} ${nextSeven.length === 1 ? 'shift' : 'shifts'} in the next 7 days · ${compactDuration(nextSevenMinutes)}`}
         </p>
       </header>
+
+      <div className="mb-5">
+        <ClockCard
+          orgId={orgId}
+          today={today}
+          shift={items.find((shift) => shift.date === today)}
+          profile={profile}
+        />
+      </div>
 
       {shifts.isPending ? (
         <div className="space-y-3" aria-busy="true">

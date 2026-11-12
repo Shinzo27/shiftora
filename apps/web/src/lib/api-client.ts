@@ -32,6 +32,8 @@ export interface RequestOptions {
   body?: unknown;
   /** Sent as X-Org-Id: the organisation the request acts on. */
   orgId?: string;
+  /** Extra headers, e.g. `Idempotency-Key` on clock-in. Never used for auth. */
+  headers?: Record<string, string>;
 }
 
 const REFRESH_LOCK = 'shiftora-auth-refresh';
@@ -122,8 +124,12 @@ export class ApiClient {
     return this.options.locks ? this.options.locks.request(REFRESH_LOCK, run) : run();
   }
 
-  private send(method: Method, path: string, { body, orgId }: RequestOptions): Promise<Response> {
-    const headers: Record<string, string> = {};
+  private send(
+    method: Method,
+    path: string,
+    { body, orgId, headers: extra }: RequestOptions,
+  ): Promise<Response> {
+    const headers: Record<string, string> = { ...extra };
     if (body !== undefined) headers['content-type'] = 'application/json';
     if (this.accessToken) headers.authorization = `Bearer ${this.accessToken}`;
     if (orgId) headers['x-org-id'] = orgId;

@@ -176,7 +176,16 @@ Do this before writing any code, whatever tool or model you are:
   `version > published_version` is the only correct test for that badge.
 - **`react-hooks/purity` rejects `Date.now()`/`new Date()` during render**, even inside
   `useMemo`. When a list needs "now" (upcoming vs past), carry the moment out of the `queryFn`
-  with the data instead of reading the clock in the component.
+  with the data instead of reading the clock in the component. `react-hooks/set-state-in-effect`
+  also rejects a synchronous `setState` in an effect body: a live timer writes its state from
+  the `setInterval` callback and keys it by the row id, so a stale tick cannot label a new punch.
+- **Geolocation needs a secure context.** `localhost` counts; a phone on `http://192.168.x.x`
+  does not — the browser refuses without ever prompting, which reads as a bug. Clock-in on a real
+  handset needs https (mkcert or a tunnel). The same rule applies to `crypto.randomUUID`, which
+  is why `newKey()` in the clock card keeps a fallback.
+- **Playwright can fake the device:** `context.grantPermissions(["geolocation"], { origin })`
+  plus `context.setGeolocation({ latitude, longitude, accuracy })`. A fresh browser context
+  denies by default, which is exactly how the "permission refused" path is tested.
 - **A `<div>` inside a `<dl>` may only wrap `dt`/`dd` pairs** — put an icon *inside* its `dt`, not
   beside it, or axe fails `definition-list` (use `components/definition-row.tsx`).
 - **Routes are `lazy()`:** a new page needs the import at the top of `router.tsx`, and the shell

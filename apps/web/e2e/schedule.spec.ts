@@ -1,75 +1,11 @@
-import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-/**
- * Seeds a clinic through the public API — the same calls a real signup makes, no database
- * shortcuts — and returns what the browser needs to sign in.
- */
-const API = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000/api/v1';
-
-interface Clinic {
-  email: string;
-  password: string;
-  orgId: string;
-  locationId: string;
-  scheduleId: string;
-  employeeId: string;
-}
-
-async function seedClinic(request: APIRequestContext): Promise<Clinic> {
-  const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
-  const email = `e2e-${stamp}@example.com`;
-  const password = 'correct-horse-battery';
-
-  const signup = await request.post(`${API}/auth/signup`, {
-    data: { email, password, name: 'E2E Owner' },
-  });
-  expect(signup.ok(), await signup.text()).toBeTruthy();
-  const { accessToken } = (await signup.json()) as { accessToken: string };
-  const auth = { authorization: `Bearer ${accessToken}` };
-
-  const org = await request.post(`${API}/orgs`, { headers: auth, data: { name: `E2E ${stamp}` } });
-  expect(org.ok(), await org.text()).toBeTruthy();
-  const { id: orgId } = (await org.json()) as { id: string };
-  const headers = { ...auth, 'x-org-id': orgId };
-
-  const location = await request.post(`${API}/locations`, {
-    headers,
-    data: { name: 'Main', latitude: 19.1197, longitude: 72.8468, timezone: 'Asia/Kolkata' },
-  });
-  expect(location.ok(), await location.text()).toBeTruthy();
-  const { id: locationId } = (await location.json()) as { id: string };
-
-  const employee = await request.post(`${API}/employees`, {
-    headers,
-    data: { name: 'Asha Mehta', hourlyRateMinor: 25_000, locationIds: [locationId] },
-  });
-  expect(employee.ok(), await employee.text()).toBeTruthy();
-  const { id: employeeId } = (await employee.json()) as { id: string };
-
-  const schedule = await request.post(`${API}/schedules`, {
-    headers,
-    data: { locationId, weekStart: '2026-11-09' },
-  });
-  expect(schedule.ok(), await schedule.text()).toBeTruthy();
-  const { id: scheduleId } = (await schedule.json()) as { id: string };
-
-  return { email, password, orgId, locationId, scheduleId, employeeId };
-}
-
-async function signIn(page: Page, clinic: Clinic): Promise<void> {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(clinic.email);
-  await page.getByLabel('Password').fill(clinic.password);
-  await page.getByRole('button', { name: 'Log in', exact: true }).click();
-  // The app picks the organisation and leaves the auth screen; the exact landing page is not
-  // the point of these tests, so just wait for the session to exist.
-  await expect(page).not.toHaveURL(/\/login/, { timeout: 20_000 });
-}
+import { seedClinic, signIn } from './seed.js';
 
 test.describe('a week of shifts', () => {
   test('a manager adds a shift, publishes it, and sees it live', async ({ page, request }) => {
     const clinic = await seedClinic(request);
-    await signIn(page, clinic);
+    await signIn(page, clinic.email, clinic.password);
 
     await page.goto(`/o/${clinic.orgId}/schedule`);
     // The seeded week is a draft with one employee on the board.
