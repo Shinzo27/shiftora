@@ -143,6 +143,11 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Known gotchas (learned the hard way)
 
+- **`engines` does not enforce anything; `scripts/require-node.mjs` does.** On Node 22
+  `pnpm dev` dies inside the Nest watcher with `ERR_REQUIRE_CYCLE_MODULE` naming `ora`, which
+  sends people hunting a broken dependency instead of the Node version. The guard runs from
+  `predev`/`prebuild`/`pretest*`/`predb:*` in the root and in both apps — do not remove it, and
+  run it directly (`node scripts/require-node.mjs`) when a tool reports a strange loader error.
 - **`pnpm db:seed` mints the org id before inserting the org.** RLS only accepts rows for the
   org the transaction points at, so a seed (or any direct insert) must `setTenantContext` with the
   id it is about to use — the same sequence `OrgsService.create` follows. Re-running the seed

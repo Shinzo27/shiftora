@@ -5,6 +5,7 @@
   "description": "Shiftora web app: manager dashboard (employee PWA and kiosk later)",
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/require-node.mjs",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",

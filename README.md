@@ -15,17 +15,34 @@ PostgreSQL 16 with Row-Level Security, Drizzle ORM, Redis.
 
 ## Local setup
 
-Requirements: Node 26, pnpm 12, Docker.
+Requirements: **Node 26** (`.nvmrc`; native `Temporal`), pnpm 12, Docker.
+
+Node 26 is not optional. On Node 22 the Nest watcher dies with
+`ERR_REQUIRE_CYCLE_MODULE: Cannot require() ES Module ora … in a cycle`, which looks like a
+broken dependency and is not one — so `scripts/require-node.mjs` runs before `dev`, `build`,
+`test`, `db:migrate` and `db:seed` and says what is wrong in one sentence.
 
 ```bash
+node -v            # v26.x — otherwise: nvm use / fnm use / volta install node@26
 pnpm install
 cp .env.example .env
-pnpm infra:up      # Postgres on :5433, Redis on :6379, Mailpit UI on :8025
+pnpm infra:up      # Postgres on :5433, Redis on :6380, Mailpit UI on :8025
 pnpm db:migrate
+pnpm db:seed       # optional: the demo clinic (see below)
 pnpm dev           # web on http://localhost:5173 (proxies /api), API on :4000
                    # auth: POST /api/v1/auth/{signup,login,refresh,logout}, GET /api/v1/auth/me
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:int && pnpm build
 ```
+
+**The demo clinic.** `pnpm db:seed` inserts Sunrise Clinic — two branches, four logins, three
+staff, availability, a published week and a day of punches (one on time, one late, one outside the
+fence). Sign in as `priya@sunriseclinic.test` / `demo-clinic-2026` (owner);
+`asha@sunriseclinic.test` and `rohan@sunriseclinic.test` are staff logins for the clock card.
+Re-running it replaces the demo org, so it is safe to repeat.
+
+If port 5173 is already taken, Vite quietly moves to 5174 and the API's CORS origin no longer
+matches — find the old server (`netstat -ano | findstr :5173` on Windows) and stop it rather than
+testing against the wrong page.
 
 ## Continuing with an AI coding agent
 

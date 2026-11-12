@@ -7,7 +7,14 @@
     "node": ">=26"
   },
   "scripts": {
+    "predev": "node scripts/require-node.mjs",
     "dev": "turbo run dev",
+    "prebuild": "node scripts/require-node.mjs",
+    "pretest": "node scripts/require-node.mjs",
+    "pretest:int": "node scripts/require-node.mjs",
+    "pretest:e2e": "node scripts/require-node.mjs",
+    "predb:migrate": "node scripts/require-node.mjs",
+    "predb:seed": "node scripts/require-node.mjs",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",

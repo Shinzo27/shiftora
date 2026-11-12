@@ -5,6 +5,7 @@
   "description": "Shiftora HTTP + WebSocket API (NestJS on Fastify)",
   "type": "module",
   "scripts": {
+    "predev": "node ../../scripts/require-node.mjs",
     "dev": "nest start --watch",
     "build": "nest build",
     "seed": "node --env-file-if-exists=../../.env dist/cli/seed.js",
