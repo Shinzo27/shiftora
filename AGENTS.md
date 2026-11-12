@@ -200,6 +200,11 @@ Do this before writing any code, whatever tool or model you are:
   is exactly how CI failed with `ECONNREFUSED :4000`. The config now declares one `webServer`
   entry per app (`/health/live` for the API) and CI runs `pnpm build` first, because those two
   processes import the workspace packages from their `dist` folders.
+- **`pnpm format:check` is noisy on a CRLF checkout and quiet on CI.** Prettier wants LF, the
+  working tree here is CRLF, so ~160 untouched files report a warning locally while the same
+  job passes on Linux. Do not "fix" them by rewriting the tree: check only what you changed
+  (`git diff --name-only <base>` piped into `npx prettier --check`) — and remember that a file
+  edited by a script after formatting is exactly how a slow formatting failure reaches CI.
 - **On Windows, Vite listens on `localhost` (IPv6 `::1`) only** while Nest binds `0.0.0.0`:
   `http://127.0.0.1:5173` refuses, `http://localhost:5173` works. Keep `baseURL` on
   `localhost`; the API is reachable on either.

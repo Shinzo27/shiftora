@@ -51,7 +51,9 @@ export function MyTimeOffPage() {
   }
 
   const now = timeOff.data?.at ?? 0;
-  const items = [...(timeOff.data?.items ?? [])].sort((a, b) => a.startsAt.localeCompare(b.startsAt));
+  const items = [...(timeOff.data?.items ?? [])].sort((a, b) =>
+    a.startsAt.localeCompare(b.startsAt),
+  );
   const upcoming = items.filter((item) => Date.parse(item.endsAt) >= now);
   const past = items.filter((item) => Date.parse(item.endsAt) < now);
 
