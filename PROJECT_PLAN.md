@@ -87,7 +87,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 9 migrations, 430 automated tests (226 unit, 204 integration against real
+Numbers today: 9 migrations, 431 automated tests (226 unit, 205 integration against real
 Postgres) plus 5 Playwright end-to-end tests, 61 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
@@ -129,6 +129,11 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   radius"; ±400 m asked first, then recorded "low-accuracy position"; revoked permission gave
 >   "Location is blocked for this site…". axe 0 violations in both card states. Three Playwright
 >   tests (real Chromium, permission granted, device placed) cover the same paths in CI.
+> - **Fixed during D3, worth remembering:** the two-simultaneous-punches test was returning
+>   500, not 409. A unique violation aborts the request transaction, so the recovery read failed
+>   with 25P02. Punches now take a per-employee advisory lock before the checks, and the catch is
+>   a bare 409 that touches nothing. Regression tests cover the concurrent double clock-in and
+>   two simultaneous retries of the *same* Idempotency-Key.
 > - **Next:** W3 D4 — match punches to shifts with early/late tolerance, then surface the flags
 >   to managers (the timesheet is D5). `time_entries` already carries `shift_id`, `flags` and
 >   `edited`, so the schema does not change.

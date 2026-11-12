@@ -60,6 +60,10 @@ export class AttendanceService {
     const location = await this.locations.findById(input.locationId);
     if (!location) throw new AppException(404, errorCodes.locationNotFound, 'No such location.');
 
+    // One person punches one shift at a time: hold their lock for the rest of this transaction,
+    // so a simultaneous retry waits here instead of colliding with the unique index below.
+    await this.entries.lockEmployee(employee.id);
+
     // A retry of a punch already stored: answer with that row instead of refusing a duplicate.
     const key = idempotencyKey ?? newId();
     const existing = await this.entries.findByClientEventId(key);
@@ -95,7 +99,7 @@ export class AttendanceService {
       );
     }
 
-    const row = await this.createOrExplain({
+    const row = await this.insertPunch({
       employeeId: employee.id,
       locationId: location.id,
       shiftId: input.shiftId ?? null,
@@ -109,17 +113,6 @@ export class AttendanceService {
       flags: uniqueFlags([...check.flags, ...deviceSkewFlag(deviceTime, receivedAt)]),
       clientEventId: key,
     });
-    if (!row) {
-      // Lost a race: either the same key was inserted twice (idempotent — answer with it), or
-      // another punch opened at the same moment.
-      const raced = await this.entries.findByClientEventId(key);
-      if (raced) return { entry: this.toEntry(raced, location), created: false };
-      throw new AppException(
-        409,
-        errorCodes.attendanceAlreadyClockedIn,
-        'You are already clocked in — clock out before starting another shift.',
-      );
-    }
 
     await this.audit.record({
       action: 'attendance.clock_in',
@@ -248,27 +241,21 @@ export class AttendanceService {
   // --------------------------------------------------------------------------- helpers
 
   /**
-   * Inserts the punch, or returns null when a unique index says it already exists.
-   *
-   * Two indexes can refuse the row and they mean different things: `one_open` is "you are
-   * already clocked in", `client_event_unique` is "this is the same punch twice". The caller
-   * re-reads by key to tell them apart, because a concurrent retry is a success, not an error.
+   * Inserts the punch. A unique violation here would abort the transaction, so the recovery is a
+   * plain 409 — the advisory lock taken above is what makes this unreachable in practice.
    */
-  private async createOrExplain(
+  private async insertPunch(
     values: Parameters<TimeEntriesRepository['create']>[0],
-  ): Promise<TimeEntryRow | null> {
+  ): Promise<TimeEntryRow> {
     try {
       return await this.entries.create(values);
     } catch (error) {
-      const constraint = uniqueViolation(error);
-      if (constraint === null) throw error;
-      if (
-        constraint === 'time_entries_client_event_unique' ||
-        constraint === 'time_entries_one_open'
-      ) {
-        return null;
-      }
-      throw error;
+      if (uniqueViolation(error) === null) throw error;
+      throw new AppException(
+        409,
+        errorCodes.attendanceAlreadyClockedIn,
+        'You are already clocked in — clock out before starting another shift.',
+      );
     }
   }
 

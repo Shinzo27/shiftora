@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, gte, isNull, lte, schema, type Transaction } from '@shiftora/db';
+import { and, asc, desc, eq, gte, isNull, lte, schema, sql, type Transaction } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -38,6 +38,19 @@ export class TimeEntriesRepository {
 
   private get tx(): Transaction {
     return this.context.tx;
+  }
+
+  /**
+   * Serialises punches for one person for the rest of this transaction.
+   *
+   * The "one open punch" rule is a partial unique index, but a violation aborts the whole
+   * transaction — so the losing request cannot read anything afterwards to explain itself
+   * (Postgres answers 25P02 on every later statement). Taking a transaction-scoped advisory lock
+   * first means the second caller waits, then *sees* the first punch and answers 409 without ever
+   * provoking the constraint.
+   */
+  async lockEmployee(employeeId: string): Promise<void> {
+    await this.tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${employeeId}, 0))`);
   }
 
   /** The employee's unfinished punch, if there is one (at most one: partial unique index). */

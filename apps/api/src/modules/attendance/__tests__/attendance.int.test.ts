@@ -238,6 +238,27 @@ describe('idempotency', () => {
     expect(retry.json<ClockResult>().entry.id).toBe(first.json<ClockResult>().entry.id);
   });
 
+  it('two simultaneous retries of the same key produce one row', async () => {
+    const s = await setup();
+    const both = await Promise.all([
+      s.staff.call('POST', '/clock-in', {
+        org: s.org,
+        body: punch(s.locationId),
+        headers: { 'idempotency-key': key },
+      }),
+      s.staff.call('POST', '/clock-in', {
+        org: s.org,
+        body: punch(s.locationId),
+        headers: { 'idempotency-key': key },
+      }),
+    ]);
+
+    expect(both.map((res) => res.status)).toEqual([201, 201]);
+    const ids = both.map((res) => res.json<ClockResult>().entry.id);
+    expect(new Set(ids).size).toBe(1);
+    expect(both.filter((res) => res.json<ClockResult>().created)).toHaveLength(1);
+  });
+
   it('refuses an Idempotency-Key that is not a UUID', async () => {
     const s = await setup();
     const res = await s.staff.call('POST', '/clock-in', {
