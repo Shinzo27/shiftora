@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import {
+  addDays,
   checkGeofence,
   deviceSkewFlag,
   matchShift,
+  toInstant,
   toLocal,
   type GeofenceFlag,
 } from '@shiftora/domain';
@@ -18,6 +20,8 @@ import {
   type MyTimeEntries,
   type MyTimeEntriesQuery,
   type TimeEntry,
+  type TimeEntryWithEdits,
+  type UpdateTimeEntryRequest,
 } from '@shiftora/shared';
 
 import { AppException } from '../../common/app-exception.js';
@@ -32,6 +36,12 @@ import { OrgsRepository } from '../orgs/orgs.repository.js';
 import { ShiftsService } from '../scheduling/shifts.service.js';
 import type { ShiftRecord } from '../scheduling/shifts.repository.js';
 import { TimeEntriesRepository, type TimeEntryRow } from './time-entries.repository.js';
+
+/** Longer than any real shift: sixteen hours catches "out at 08:00" for "out at 18:00". */
+const MAX_PUNCH_MS = 16 * 60 * 60 * 1000;
+
+const timeEntryNotFound = () =>
+  new AppException(404, errorCodes.timeEntryNotFound, 'No such punch.');
 
 const notLinked = () =>
   new AppException(
@@ -257,6 +267,118 @@ export class AttendanceService {
       .sort((a, b) => b.clockInAt.localeCompare(a.clockInAt));
 
     return { items };
+  }
+
+  /**
+   * A manager's correction of one punch, with a reason that goes into the audit trail.
+   *
+   * Times are corrected, never deleted: reopening a punch is allowed (someone forgot to clock
+   * out) but two open punches for one person are not, so that case is a 409 rather than a
+   * constraint violation. A punch longer than a day is a typo, not a shift.
+   */
+  async updateEntry(id: string, body: UpdateTimeEntryRequest): Promise<TimeEntryWithEdits> {
+    const row = await this.entries.findById(id);
+    if (!row) throw timeEntryNotFound();
+    // Scope first: a manager outside this location must not learn that the punch exists.
+    const location = await this.access.assertAccess(row.locationId);
+
+    const zone = location.timezone;
+    const current = toLocal(row.clockInAt, zone);
+    const day = body.date ?? current.date;
+    const inTime = body.clockInTime ?? current.time;
+    const clockInAt = toInstant(day, inTime, zone);
+
+    // "Out at 06:00" after starting at 22:00 means the next morning, not minus sixteen hours.
+    const outDay = body.clockOutTime && body.clockOutTime < inTime ? addDays(day, 1) : day;
+    let clockOutAt: Date | null;
+    if (body.clockOutTime === null) clockOutAt = null;
+    else if (body.clockOutTime !== undefined)
+      clockOutAt = toInstant(outDay, body.clockOutTime, zone);
+    else if (row.clockOutAt)
+      clockOutAt = toInstant(outDay, toLocal(row.clockOutAt, zone).time, zone);
+    else clockOutAt = null;
+
+    if (clockOutAt && clockOutAt.getTime() <= clockInAt.getTime()) {
+      throw new AppException(
+        400,
+        errorCodes.validationFailed,
+        'The clock-out must be after the clock-in.',
+      );
+    }
+    if (clockOutAt && clockOutAt.getTime() - clockInAt.getTime() > MAX_PUNCH_MS) {
+      throw new AppException(
+        400,
+        errorCodes.validationFailed,
+        'That punch would last more than 16 hours — check the times.',
+      );
+    }
+    if (clockOutAt === null) {
+      const open = await this.entries.findOpen(row.employeeId);
+      if (open && open.id !== id) {
+        throw new AppException(
+          409,
+          errorCodes.attendanceAlreadyClockedIn,
+          'This person already has an open punch, so this one cannot be reopened.',
+        );
+      }
+    }
+
+    const updated = await this.entries.update(id, { clockInAt, clockOutAt });
+    if (!updated) throw timeEntryNotFound();
+
+    await this.audit.record({
+      action: 'attendance.edited',
+      entity: 'time_entry',
+      entityId: id,
+      before: {
+        clockInAt: row.clockInAt.toISOString(),
+        clockOutAt: row.clockOutAt?.toISOString() ?? null,
+      },
+      after: {
+        clockInAt: updated.clockInAt.toISOString(),
+        clockOutAt: updated.clockOutAt?.toISOString() ?? null,
+        reason: body.reason,
+      },
+    });
+
+    return this.detail(id);
+  }
+
+  /** One punch with its corrections, for the manager who is about to change it again. */
+  async detail(id: string): Promise<TimeEntryWithEdits> {
+    const row = await this.entries.findById(id);
+    if (!row) throw timeEntryNotFound();
+    const location = await this.access.assertAccess(row.locationId);
+    const [shiftById, grace, employees, history] = await Promise.all([
+      this.shiftsById([row]),
+      this.orgs.attendanceGraceMinutes(),
+      this.employees.findMany([row.employeeId]),
+      this.audit.history('time_entry', id),
+    ]);
+
+    const entry = this.toEntry(row, location, shiftById.get(row.shiftId ?? '') ?? null, grace);
+    return {
+      entry: { ...entry, employeeName: employees.get(row.employeeId)?.name ?? 'Former employee' },
+      edits: history
+        .filter((item) => item.action === 'attendance.edited')
+        .map((item) => {
+          const before = (item.before ?? {}) as Record<string, unknown>;
+          const after = (item.after ?? {}) as Record<string, unknown>;
+          return {
+            at: item.at,
+            by: item.by,
+            reason: typeof after.reason === 'string' ? after.reason : null,
+            before: {
+              clockInAt: typeof before.clockInAt === 'string' ? before.clockInAt : null,
+              clockOutAt: typeof before.clockOutAt === 'string' ? before.clockOutAt : null,
+            },
+            after: {
+              clockInAt: typeof after.clockInAt === 'string' ? after.clockInAt : null,
+              clockOutAt: typeof after.clockOutAt === 'string' ? after.clockOutAt : null,
+            },
+          };
+        }),
+    };
   }
 
   /**

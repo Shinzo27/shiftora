@@ -1,14 +1,28 @@
-import { Body, Controller, Get, Headers, HttpCode, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import {
   clockInRequest,
   clockOutRequest,
   attendanceQuery,
+  updateTimeEntryRequest,
   myTimeEntriesQuery,
   type ClockInRequest,
   type ClockOutRequest,
   type ClockResult,
   type Attendance,
   type AttendanceQuery,
+  type TimeEntryWithEdits,
+  type UpdateTimeEntryRequest,
   type MyTimeEntries,
   type MyTimeEntriesQuery,
 } from '@shiftora/shared';
@@ -52,6 +66,23 @@ export class AttendanceController {
   }
 
   /** The caller's own punches in a local-date range: what the clock screen and week view read. */
+  /** One punch with its correction history. */
+  @Get('time-entries/:id')
+  @Roles('owner', 'manager')
+  detail(@Param('id', ParseUUIDPipe) id: string): Promise<TimeEntryWithEdits> {
+    return this.attendance.detail(id);
+  }
+
+  /** Correct a punch. The reason is required and lands in the audit trail. */
+  @Patch('time-entries/:id')
+  @Roles('owner', 'manager')
+  edit(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(updateTimeEntryRequest)) body: UpdateTimeEntryRequest,
+  ): Promise<TimeEntryWithEdits> {
+    return this.attendance.updateEntry(id, body);
+  }
+
   /** A manager's view of one location: who punched, against which shift, and the totals. */
   @Get('attendance')
   @Roles('owner', 'manager')

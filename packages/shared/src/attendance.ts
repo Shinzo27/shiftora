@@ -133,15 +133,24 @@ export const attendance = z.object({
 export type Attendance = z.output<typeof attendance>;
 
 /** A manager's correction: what changed, and why. Both end up in the audit trail. */
+/**
+ * A correction, in the location's own wall clock — the same shape a shift has, so a manager
+ * types what the wall says and the server does the zone arithmetic. A clock-out earlier than
+ * the clock-in is read as the next morning (an overnight shift), not as a typo.
+ */
 export const updateTimeEntryRequest = z
   .object({
-    clockInAt: instant.optional(),
-    clockOutAt: instant.nullable().optional(),
+    /** The day the punch belongs to. Defaults to the day it is already on. */
+    date: localDate.optional(),
+    clockInTime: localTime.optional(),
+    clockOutTime: localTime.nullable().optional(),
     reason: z.string().trim().min(3, 'Say why, in a few words').max(300),
   })
-  .refine((body) => body.clockInAt !== undefined || body.clockOutAt !== undefined, {
-    message: 'Send the time that changed',
-  });
+  .refine(
+    (body) =>
+      body.clockInTime !== undefined || body.clockOutTime !== undefined || body.date !== undefined,
+    { message: 'Send the time that changed' },
+  );
 export type UpdateTimeEntryRequest = z.output<typeof updateTimeEntryRequest>;
 
 /** One correction, read back from the audit trail: what it was, what it became, and why. */

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { schema } from '@shiftora/db';
+import { and, asc, eq, schema } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -19,6 +19,34 @@ export interface AuditEntry {
 @Injectable()
 export class AuditService {
   constructor(private readonly context: RequestContext) {}
+
+  /**
+   * The trail for one row, oldest first. The attendance timesheet shows it next to a corrected
+   * punch, which is the only place a manager can see what changed without opening the log.
+   */
+  async history(
+    entity: string,
+    entityId: string,
+  ): Promise<{ at: string; by: string | null; action: string; before: unknown; after: unknown }[]> {
+    const rows = await this.context.tx
+      .select()
+      .from(schema.auditEvents)
+      .where(
+        and(
+          eq(schema.auditEvents.orgId, this.context.orgId),
+          eq(schema.auditEvents.entity, entity),
+          eq(schema.auditEvents.entityId, entityId),
+        ),
+      )
+      .orderBy(asc(schema.auditEvents.createdAt));
+    return rows.map((row) => ({
+      at: row.createdAt.toISOString(),
+      by: row.actorUserId,
+      action: row.action,
+      before: row.before,
+      after: row.after,
+    }));
+  }
 
   async record(entry: AuditEntry): Promise<void> {
     await this.context.tx.insert(schema.auditEvents).values({

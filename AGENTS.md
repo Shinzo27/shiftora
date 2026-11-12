@@ -143,6 +143,19 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Known gotchas (learned the hard way)
 
+- **A punch correction is wall clock, and the server converts it.** `PATCH /time-entries/:id`
+  takes `clockInTime`/`clockOutTime` as `HH:MM` plus an optional `date`, never instants: the
+  service calls `toInstant(day, time, location.timezone)`. A clock-out earlier than the clock-in
+  means *the next morning* (an overnight shift), so the wall-clock form is what makes a night
+  correction possible at all — with instants, the client would do zone arithmetic and every
+  overnight fix would look invalid.
+- **Read the audit trail through `AuditService.history()`, never by querying `audit_events`.**
+  The table belongs to the audit module; the timesheet's history comes from that method so org
+  scoping stays in one place. Writes go through `record()` inside the request transaction, which
+  is what makes a correction and its reason impossible to separate.
+- **`FormAlert` takes `message`, not children.** In `components/page.tsx` it is
+  `({ message }: { message: string | null })`, so `<FormAlert>{text}</FormAlert>` fails the
+  typecheck; `FieldError` next to it does take children.
 - **drizzle-kit output needs review.** It once emitted a `UNIQUE (org_id, id)` after the
   foreign key that needed it (0004: moved up by hand). On a composite same-org FK, a plain
   `ON DELETE SET NULL` would also null `org_id`; write `ON DELETE SET NULL (column)` by hand

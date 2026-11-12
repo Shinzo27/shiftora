@@ -104,6 +104,22 @@ export class TimeEntriesRepository {
     return row!;
   }
 
+  /**
+   * A manager's correction. Always marks the row `edited`: the audit row written beside this
+   * holds what it was and why, so the flag is only ever a hint that history exists.
+   */
+  async update(
+    id: string,
+    values: { clockInAt: Date; clockOutAt: Date | null },
+  ): Promise<TimeEntryRow | null> {
+    const [row] = await this.tx
+      .update(timeEntries)
+      .set({ ...values, edited: true })
+      .where(and(eq(timeEntries.orgId, this.context.orgId), eq(timeEntries.id, id)))
+      .returning();
+    return row ?? null;
+  }
+
   /** Closes a punch. Conditional on it still being open, so two clock-outs cannot both win. */
   async close(id: string, values: ClockOutValues): Promise<TimeEntryRow | null> {
     const [row] = await this.tx

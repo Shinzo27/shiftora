@@ -27,6 +27,7 @@ import type {
   ShiftWriteResult,
   SignupRequest,
   TimeOff,
+  TimeEntryWithEdits,
   UpdateEmployeeRequest,
   UpdateLocationRequest,
   UpdateShiftRequest,
@@ -146,6 +147,15 @@ export const attendanceApi = {
   /** A manager's view of one location for a local-date range. */
   list: (orgId: string, locationId: string, from: string, to: string) =>
     api.get<Attendance>(`/attendance?locationId=${locationId}&from=${from}&to=${to}`, { orgId }),
+  /** One punch with its corrections. */
+  detail: (orgId: string, id: string) =>
+    api.get<TimeEntryWithEdits>(`/time-entries/${id}`, { orgId }),
+  /** Correct a punch; the reason is required and lands in the audit trail. */
+  edit: (
+    orgId: string,
+    id: string,
+    body: { clockInTime?: string; clockOutTime?: string | null; reason: string },
+  ) => api.patch<TimeEntryWithEdits>(`/time-entries/${id}`, { orgId, body }),
 };
 
 /** Everything a signed-in person may ask about themselves, whatever their role. */

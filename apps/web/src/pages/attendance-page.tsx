@@ -1,9 +1,10 @@
 import { addDays, startOfWeek, type LocalDate } from '@shiftora/domain';
 import type { Attendance, AttendanceRow } from '@shiftora/shared';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronLeft, ChevronRight, Clock, MapPin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Clock, MapPin, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { EditPunchSheet } from '@/components/attendance/edit-punch-sheet';
 import { ErrorState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,6 +24,7 @@ import { compactDuration, readableDate, todayLocalDate, weekLabel } from '@/lib/
 export function AttendancePage() {
   const { orgId, locations, locationId, selectLocation } = useOrg();
   const [weekStart, setWeekStart] = useState<LocalDate>(() => startOfWeek(todayLocalDate()));
+  const [editing, setEditing] = useState<string | null>(null);
   const from = weekStart;
   const to = addDays(weekStart, 6);
   const today = todayLocalDate();
@@ -118,7 +120,7 @@ export function AttendancePage() {
               </h2>
               <ul className="divide-y overflow-hidden rounded-xl border bg-background">
                 {rows.map((row) => (
-                  <PunchRow key={row.id} row={row} />
+                  <PunchRow key={row.id} row={row} onEdit={() => setEditing(row.id)} />
                 ))}
               </ul>
             </section>
@@ -127,11 +129,20 @@ export function AttendancePage() {
           <Totals totals={attendance.data.totals} />
         </div>
       )}
+
+      {editing ? (
+        <EditPunchSheet
+          orgId={orgId}
+          entryId={editing}
+          timezone={location?.timezone ?? 'UTC'}
+          onClose={() => setEditing(null)}
+        />
+      ) : null}
     </>
   );
 }
 
-function PunchRow({ row }: { row: AttendanceRow }) {
+function PunchRow({ row, onEdit }: { row: AttendanceRow; onEdit: () => void }) {
   const badges = punchBadges(row);
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
@@ -167,6 +178,15 @@ function PunchRow({ row }: { row: AttendanceRow }) {
           </Badge>
         ))}
       </div>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label={`Correct ${row.employeeName}'s punch`}
+        onClick={onEdit}
+      >
+        <Pencil />
+      </Button>
     </li>
   );
 }

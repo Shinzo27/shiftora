@@ -424,7 +424,7 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   deadlocks), re-validates and swaps assignees.
 - Test: N concurrent claims via `Promise.all` against a real Postgres → exactly one winner.
 
-### 7.5 Attendance and anti-fraud (geofence implemented in W3 D2)
+### 7.5 Attendance and anti-fraud (geofence in W3 D2, matching in W3 D4, corrections in W3 D5)
 - **Geofence:** the server computes the haversine distance between the reported coordinates and
   the location's own coordinates; the punch is inside if `distance ≤ radius + min(accuracy, 100 m)`.
   Both coordinates and the computed `in_distance_m` are stored — "16 m from the clinic, ±8 m
@@ -447,8 +447,24 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   even prompts), a timeout, or no fix at all. A fix worse than ±100 m is confirmed before it is
   sent, and a punch the server flagged says so on the card — the person who will be questioned
   is told first.
-- **Planned (W3 D4+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
-  IndexedDB, and shift matching with early/late tolerance.
+- **Matching a punch to its shift** (W3 D4) is a pure function in
+  `packages/domain/src/attendance/match.ts`: the punch's own `shift_id` when the app sends it,
+  otherwise the employee's shift whose start is nearest, within a two-hour window of the shift.
+  The result is one of `on_time | early | late | unscheduled`.
+- **Lateness is derived, never stored.** The difference between punch and shift is computed on
+  every read with the organisation's grace (`organizations.attendance_grace_minutes`, default 5,
+  migration `0009`), so correcting a punch cannot leave a stale flag behind — the test that
+  proves it changes a punch from on-time to 40 minutes late and reads the state again.
+- **Corrections** (W3 D5) are wall clock, not instants: a manager types `09:00`–`17:05` and the
+  server converts with the location's zone (`toInstant(day, time, zone)`), because that is how
+  the times are read off the door log. A clock-out earlier than the clock-in is read as **the
+  next morning**, so an overnight shift is one correction rather than an error; over sixteen
+  hours is refused as a typo. The reason is required and sits in the same `audit_events` row as
+  the before/after, which is what `GET /time-entries/:id` replays as the on-screen history.
+  Reopening a forgotten clock-out (`clockOutTime: null`) is allowed, but two open punches for one
+  person are not — that is a 409, not a constraint violation.
+- **Planned (W3 D6+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
+  IndexedDB, and a review queue for flagged punches.
 - **Rotating QR (kiosk):** tablet shows `HMAC_SHA256(location.qr_secret, floor(now/30s))`
   truncated, plus the location id. Server accepts the current or previous window only, and a
   code+employee pair can be used once. Kiosk is a `kiosk` membership with a long-lived
