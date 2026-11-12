@@ -123,6 +123,11 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
 >   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
 >   `reject` mode will need a manager override path eventually.
+> - **CI fix after W3 D2:** the Playwright job failed with `ECONNREFUSED :4000` because the
+>   config waited only on Vite while the API was still compiling. It now declares one
+>   `webServer` per app (API readiness = `/health/live`) and the e2e job runs `pnpm build`
+>   before the tests. Reproduced and fixed locally with `CI=1 pnpm test:e2e` against a stopped
+>   stack: 2 passed in 14.7 s.
 > - **Watch out for:** `TestUser.call` now takes `headers` (that is how `Idempotency-Key` is
 >   tested). `react-hooks/purity` rejects `Date.now()` in render (carry the moment out of the
 >   `queryFn`). A `<div>` inside `<dl>` may only wrap `dt`/`dd` (axe). `vite preview` has no

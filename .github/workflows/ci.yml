@@ -56,7 +56,12 @@ jobs:
 
       - run: pnpm --filter @shiftora/web exec playwright install --with-deps chromium
 
-      # Playwright starts the API and the web app itself (CI=true turns off server reuse).
+      # Build the workspace packages first: Playwright starts the two dev servers itself, and
+      # they import @shiftora/shared, @shiftora/domain and @shiftora/db from their dist folders.
+      - run: pnpm build
+
+      # Playwright starts the API and the web app itself (CI=true turns off server reuse) and
+      # waits for each one at its own readiness URL.
       - run: pnpm test:e2e
 
       - if: failure()

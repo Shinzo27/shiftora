@@ -4,7 +4,7 @@ import { expect, test, type APIRequestContext, type Page } from '@playwright/tes
  * Seeds a clinic through the public API — the same calls a real signup makes, no database
  * shortcuts — and returns what the browser needs to sign in.
  */
-const API = process.env.E2E_API_URL ?? 'http://localhost:4000/api/v1';
+const API = process.env.E2E_API_URL ?? 'http://127.0.0.1:4000/api/v1';
 
 interface Clinic {
   email: string;
