@@ -41,5 +41,7 @@ import { ShiftsService } from './shifts.service.js';
     ShiftsRepository,
     PublicationsRepository,
   ],
+  // Attendance checks that a punch's shift belongs to the caller at that location.
+  exports: [ShiftsService],
 })
 export class SchedulingModule {}

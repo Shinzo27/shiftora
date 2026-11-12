@@ -90,10 +90,11 @@ export class TestUser {
   async call(
     method: Method,
     path: string,
-    options: { body?: object; org?: string } = {},
+    options: { body?: object; org?: string; headers?: Record<string, string> } = {},
   ): Promise<ApiResponse> {
     const headers: Record<string, string> = { authorization: `Bearer ${this.token}` };
     if (options.org) headers['x-org-id'] = options.org;
+    Object.assign(headers, options.headers ?? {});
     const res = await this.app.inject({
       method,
       url: `/api/v1${path}`,

@@ -1,3 +1,11 @@
+export type { Coordinates, GeofenceFlag, GeofenceResult } from './attendance/geofence.js';
+export {
+  checkGeofence,
+  deviceSkewFlag,
+  haversineMeters,
+  MAX_DEVICE_SKEW_MS,
+  MAX_TRUSTED_ACCURACY_M,
+} from './attendance/geofence.js';
 export type { SlotIssue, WeeklySlot, Weekday } from './availability/weekly.js';
 export { parseLocalTime, validateWeeklySlots } from './availability/weekly.js';
 export type { AssignableRole, MemberRole } from './tenancy/roles.js';

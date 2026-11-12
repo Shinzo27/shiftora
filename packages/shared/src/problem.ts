@@ -33,6 +33,14 @@ export const errorCodes = {
   shiftOverlap: 'shift.overlap',
   /** Someone else changed the shift since this version was read. */
   shiftVersionConflict: 'shift.version_conflict',
+  /** The punch was made outside the location's radius and the org refuses those. */
+  attendanceOutsideGeofence: 'attendance.outside_geofence',
+  /** Clocking out without an open punch. */
+  attendanceNoOpenEntry: 'attendance.no_open_entry',
+  /** Already clocked in: one open punch per person (also a unique index). */
+  attendanceAlreadyClockedIn: 'attendance.already_clocked_in',
+  /** The login has no staff profile, so there is nothing to clock in as. */
+  attendanceNotLinked: 'attendance.not_linked',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

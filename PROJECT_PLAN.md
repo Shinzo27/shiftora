@@ -82,49 +82,51 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 D4 | Drag-and-drop with dnd-kit, optimistic moves, conflict badges from a week conflicts endpoint, stale-version toast + refetch | ✅ Done | `700d7fd` |
 | W2 D5 | Publish: `schedule_publications` + `outbox` (`0007`), publish-preview and publish endpoints, the diff against the last publication, the Publish dialog, `publishedVersion` and the "Unpublished changes" badge | ✅ Done | `a531452` |
 | W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | `a531452` |
-| W3 D1 | `/me` API (profile, my shifts, my time off); PWA (manifest, icons, service worker, offline shell); route-level code splitting; the staff app: bottom tabs, shift cards, Vaul drawer | ✅ Done | (uncommitted) |
+| W3 D1 | `/me` API (profile, my shifts, my time off); PWA (manifest, icons, service worker, offline shell); route-level code splitting; the staff app: bottom tabs, shift cards, Vaul drawer | ✅ Done | `9dc1630` |
+| W3 D2 | `time_entries` (`0008`) with geofence policy, unique `client_event_id` and one open punch per person; `POST /clock-in`, `POST /clock-out`, `GET /me/time-entries`; haversine fence as pure domain maths; `Idempotency-Key` | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 8 migrations, 390 automated tests (206 unit, 184 integration against real
-Postgres) plus 2 Playwright end-to-end tests, 58 API endpoints, a React web app on shadcn/ui
+Numbers today: 9 migrations, 423 automated tests (219 unit, 204 integration against real
+Postgres) plus 2 Playwright end-to-end tests, 61 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
 
-> Last session: 2026-11-12 (Hermes, second dev machine) — week 3 started.
+> Last session: 2026-11-12 (Hermes, second dev machine) — W3 D1 and D2 done.
 >
-> - **Done: W2 D5 + D6 committed by the owner** as `a531452` (publish, outbox, realtime,
->   Playwright, CI job). **W3 D1 is uncommitted** (see below for the suggested message).
-> - **W3 D1 — the staff app exists.**
->   - **API:** `GET /me` (staff profile with roles and locations, `profile: null` for a login
->     that is not on the rota), `GET /me/shifts?from=&to=` (own shifts, each turned into the wall
->     clock of *its* location before the date filter, with location name and role name),
->     `GET /me/time-off`. All three are readable by every member — method-level `@Roles` overrides
->     the class-level owner/manager rule on both controllers. None of them is location-scope
->     checked: these are the caller's own rows.
->   - **PWA:** `vite-plugin-pwa` with a manifest (standalone, portrait, teal), generated icons
->     (`apps/web/scripts/make-icons.py` rasterises the same mark as the favicon), a precached
->     shell and **no runtime caching of `/api`** — a stale rota is worse than a spinner. Chrome's
->     `Page.getInstallabilityErrors` returns `[]`; the shell still paints offline.
->   - **Code splitting:** every page is `lazy()`; the entry chunk went from 1,093 kB to 413 kB
->     (130 kB gzip), with the board (322 kB) and the staff pages (37 kB) loaded on demand.
->   - **Staff UI:** `EmployeeLayout` (phone-width column, sticky header, bottom tabs Shifts /
->     Time off / Profile), shift cards grouped by day with "Today" highlighted, a Vaul drawer with
->     the details, and live refetch on the realtime event. `/o/:orgId` now redirects by role, read
->     from the org itself so nobody sees the wrong shell first.
-> - **Checks:** 206 unit + 184 integration + 2 E2E, lint, typecheck, build green. In Chrome at
->   390×844: employee login → `/o/:id/shifts`, 3 cards under Yesterday/Tomorrow/Sat 14 Nov, drawer
->   opens with where/break/role/notes, axe 0 violations on all three tabs (drawer open too).
-> - **Next:** W3 D2 — `time_entries` (method, geo, accuracy, `client_event_id`), clock-in/out API
->   with the server-side haversine geofence (`radius + min(accuracy, 100 m)`), `Idempotency-Key`.
->   Decide on D1/D2: the "reject or flag" policy is an org setting that does not exist yet.
-> - **Watch out for:** `react-hooks/purity` rejects `Date.now()` anywhere in render (even inside
->   `useMemo`); the time-off page carries the fetch moment from its `queryFn` instead. A `<div>`
->   inside a `<dl>` may only wrap `dt`/`dd` pairs — the icon belongs *inside* the `dt` (axe
->   `definition-list`). `vite preview` does not inherit `server.proxy`, so the built app cannot
->   reach `/api` on :4173 (fine for manifest/SW checks, remember it for QA).
+> - **Committed:** W2 D5+D6 as `a531452` (owner), **W3 D1** as `9dc1630`, **W3 D2** as
+>   `9b7ac19`.
+> - **W3 D1 — the staff app.** `/me`, `/me/shifts`, `/me/time-off` for every member; the PWA
+>   (manifest, icons, precached shell, no `/api` caching — installability errors `[]`, offline
+>   shell paints); every route `lazy()` (entry chunk 339 → 130 kB gzip); `EmployeeLayout` with
+>   bottom tabs, day-grouped cards and a Vaul drawer. `/o/:orgId` redirects by role.
+> - **W3 D2 — attendance.** `0008_time_entries` adds the punches and
+>   `organizations.geofence_policy` (`flag` default, `reject` optional), plus the
+>   `shifts (org_id, id, location_id)` unique the composite FK needs. `POST /clock-in`
+>   (idempotent by `Idempotency-Key` → `client_event_id`, unique per org; one open punch per
+>   employee as a partial unique index), `POST /clock-out`, `GET /me/time-entries`. The fence is
+>   `distance ≤ radius + min(accuracy, 100 m)` computed server-side in
+>   `packages/domain/src/attendance/geofence.ts` (13 unit tests: haversine, widening, the
+>   100 m ceiling, skew).
+> - **Checks:** 219 unit + 204 integration + 2 E2E, lint, typecheck, build green. Verified in
+>   Chrome at 390×844 (D1) and over HTTP against the real stack (D2 routes answer 401 unauth).
+>   20 attendance integration tests cover: in/out of the fence, flag vs reject, the accuracy
+>   edge, device skew, the two-simultaneous-punches race (201 + 409), key retries
+>   (`created: false`), closing a punch twice, a punch claiming someone else's shift, and a
+>   location from another org.
+> - **Next:** W3 D3 — the clock-in UI: geolocation permission and error states, low-accuracy
+>   handling, the button states on the staff app. **Geolocation needs a secure context**, so
+>   localhost is fine but a phone on `http://192.168.x.x:5173` is not: decide between mkcert and
+>   a tunnel before testing on a real device.
+> - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
+>   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
+>   `reject` mode will need a manager override path eventually.
+> - **Watch out for:** `TestUser.call` now takes `headers` (that is how `Idempotency-Key` is
+>   tested). `react-hooks/purity` rejects `Date.now()` in render (carry the moment out of the
+>   `queryFn`). A `<div>` inside `<dl>` may only wrap `dt`/`dd` (axe). `vite preview` has no
+>   `/api` proxy.
 
 ## 3. Product
 
@@ -276,6 +278,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **`GET /schedules/:id/conflicts`** returns the week's advisories in one request (`shiftId → warnings`), computed from three batched queries; the board badges chips from it instead of asking per shift | 2026-11-12 |
 | — | **What was published is a table, not a jsonb snapshot on the schedule** (`schedule_publications`): the audit trail of what staff were told, an audience for the notification worker, and the diff becomes a plain comparison against the latest row | 2026-11-12 |
 | — | **`schedules.published_version` is a second counter, not a boolean**: `version > published_version` answers "has the board changed since staff were told?" without diffing, and the CHECK constraint keeps it honest | 2026-11-12 |
+| — | **The geofence policy is the tenant's, and it flags by default** (`organizations.geofence_policy`: `flag` \| `reject`): a clinic would rather have the punch with an `outside_geofence` flag than an employee who cannot start work because their phone drifted | 2026-11-12 |
+| — | **The server measures the distance, never the device**: coordinates are stored and `in_distance_m` is computed from the organisation's own copy of the location, so the client's arithmetic is never an input to the decision | 2026-11-12 |
+| — | **`Idempotency-Key` *is* the punch's `client_event_id`**, unique per org: a retry after a dead connection returns the row it created (`created: false`) instead of a duplicate or a 409. One open punch per employee is a partial unique index, not a service check | 2026-11-12 |
 | — | **`/me` is its own surface, not a filtered `/employees`**: three self-service reads (profile, my shifts, my time off) that any member may call, returning `profile: null` / empty lists when the login is not linked to a staff record. Employees could not read anything about themselves before this | 2026-11-12 |
 | — | **The PWA precaches the shell and nothing else** — no runtime caching of `/api`, because a stale rota shown to staff as if it were current is worse than an error; offline clock-in will be an explicit IndexedDB queue (W3 D6), not a cached GET | 2026-11-12 |
 | — | **Realtime is a refetch hint, not data** (ADR 016): Socket.IO over the API's own server, one room per organisation, payload names the schedule; clients refetch over HTTP, so a dropped event costs freshness and never correctness. Redis adapter only when `REDIS_URL` is set | 2026-11-12 |
@@ -548,7 +553,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0007)
+### 10.1 Implemented (migrations 0000–0008)
 
 | Migration | Contents |
 |---|---|
@@ -558,13 +563,14 @@ Fastify
 | `0003_locations` | `location_status` enum; `locations`, `departments`, `job_roles`, `membership_locations`; same-org composite FKs; coordinate/radius CHECKs; RLS |
 | `0004_employees` | `employee_status`, `notify_channel` enums; `employees`, `employee_job_roles`, `employee_locations`, `availability`, `time_off`; same-org FKs; CHECKs; RLS |
 | `0005_scheduling` | `schedule_status` enum; `shift_templates`, `schedules`; same-org FKs (job role FK `ON DELETE SET NULL (job_role_id)`, hand-edited); Monday, break and time CHECKs; RLS |
+| `0008_time_entries` | `attendance_method` enum; `time_entries` (both coordinates and the server's `in_distance_m`, `client_event_id` unique per org, one open punch per employee as a partial unique index, flags, `edited`); `geofence_policy` enum + `organizations.geofence_policy`; `shifts (org_id, id, location_id)` unique (FK target, hand-added); RLS |
 | `0007_publications` | `outbox` (topic `entity.past_tense`, jsonb payload, `published_at` null = pending, partial index); `schedule_publications` (what each publish sent, affected employee ids); `schedules.published_version` + CHECK `published_version <= version`; RLS on both new tables |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
 ```
 users          (id, email citext unique, name, password_hash, email_verified_at, created_at, updated_at)
 sessions       (id, user_id, family_id, token_hash unique, expires_at, revoked_at, replaced_by, user_agent, ip, created_at)
-organizations  (id, name, created_at, updated_at)                                   RLS
+organizations  (id, name, geofence_policy flag|reject, created_at, updated_at)      RLS
 memberships    (id, org_id, user_id, role owner|manager|employee|kiosk, …)        RLS, unique (org_id, user_id)
 invites        (id, org_id, email citext, role, token_hash unique, invited_by,
                 expires_at, accepted_at, accepted_by, revoked_at, created_at)    RLS, one open per (org, email)
@@ -587,6 +593,12 @@ schedules      (id, org_id, location_id, week_start date (Monday), status draft|
                 version ≥ 1, published_version?, published_at?, published_by?, …)
                                        CHECK published_version IS NULL OR published_version <= version   RLS, unique (location_id, week_start),
                                                           unique (org_id, id, location_id)   ← FK target
+time_entries   (id, org_id, employee_id, location_id, shift_id?, clock_in_at, clock_out_at?,
+                method gps|qr|manual, in_latitude/longitude/accuracy_m/distance_m,
+                out_* nullable, device_time, received_at, flags text[], edited,
+                client_event_id)   RLS, unique (org_id, client_event_id),
+                                   one open per (org_id, employee_id) ← partial unique index,
+                                   FK (org_id, shift_id, location_id) → shifts, SET NULL (shift_id)
 outbox         (id, org_id, topic (entity.past_tense, CHECK ^[a-z_]+\.[a-z_]+$), payload jsonb,
                 created_at, published_at?)          RLS, partial index on pending rows
 schedule_publications (id, org_id, schedule_id, version, shifts jsonb (what was sent),
@@ -608,7 +620,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 | Week | Tables |
 |---|---|
 | W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), ~~`outbox`, `schedule_publications`~~ (0007) |
-| W3 | `time_entries` (method gps/qr/manual, geo, accuracy, client_event_id unique, flags) |
+| W3 | ~~`time_entries`~~ (0008) |
 | W4 | `notifications`, `deliveries`, `message_usage` |
 | W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
 | W6 | `pay_rules` (versioned JSON), `pay_periods`, `timesheet_lines` |
@@ -672,6 +684,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /me` | token + org | any member; own staff profile + roles + locations, `profile: null` when not linked |
 | `GET /me/shifts?from=&to=` | token + org | any member; own shifts in a local-date range, with location and role names |
 | `GET /me/time-off` | token + org | any member; own time off, empty when not linked |
+| `POST /clock-in` | token + org + `Idempotency-Key` | any member with a staff profile; geofence checked server-side → 201 `{ entry, created }`, 422 when the org rejects out-of-fence punches, 409 if a punch is already open |
+| `POST /clock-out` | token + org | any member with a staff profile; closes the open punch → 200, 409 when nothing is open |
+| `GET /me/time-entries` | token + org | any member; own punches in a local-date range, with location name and wall clock |
 | `POST /schedules/:id/publish` | token + org | owner, manager (in scope), writable location; 200 with `{ schedule, publication }`; one `schedule.published` outbox row + one audit row in the same transaction |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
@@ -695,9 +710,9 @@ clients may retry (clock-in, claim, swap; from week 3); OpenAPI generation plann
 
 | Kind | Tool | Where | Today |
 |---|---|---|---|
-| Unit | Vitest | `*.test.ts` next to code | 206 |
+| Unit | Vitest | `*.test.ts` next to code | 219 |
 | Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 53 |
-| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 131 |
+| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 151 |
 | E2E | Playwright | `apps/web/e2e/*.spec.ts` (`pnpm test:e2e`) | 2 |
 | Property | fast-check | planned for pay rules and scheduler | — |
 
@@ -784,7 +799,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
 | D1 | ✅ | `/me` API for self-service reads; PWA (manifest, generated icons, service worker, offline shell); route-level `lazy()` splitting; staff app with bottom tabs, day-grouped shift cards and a Vaul drawer | Installable (Chrome: no installability errors), shell paints offline, axe 0 violations at 390×844; verified as a linked employee in Chrome |
-| D2 | ☐ | `time_entries`; clock-in/out API with server-side haversine geofence (`radius + min(accuracy, 100 m)`); `Idempotency-Key` | Outside the fence → rejected or flagged per org setting |
+| D2 | ✅ | `time_entries` (`0008`); clock-in/out API with server-side haversine geofence (`radius + min(accuracy, 100 m)`); `Idempotency-Key`; `organizations.geofence_policy`; `GET /me/time-entries` | Outside the fence → flagged by default, rejected when the org chooses; a retried punch is one row (20 integration tests incl. the two-simultaneous-punches race) |
 | D3 | ☐ | Clock-in UI: geolocation permission and error states, low-accuracy handling | Works on a real phone |
 | D4 | ☐ | Match entries to shifts; early/late tolerance; flags (outside fence, device-time skew) | Flags visible to managers |
 | D5 | ☐ | Timesheet per pay period; manager edits need a reason (audited) | Edited entry shows before/after in audit |

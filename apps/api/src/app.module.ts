@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { HealthModule } from './health/health.module.js';
+import { AttendanceModule } from './modules/attendance/attendance.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
 import { InvitesModule } from './modules/invites/invites.module.js';
@@ -25,6 +26,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     JobRolesModule,
     EmployeesModule,
     SchedulingModule,
+    AttendanceModule, // clock-in/out: geofenced, idempotent
     RealtimeModule, // sockets: a change on one screen reaches the others
     HealthModule,
   ],

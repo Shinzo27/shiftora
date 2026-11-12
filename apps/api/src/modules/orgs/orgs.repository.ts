@@ -22,6 +22,19 @@ export class OrgsRepository {
     return org!;
   }
 
+  /**
+   * The tenant's clock-in policy. Read through RLS like everything else; a missing row means
+   * the org is gone, which the tenancy interceptor would already have refused.
+   */
+  async geofencePolicy(): Promise<'flag' | 'reject'> {
+    const [row] = await this.context.tx
+      .select({ policy: organizations.geofencePolicy })
+      .from(organizations)
+      .where(eq(organizations.id, this.context.orgId))
+      .limit(1);
+    return row?.policy ?? 'flag';
+  }
+
   async findById(id: string): Promise<OrgRecord | null> {
     const [org] = await this.context.tx
       .select()

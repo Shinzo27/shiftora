@@ -116,7 +116,7 @@
 | `platform-admin` | internal Shiftora staff console: coupons, subscription overview (no tenant business data in v1) | — |
 | `employees` | employee profiles, roles/skills, availability, credentials; `GET /me` and `GET /me/time-off` for every member | `credential.expiring` |
 | `scheduling` | schedules, shifts, publications, templates, coverage, auto-scheduler orchestration; `GET /me/shifts` for every member | `schedule.published` (outbox) |
-| `attendance` | time entries, kiosk QR secrets, offline sync, fraud flags | `clock.in`, `clock.out`, `attendance.flagged` |
+| `attendance` | time entries (geofenced clock-in/out, idempotent by `Idempotency-Key`), kiosk QR secrets, offline sync, fraud flags | `clock.in`, `clock.out`, `attendance.flagged` (planned) |
 | `requests` | swap/drop/pickup requests, open-shift claims | `request.created`, `request.approved`, `open_shift.claimed` |
 | `pay` | pay rules (versioned), pay periods, timesheets, exports | `pay_period.approved` |
 | `notifications` | templates, channel routing, deliveries, provider adapters | — |
@@ -203,6 +203,13 @@ time_entries(id, org_id, employee_id, shift_id?, location_id,
 pay_rules(id, org_id, location_id?, effective_from, effective_to?, rules jsonb, version)
 pay_periods(id, org_id, starts_on, ends_on, status: open|approved|exported)
 timesheet_lines(id, org_id, pay_period_id, employee_id, date, kind, minutes, rate_minor, amount_minor)
+
+time_entries(id, org_id, employee_id, location_id, shift_id?, clock_in_at, clock_out_at?,
+             method: gps|qr|manual, in_* / out_* (coords, accuracy, distance), device_time,
+             received_at, flags text[], edited, client_event_id)
+  -- unique (org_id, client_event_id)                       → a retried punch is the same punch
+  -- unique (org_id, employee_id) where clock_out_at is null → one open punch per person
+  -- FK (org_id, shift_id, location_id) → shifts, ON DELETE SET NULL (shift_id)   (0008)
 
 outbox(id, org_id, topic: 'entity.past_tense', payload jsonb, created_at, published_at?)
   -- CHECK topic ~ '^[a-z_]+\.[a-z_]+$'; partial index on pending rows (published_at IS NULL)
@@ -417,10 +424,22 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   deadlocks), re-validates and swaps assignees.
 - Test: N concurrent claims via `Promise.all` against a real Postgres → exactly one winner.
 
-### 7.5 Attendance and anti-fraud
-- **Geofence:** server computes haversine distance between reported coordinates and the
-  location; accept if `distance ≤ radius + min(accuracy, 100 m)`; otherwise reject or flag
-  (per-org setting). Coordinates are never trusted alone; they are one signal.
+### 7.5 Attendance and anti-fraud (geofence implemented in W3 D2)
+- **Geofence:** the server computes the haversine distance between the reported coordinates and
+  the location's own coordinates; the punch is inside if `distance ≤ radius + min(accuracy, 100 m)`.
+  Both coordinates and the computed `in_distance_m` are stored — "16 m from the clinic, ±8 m
+  accuracy" is what settles an argument later — and the client's arithmetic is never an input.
+- **Policy is the tenant's** (`organizations.geofence_policy`): `flag` (default) records the punch
+  with an `outside_geofence` flag and lets the manager decide; `reject` answers 422 so nobody
+  starts a shift untracked. A ±400 m fix does not widen the fence: accuracy counts up to 100 m.
+- **Idempotent punches:** the device's `Idempotency-Key` is stored as `client_event_id`, unique
+  per org — a retry after a dead connection returns the row it created (`created: false`), never
+  a duplicate. One open punch per employee is a **partial unique index**, so two simultaneous
+  clock-ins cannot both win (the loser gets 409).
+- **Time is the device's claim plus the server's fact:** `clock_in_at` is the device's time,
+  `received_at` the server's; a gap over five minutes is a `device_skew` flag, never a rejection.
+- **Planned (W3 D3+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
+  IndexedDB, and shift matching with early/late tolerance.
 - **Rotating QR (kiosk):** tablet shows `HMAC_SHA256(location.qr_secret, floor(now/30s))`
   truncated, plus the location id. Server accepts the current or previous window only, and a
   code+employee pair can be used once. Kiosk is a `kiosk` membership with a long-lived

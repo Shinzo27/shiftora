@@ -125,6 +125,17 @@ export class ShiftsService {
    *
    * No location-scope check: these are shifts already assigned to the caller.
    */
+  /**
+   * Attendance's one question: is this shift really this employee's, at this location?
+   * Answered as 404 (not 400) so a punch cannot be used to probe which shift ids exist.
+   */
+  async assertPunchable(shiftId: string, employeeId: string, locationId: string): Promise<void> {
+    const row = await this.shifts.findById(shiftId);
+    if (!row || row.employeeId !== employeeId || row.locationId !== locationId) {
+      throw shiftNotFound();
+    }
+  }
+
   async listMine(member: OrgMember, query: MyShiftsQuery): Promise<MyShifts> {
     const employee = await this.employees.findByUserId(member.userId);
     if (!employee) return { items: [] };

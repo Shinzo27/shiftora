@@ -9,6 +9,7 @@ export * from './memberships.js';
 export * from './organizations.js';
 export * from './outbox.js';
 export * from './sessions.js';
+export * from './time-entries.js';
 export * from './users.js';
 export * from './publications.js';
 export * from './scheduling.js';

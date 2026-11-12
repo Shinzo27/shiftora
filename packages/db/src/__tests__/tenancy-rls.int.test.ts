@@ -127,6 +127,7 @@ describe('every tenant table is protected', () => {
       'schedules',
       'shift_templates',
       'shifts',
+      'time_entries',
       'time_off',
     ]);
     for (const t of tables) {

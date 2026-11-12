@@ -71,6 +71,9 @@ export const shifts = pgTable(
       foreignColumns: [jobRoles.orgId, jobRoles.id],
     }).onDelete('set null'),
     unique('shifts_org_id_id_unique').on(t.orgId, t.id),
+    // Required as the target of `time_entries (org_id, shift_id, location_id)`: a punch can
+    // only belong to a shift in the same location (0008).
+    unique('shifts_org_id_id_location_unique').on(t.orgId, t.id, t.locationId),
     check('shifts_time_positive', sql`${t.endsAt} > ${t.startsAt}`),
     check('shifts_break_range', sql`${t.breakMinutes} between 0 and 240`),
     check(
