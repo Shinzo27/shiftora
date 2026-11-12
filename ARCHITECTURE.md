@@ -470,6 +470,10 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   separate fact, and the four review columns are all-or-nothing by CHECK. `reviewed_at IS NULL` is
   the queue's only filter, covered by a partial index (`0010`), so the queue does not slow down
   with age.
+- **An open punch counts at most its rostered length** in the week's totals. The row still shows
+  live elapsed time — that is what "on the clock" means — but a punch nobody closed must not turn
+  three days into seventy-seven hours. Deciding what a runaway punch was is a manager's job (a
+  correction, or a dispute); the timesheet's job is not to invent overtime.
 - **Export** is the week plus its worked-vs-rostered totals, written with RFC-4180 quoting and a
   BOM (Excel on Windows reads it as UTF-8 rather than mojibake). It is generated from the rows the
   manager is already looking at, so the file and the screen never disagree.

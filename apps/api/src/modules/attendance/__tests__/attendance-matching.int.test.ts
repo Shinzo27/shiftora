@@ -241,6 +241,28 @@ describe('GET /attendance', () => {
     ]);
   });
 
+  it('counts an open punch at most its rostered length', async () => {
+    const s = await setup();
+    await addShift(s.owner, s.org, s.scheduleId, s.employeeId, { date: '2026-11-10' });
+
+    // Clocked in at 09:00 on Tuesday and never clocked out: two days later the row is still
+    // open, and the week must not read as two days of overtime.
+    await s.staff.call('POST', '/clock-in', {
+      org: s.org,
+      body: punch(s.locationId, '2026-11-10T03:30:00.000Z'),
+    });
+
+    const res = await s.owner.call(
+      'GET',
+      `/attendance?locationId=${s.locationId}&from=2026-11-09&to=2026-11-15`,
+      { org: s.org },
+    );
+    const body = res.json<Attendance>();
+    expect(body.items[0]?.clockOutAt).toBeNull();
+    expect(body.items[0]?.minutes).toBeGreaterThan(480);
+    expect(body.totals[0]).toMatchObject({ workedMinutes: 480, plannedMinutes: 480 });
+  });
+
   it('leaves out punches outside the range', async () => {
     const s = await setup();
     await s.staff.call('POST', '/clock-in', { org: s.org, body: punch(s.locationId) });

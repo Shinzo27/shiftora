@@ -4,6 +4,7 @@ import {
   checkGeofence,
   deviceSkewFlag,
   matchShift,
+  nominalMinutes,
   toInstant,
   toLocal,
   type GeofenceFlag,
@@ -646,7 +647,7 @@ function totalsOf(items: AttendanceRow[], assigned: ShiftRecord[]): Attendance['
       workedMinutes: 0,
       plannedMinutes: 0,
     };
-    row.workedMinutes += item.minutes;
+    row.workedMinutes += countedMinutes(item);
     totals.set(item.employeeId, row);
   }
 
@@ -661,6 +662,21 @@ function totalsOf(items: AttendanceRow[], assigned: ShiftRecord[]): Attendance['
   }
 
   return [...totals.values()].sort((a, b) => a.employeeName.localeCompare(b.employeeName));
+}
+
+/**
+ * How much of a punch counts towards the week.
+ *
+ * A closed punch counts as itself. An **open** one counts at most its rostered length: a
+ * forgotten clock-out must not turn three days into seventy-seven hours of overtime. The row
+ * still says "open", and the manager has a correction (or a dispute) to make — that is the
+ * decision this refuses to make for them. An open punch with no rostered shift counts nothing
+ * until someone says what it was.
+ */
+function countedMinutes(item: AttendanceRow): number {
+  if (item.clockOutAt !== null) return item.minutes;
+  if (!item.shift) return 0;
+  return Math.min(item.minutes, nominalMinutes(item.shift.startTime, item.shift.endTime));
 }
 
 /** The same flag twice (outside the fence at both ends) is one fact. */

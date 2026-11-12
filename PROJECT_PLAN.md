@@ -90,7 +90,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 11 migrations, 467 automated tests (240 unit, 227 integration against real
+Numbers today: 11 migrations, 468 automated tests (240 unit, 228 integration against real
 Postgres) plus 5 Playwright end-to-end tests, 66 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
@@ -186,6 +186,13 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   CSV writer, and the seed verified end to end through the API and in Chrome. The queue was
 >   driven in Chrome: one accepted, one disputed with a note, both badges on their rows, queue
 >   then empty; axe 0 at 1440 and 390 px.
+> - **A forgotten clock-out cannot inflate the week.** The seed’s first run showed Rohan at
+>   77 h worked: an open punch counts elapsed time, and elapsed time on a Monday punch read on a
+>   Thursday is three days. The row still shows the live elapsed time (that is the truth of "on
+>   the clock"), but `totalsOf` counts an **open** punch at most its rostered length, and an open
+>   punch with no rostered shift counts nothing until a manager says what it was. Deciding what a
+>   runaway punch means is the manager's job; the timesheet's job is not to invent overtime.
+>   Covered by an integration test (two days open, 8-hour shift → 480 minutes in the totals).
 > - **Next:** W3 review, then W4 — the notification worker: relay the outbox, send WhatsApp with
 >   SMS and push fallback, and give staff a published-schedule message they can actually read.
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
