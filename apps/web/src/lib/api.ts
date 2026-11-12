@@ -4,15 +4,21 @@ import type {
   CreateEmployeeRequest,
   CreateLocationRequest,
   CreateOrgRequest,
+  CreateScheduleRequest,
+  CreateShiftRequest,
   Employee,
   JobRole,
   Location,
   LoginRequest,
   OrgSummary,
   Page,
+  Schedule,
+  Shift,
+  ShiftWriteResult,
   SignupRequest,
   UpdateEmployeeRequest,
   UpdateLocationRequest,
+  UpdateShiftRequest,
 } from '@shiftora/shared';
 
 import { ApiClient } from './api-client.js';
@@ -72,8 +78,8 @@ export const jobRolesApi = {
 };
 
 export const employeesApi = {
-  list: (orgId: string, params: { locationId?: string; cursor?: string }) => {
-    const query = new URLSearchParams({ limit: '25' });
+  list: (orgId: string, params: { locationId?: string; cursor?: string; limit?: number }) => {
+    const query = new URLSearchParams({ limit: String(params.limit ?? 25) });
     if (params.locationId) query.set('locationId', params.locationId);
     if (params.cursor) query.set('cursor', params.cursor);
     return api.get<Page<Employee>>(`/employees?${query.toString()}`, { orgId });
@@ -82,4 +88,25 @@ export const employeesApi = {
     api.post<Employee>('/employees', { orgId, body }),
   update: (orgId: string, id: string, body: UpdateEmployeeRequest) =>
     api.patch<Employee>(`/employees/${id}`, { orgId, body }),
+};
+
+export const schedulesApi = {
+  /** One location's schedules; `weekStart` narrows it to a single week. */
+  list: (orgId: string, params: { locationId: string; weekStart?: string }) => {
+    const query = new URLSearchParams({ locationId: params.locationId });
+    if (params.weekStart) query.set('weekStart', params.weekStart);
+    return api.get<Schedule[]>(`/schedules?${query.toString()}`, { orgId });
+  },
+  create: (orgId: string, body: CreateScheduleRequest) =>
+    api.post<Schedule>('/schedules', { orgId, body }),
+};
+
+export const shiftsApi = {
+  list: (orgId: string, scheduleId: string) =>
+    api.get<Shift[]>(`/shifts?scheduleId=${scheduleId}`, { orgId }),
+  create: (orgId: string, body: CreateShiftRequest) =>
+    api.post<ShiftWriteResult>('/shifts', { orgId, body }),
+  update: (orgId: string, id: string, body: UpdateShiftRequest) =>
+    api.patch<ShiftWriteResult>(`/shifts/${id}`, { orgId, body }),
+  remove: (orgId: string, id: string) => api.delete<void>(`/shifts/${id}`, { orgId }),
 };

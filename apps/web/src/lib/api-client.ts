@@ -76,6 +76,10 @@ export class ApiClient {
     return this.request<T>('PATCH', path, options);
   }
 
+  delete<T>(path: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>('DELETE', path, options);
+  }
+
   async request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
     let res = await this.send(method, path, options);
     // Auth endpoints answer 401 for wrong passwords etc.; never refresh-and-retry those.

@@ -139,7 +139,7 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Schedule', to: 'schedule', icon: CalendarDays, soon: true },
+  { label: 'Schedule', to: 'schedule', icon: CalendarDays, managersOnly: true },
   { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
   { label: 'Locations', to: 'locations', icon: MapPin },
   { label: 'Timesheets', to: 'timesheets', icon: Clock, soon: true },

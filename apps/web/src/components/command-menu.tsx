@@ -1,5 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
-import { Building2, LogOut, MapPin, Monitor, Moon, Plus, Search, Sun, Users } from 'lucide-react';
+import {
+  Building2,
+  CalendarDays,
+  LogOut,
+  MapPin,
+  Monitor,
+  Moon,
+  Plus,
+  Search,
+  Sun,
+  Users,
+} from 'lucide-react';
 import { useTheme } from '@/lib/theme';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
@@ -73,9 +84,14 @@ export function CommandMenu() {
                 <MapPin /> Locations
               </CommandItem>
               {canManage ? (
-                <CommandItem onSelect={() => run(() => navigate(`/o/${orgId}/employees`))}>
-                  <Users /> Employees
-                </CommandItem>
+                <>
+                  <CommandItem onSelect={() => run(() => navigate(`/o/${orgId}/schedule`))}>
+                    <CalendarDays /> Schedule
+                  </CommandItem>
+                  <CommandItem onSelect={() => run(() => navigate(`/o/${orgId}/employees`))}>
+                    <Users /> Employees
+                  </CommandItem>
+                </>
               ) : null}
             </CommandGroup>
             <CommandGroup heading="Create">

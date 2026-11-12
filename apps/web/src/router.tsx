@@ -10,6 +10,7 @@ import { ErrorPage } from '@/pages/error-page';
 import { LocationsPage } from '@/pages/locations-page';
 import { OrgLayout } from '@/pages/org-layout';
 import { OrgsPage } from '@/pages/orgs-page';
+import { SchedulePage } from '@/pages/schedule-page';
 
 /** Waits for the session check on page load, then lets logged-in users through. */
 function RequireAuth() {
@@ -50,6 +51,7 @@ export const router = createBrowserRouter([
             element: <OrgLayout />,
             children: [
               { index: true, element: <OrgHome /> },
+              { path: 'schedule', element: <SchedulePage /> },
               { path: 'locations', element: <LocationsPage /> },
               { path: 'employees', element: <EmployeesPage /> },
             ],

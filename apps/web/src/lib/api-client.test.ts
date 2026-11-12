@@ -111,6 +111,24 @@ describe('ApiClient', () => {
     expect(server.refreshCalls).not.toHaveBeenCalled();
   });
 
+  it('sends DELETE for the shifts endpoint (204 comes back with no body)', async () => {
+    const calls: { url: string; method?: string }[] = [];
+    const fetch = vi.fn(async (input: RequestInfo | URL, init: RequestInit = {}) => {
+      await Promise.resolve();
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      calls.push({ url, method: init.method });
+      if (url.endsWith('/auth/refresh')) {
+        return json(200, { accessToken: 'token-1', expiresIn: 900 });
+      }
+      return new Response(null, { status: 204 });
+    });
+    const client = new ApiClient({ baseUrl: '/api/v1', fetch });
+    await client.refresh();
+
+    await expect(client.delete('/shifts/shift-1', { orgId: 'org-1' })).resolves.toBeUndefined();
+    expect(calls.at(-1)).toMatchObject({ url: '/api/v1/shifts/shift-1', method: 'DELETE' });
+  });
+
   it('decodes field errors from a 400', async () => {
     const fetch = vi.fn(async () => {
       await Promise.resolve();
