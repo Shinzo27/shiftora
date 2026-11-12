@@ -14,7 +14,9 @@ import {
   shiftTemplateIssue,
   type CreateShiftRequest,
   type ListShiftsQuery,
+  type ScheduleConflicts,
   type Shift,
+  type ShiftConflict,
   type ShiftWriteResult,
   type UpdateShiftRequest,
 } from '@shiftora/shared';
@@ -224,6 +226,70 @@ export class ShiftsService {
       after: snapshot(updated),
     });
     return { shift: updated, warnings };
+  }
+
+  /**
+   * Every advisory on the week's assigned shifts, in one request and a handful of queries
+   * (availability, time off and other shifts are fetched for all the week's employees at
+   * once). Used by the board to badge shifts; the same pure checks run on every write.
+   *
+   * Overlap cannot exist between stored shifts (the exclusion constraint refuses it), but if
+   * it ever did it would be reported here like any other warning.
+   */
+  async conflicts(scheduleId: string): Promise<ScheduleConflicts> {
+    const schedule = await this.findSchedule(scheduleId);
+    const location = await this.access.assertAccess(schedule.locationId);
+    const rows = await this.shifts.listBySchedule(schedule.id);
+    const assigned = rows.filter((row) => row.employeeId !== null && row.status !== 'cancelled');
+    if (assigned.length === 0) return { scheduleId: schedule.id, conflicts: [] };
+
+    const employeeIds = [...new Set(assigned.map((row) => row.employeeId!))];
+    const week = weekBounds(schedule.weekStart, location.timezone);
+    const window = {
+      start: new Date(week.start.getTime() - REST_WINDOW_MS),
+      end: new Date(week.end.getTime() + REST_WINDOW_MS),
+    };
+    const [employees, availability, timeOff, otherShifts] = await Promise.all([
+      this.employees.findMany(employeeIds),
+      this.availability.slotsFor(employeeIds),
+      this.availability.timeOffFor(employeeIds, window.start, window.end),
+      this.shifts.forEmployees(employeeIds, window.start, window.end),
+    ]);
+
+    const byEmployee = new Map<string, ShiftRecord[]>();
+    for (const row of otherShifts) {
+      if (!row.employeeId) continue;
+      const own = byEmployee.get(row.employeeId) ?? [];
+      own.push(row);
+      byEmployee.set(row.employeeId, own);
+    }
+
+    const conflicts: ShiftConflict[] = [];
+    for (const row of assigned) {
+      const employee = employees.get(row.employeeId!);
+      if (!employee) continue; // outside the org's current data: nothing to check against
+      const start = toLocal(row.startsAt, location.timezone);
+      const end = toLocal(row.endsAt, location.timezone);
+      const warnings = validateShift({
+        candidate: {
+          startsAt: row.startsAt,
+          endsAt: row.endsAt,
+          breakMinutes: row.breakMinutes,
+          weekday: dayOfWeek(start.date),
+          startTime: start.time,
+          endTime: end.time,
+        },
+        timezone: location.timezone,
+        week,
+        availability: availability.get(row.employeeId!) ?? [],
+        timeOff: timeOff.get(row.employeeId!) ?? [],
+        otherShifts: (byEmployee.get(row.employeeId!) ?? []).filter((other) => other.id !== row.id),
+        maxWeeklyMinutes: employee.maxWeeklyMinutes,
+        minRestMinutes: employee.minRestMinutes,
+      });
+      if (warnings.length > 0) conflicts.push({ shiftId: row.id, warnings });
+    }
+    return { scheduleId: schedule.id, conflicts };
   }
 
   async remove(id: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, lt, ne, schema, sql } from '@shiftora/db';
+import { and, asc, eq, gt, inArray, lt, ne, schema, sql } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -72,6 +72,24 @@ export class ShiftsRepository {
     await this.context.tx
       .delete(shifts)
       .where(and(eq(shifts.orgId, this.context.orgId), eq(shifts.id, id)));
+  }
+
+  /** Several employees' live shifts in a window, in one query (week-board conflicts). */
+  async forEmployees(employeeIds: string[], from: Date, to: Date): Promise<ShiftRecord[]> {
+    if (employeeIds.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(shifts)
+      .where(
+        and(
+          eq(shifts.orgId, this.context.orgId),
+          inArray(shifts.employeeId, employeeIds),
+          ne(shifts.status, 'cancelled'),
+          lt(shifts.startsAt, to),
+          gt(shifts.endsAt, from),
+        ),
+      )
+      .orderBy(asc(shifts.employeeId), asc(shifts.startsAt));
   }
 
   /**

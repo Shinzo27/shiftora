@@ -89,6 +89,7 @@ export function ShiftSheet({
 
   function handleSaved(result: { warnings: ShiftWarning[] }) {
     void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, scheduleId] });
+    void queryClient.invalidateQueries({ queryKey: ['conflicts'], exact: false });
     if (result.warnings.length > 0) {
       setWarnings(result.warnings);
       toast.warning('Saved — have a look at the warnings', {
@@ -122,6 +123,7 @@ export function ShiftSheet({
     mutationFn: () => shiftsApi.remove(orgId, shift!.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, scheduleId] });
+      void queryClient.invalidateQueries({ queryKey: ['conflicts'], exact: false });
       toast.success('Shift removed');
       onClose();
     },

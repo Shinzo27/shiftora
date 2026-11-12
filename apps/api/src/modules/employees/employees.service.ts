@@ -73,6 +73,16 @@ export class EmployeesService {
     };
   }
 
+  /**
+   * Several employee records by id, without the per-caller location scope: only callers that
+   * have already established access to rows referencing these people (the week board, whose
+   * shifts are in scope) use it, and an out-of-scope employee simply has no such rows.
+   */
+  async findMany(ids: string[]): Promise<Map<string, EmployeeRecord>> {
+    const rows = await this.employees.findByIds(ids);
+    return new Map(rows.map((row) => [row.id, row]));
+  }
+
   async get(id: string): Promise<Employee> {
     const [employee] = await this.withRelations([await this.findAccessible(id)]);
     return employee!;

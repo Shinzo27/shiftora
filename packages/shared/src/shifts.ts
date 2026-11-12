@@ -109,3 +109,17 @@ export type ListShiftsQuery = z.output<typeof listShiftsQuery>;
  */
 export const shiftWriteResult = z.object({ shift, warnings: z.array(shiftWarning) });
 export type ShiftWriteResult = z.output<typeof shiftWriteResult>;
+
+/** The advisories attached to one shift on the board (only shifts that have any are listed). */
+export const shiftConflict = z.object({
+  shiftId: z.uuid(),
+  warnings: z.array(shiftWarning),
+});
+export type ShiftConflict = z.output<typeof shiftConflict>;
+
+/** A week's conflicts in one request, so the board can badge shifts without a call per shift. */
+export const scheduleConflicts = z.object({
+  scheduleId: z.uuid(),
+  conflicts: z.array(shiftConflict),
+});
+export type ScheduleConflicts = z.output<typeof scheduleConflicts>;

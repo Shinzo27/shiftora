@@ -21,6 +21,7 @@ import {
   type ListSchedulesQuery,
   type ListShiftTemplatesQuery,
   type Schedule,
+  type ScheduleConflicts,
   type ShiftTemplate,
   type UpdateShiftTemplateRequest,
 } from '@shiftora/shared';
@@ -28,6 +29,7 @@ import {
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { Roles } from '../tenancy/decorators.js';
 import { SchedulesService } from './schedules.service.js';
+import { ShiftsService } from './shifts.service.js';
 import { ShiftTemplatesService } from './shift-templates.service.js';
 
 /**
@@ -40,6 +42,7 @@ export class SchedulingController {
   constructor(
     private readonly templates: ShiftTemplatesService,
     private readonly schedules: SchedulesService,
+    private readonly shifts: ShiftsService,
   ) {}
 
   @Get('shift-templates')
@@ -81,6 +84,15 @@ export class SchedulingController {
   @Get('schedules/:id')
   getSchedule(@Param('id', ParseUUIDPipe) id: string): Promise<Schedule> {
     return this.schedules.get(id);
+  }
+
+  /**
+   * The week's conflict warnings in one request (availability, time off, weekly hours, rest),
+   * for the badges on the board.
+   */
+  @Get('schedules/:id/conflicts')
+  conflicts(@Param('id', ParseUUIDPipe) id: string): Promise<ScheduleConflicts> {
+    return this.shifts.conflicts(id);
   }
 
   @Post('schedules')

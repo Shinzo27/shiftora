@@ -25,9 +25,17 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { employeesApi, jobRolesApi, schedulesApi, shiftsApi } from '@/lib/api';
+import { ApiError } from '@/lib/api-client';
 import { errorMessage } from '@/lib/forms';
 import { useOrg } from '@/lib/org-context';
-import { fromCalendarDate, toCalendarDate, todayLocalDate, weekLabel } from '@/lib/week';
+import { applyShiftMove, conflictMap, type ShiftMoveRequest } from '@/lib/schedule';
+import {
+  fromCalendarDate,
+  readableDate,
+  toCalendarDate,
+  todayLocalDate,
+  weekLabel,
+} from '@/lib/week';
 
 /** How many employees the board loads at once (a week has to show them all). */
 const BOARD_LIMIT = 100;
@@ -80,6 +88,13 @@ export function SchedulePage() {
     enabled: Boolean(location),
   });
 
+  // One request for the whole week's advisories, so the chips can carry their badges.
+  const conflicts = useQuery({
+    queryKey: ['conflicts', orgId, schedule?.id],
+    queryFn: () => schedulesApi.conflicts(orgId, schedule!.id),
+    enabled: Boolean(schedule),
+  });
+
   const queryClient = useQueryClient();
   const createSchedule = useMutation({
     mutationFn: () => schedulesApi.create(orgId, { locationId: location!.id, weekStart }),
@@ -89,6 +104,54 @@ export function SchedulePage() {
     },
     onError: (error) =>
       toast.error("Couldn't start the schedule", { description: errorMessage(error) }),
+  });
+
+  /**
+   * Moving a chip is optimistic: the board shows the new cell at once, and the API's answer
+   * either confirms it or the previous list comes back. A stale `version` means someone else
+   * saved first, so the week is refetched and the manager is told why.
+   */
+  const moveShift = useMutation({
+    mutationFn: (move: ShiftMoveRequest) =>
+      shiftsApi.update(orgId, move.id, {
+        date: move.date,
+        employeeId: move.employeeId,
+        version: move.version,
+      }),
+    onMutate: async (move) => {
+      const key = ['shifts', orgId, schedule?.id];
+      await queryClient.cancelQueries({ queryKey: key });
+      const previous = queryClient.getQueryData<Shift[]>(key);
+      queryClient.setQueryData<Shift[]>(key, (list) => (list ? applyShiftMove(list, move) : list));
+      return { previous, key };
+    },
+    onError: (error, _move, context) => {
+      if (context?.previous) queryClient.setQueryData(context.key, context.previous);
+      const code = error instanceof ApiError ? error.code : '';
+      if (code === 'shift.version_conflict') {
+        toast.error('Someone else changed this shift', {
+          description: 'Showing the latest version of the week.',
+        });
+      } else if (code === 'shift.overlap') {
+        toast.error('That would double-book them', { description: errorMessage(error) });
+      } else {
+        toast.error("Couldn't move the shift", { description: errorMessage(error) });
+      }
+      void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, schedule?.id] });
+    },
+    onSuccess: ({ shift: saved, warnings }) => {
+      if (warnings.length > 0) {
+        toast.warning(`Moved — ${warnings[0]!.message}`);
+      } else {
+        toast.success(
+          `Moved to ${readableDate(saved.date)}${saved.employeeId ? '' : ' (open shift)'}`,
+        );
+      }
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, schedule?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['conflicts', orgId, schedule?.id] });
+    },
   });
 
   const failed = schedules.error ?? shifts.error ?? employees.error ?? jobRoles.error;
@@ -213,7 +276,9 @@ export function SchedulePage() {
             employees={employees.data?.items ?? []}
             shifts={shifts.data ?? []}
             jobRoles={jobRoles.data ?? []}
+            conflicts={conflictMap(conflicts.data?.conflicts)}
             onAdd={(cell) => setSheet({ shift: null, initial: cell })}
+            onMove={(move) => moveShift.mutate(move)}
             onEdit={(shift) =>
               setSheet({ shift, initial: { date: shift.date, employeeId: shift.employeeId } })
             }

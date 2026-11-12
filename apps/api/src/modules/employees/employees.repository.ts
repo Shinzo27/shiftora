@@ -71,6 +71,15 @@ export class EmployeesRepository {
     return row ?? null;
   }
 
+  /** Several employees by id (archived included: history points at them). */
+  async findByIds(ids: string[]): Promise<EmployeeRecord[]> {
+    if (ids.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(employees)
+      .where(and(eq(employees.orgId, this.context.orgId), inArray(employees.id, ids)));
+  }
+
   async create(fields: EmployeeFields): Promise<EmployeeRecord> {
     const [row] = await this.context.tx
       .insert(employees)

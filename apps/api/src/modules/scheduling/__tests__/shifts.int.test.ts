@@ -505,3 +505,126 @@ describe('who may schedule', () => {
     expect(res.body).toMatchObject({ code: 'org.required' });
   });
 });
+
+describe('a week’s conflicts in one request', () => {
+  interface Conflicts {
+    scheduleId: string;
+    conflicts: { shiftId: string; warnings: { code: string; message: string }[] }[];
+  }
+
+  /** Monday 09:00–17:00 only, 10 h a week, 11 h rest: three shifts cannot all fit. */
+  async function constrained() {
+    const base = await clinic();
+    const employeeId = await addEmployee(base.owner, base.org, {
+      locationIds: [base.locA],
+      maxWeeklyMinutes: 600,
+      minRestMinutes: 660,
+    });
+    await base.owner.call('PUT', `/employees/${employeeId}/availability`, {
+      org: base.org,
+      body: { slots: [{ weekday: 1, start: '09:00', end: '17:00' }] },
+    });
+    await base.owner.call('POST', `/employees/${employeeId}/time-off`, {
+      org: base.org,
+      body: { startsAt: '2026-11-09T12:00:00.000Z', endsAt: '2026-11-09T18:00:00.000Z' },
+    });
+    const late = await createShift(base.owner, base.org, {
+      scheduleId: base.scheduleA,
+      employeeId,
+      startTime: '18:00',
+      endTime: '22:00',
+    });
+    const tuesday = await createShift(base.owner, base.org, {
+      scheduleId: base.scheduleA,
+      employeeId,
+      date: '2026-11-10',
+      startTime: '09:00',
+      endTime: '13:00',
+    });
+    const wednesday = await createShift(base.owner, base.org, {
+      scheduleId: base.scheduleA,
+      employeeId,
+      date: '2026-11-11',
+      startTime: '07:00',
+      endTime: '11:00',
+    });
+    return { ...base, employeeId, late, tuesday, wednesday };
+  }
+
+  it('reports every advisory, grouped by shift', async () => {
+    const { owner, org, scheduleA, late, tuesday, wednesday } = await constrained();
+    const res = await owner.call('GET', `/schedules/${scheduleA}/conflicts`, { org });
+    expect(res.status).toBe(200);
+    const body = res.json<Conflicts>();
+    expect(body.scheduleId).toBe(scheduleA);
+
+    const byShift = new Map(body.conflicts.map((entry) => [entry.shiftId, entry.warnings]));
+    // 18:00 on Monday overlaps booked time off, sits outside 09:00–17:00, and the week
+    // (12 h) is over the 10 h cap — the cap belongs to the week, so every shift reports it.
+    expect(byShift.get(late.shift.id)?.map((warning) => warning.code)).toEqual([
+      'time_off',
+      'unavailable',
+      'max_weekly_hours',
+    ]);
+    // Tuesday is not in the availability pattern at all.
+    expect(byShift.get(tuesday.shift.id)?.map((warning) => warning.code)).toEqual([
+      'unavailable',
+      'max_weekly_hours',
+    ]);
+    expect(byShift.get(wednesday.shift.id)?.map((warning) => warning.code)).toEqual([
+      'unavailable',
+      'max_weekly_hours',
+    ]);
+    expect(
+      byShift.get(wednesday.shift.id)?.find((warning) => warning.code === 'max_weekly_hours')
+        ?.message,
+    ).toBe('This week would be 12 h (limit 10 h)');
+  });
+
+  it('flags too little rest once the neighbouring shift exists', async () => {
+    const { owner, org, scheduleA, employeeId, tuesday } = await constrained();
+    const night = await createShift(owner, org, {
+      scheduleId: scheduleA,
+      employeeId,
+      date: '2026-11-10',
+      startTime: '20:00',
+      endTime: '23:00',
+    });
+
+    const body = (
+      await owner.call('GET', `/schedules/${scheduleA}/conflicts`, { org })
+    ).json<Conflicts>();
+    const byShift = new Map(body.conflicts.map((entry) => [entry.shiftId, entry.warnings]));
+    expect(byShift.get(night.shift.id)?.map((warning) => warning.code)).toContain('min_rest');
+    // The afternoon shift that leaves only 7 h now warns in the other direction too.
+    expect(byShift.get(tuesday.shift.id)?.map((warning) => warning.code)).toContain('min_rest');
+  });
+
+  it('is empty for a week with nothing wrong, and ignores open shifts', async () => {
+    const { owner, org, scheduleA } = await clinic();
+    await createShift(owner, org, { scheduleId: scheduleA });
+    const body = (
+      await owner.call('GET', `/schedules/${scheduleA}/conflicts`, { org })
+    ).json<Conflicts>();
+    expect(body.conflicts).toEqual([]);
+  });
+
+  it('is a 404 outside the caller’s location scope and a 403 for employees', async () => {
+    const { manager, owner, org, scheduleB } = await clinic();
+    const outOfScope = await manager.call('GET', `/schedules/${scheduleB}/conflicts`, { org });
+    expect(outOfScope.status).toBe(404);
+
+    const staff = await addMember(t.app, owner, org, 'employee');
+    const forbidden = await staff.call('GET', `/schedules/${scheduleB}/conflicts`, { org });
+    expect(forbidden.status).toBe(403);
+  });
+
+  it('does not leak another organisation’s week', async () => {
+    const first = await clinic();
+    const other = await clinic();
+    const res = await other.owner.call('GET', `/schedules/${first.scheduleA}/conflicts`, {
+      org: other.org,
+    });
+    expect(res.status).toBe(404);
+  });
+});

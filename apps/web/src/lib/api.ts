@@ -13,6 +13,7 @@ import type {
   OrgSummary,
   Page,
   Schedule,
+  ScheduleConflicts,
   Shift,
   ShiftWriteResult,
   SignupRequest,
@@ -99,6 +100,9 @@ export const schedulesApi = {
   },
   create: (orgId: string, body: CreateScheduleRequest) =>
     api.post<Schedule>('/schedules', { orgId, body }),
+  /** Every advisory on the week's shifts, in one request (badges on the board). */
+  conflicts: (orgId: string, scheduleId: string) =>
+    api.get<ScheduleConflicts>(`/schedules/${scheduleId}/conflicts`, { orgId }),
 };
 
 export const shiftsApi = {

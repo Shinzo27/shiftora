@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, lt, schema } from '@shiftora/db';
+import { and, asc, eq, gt, inArray, lt, schema } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -20,6 +20,25 @@ export class AvailabilityRepository {
         and(eq(availability.orgId, this.context.orgId), eq(availability.employeeId, employeeId)),
       )
       .orderBy(asc(availability.weekday), asc(availability.startLocal));
+  }
+
+  /** Availability of several employees in one query (a week board's rows). */
+  async slotsForEmployees(employeeIds: string[]): Promise<AvailabilityRecord[]> {
+    if (employeeIds.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(availability)
+      .where(
+        and(
+          eq(availability.orgId, this.context.orgId),
+          inArray(availability.employeeId, employeeIds),
+        ),
+      )
+      .orderBy(
+        asc(availability.employeeId),
+        asc(availability.weekday),
+        asc(availability.startLocal),
+      );
   }
 
   async replaceSlots(
@@ -53,6 +72,23 @@ export class AvailabilityRepository {
       .from(timeOff)
       .where(and(...conditions))
       .orderBy(asc(timeOff.startsAt));
+  }
+
+  /** Time off of several employees that overlaps [from, to), in one query. */
+  async timeOffForEmployees(employeeIds: string[], from: Date, to: Date): Promise<TimeOffRecord[]> {
+    if (employeeIds.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(timeOff)
+      .where(
+        and(
+          eq(timeOff.orgId, this.context.orgId),
+          inArray(timeOff.employeeId, employeeIds),
+          gt(timeOff.endsAt, from),
+          lt(timeOff.startsAt, to),
+        ),
+      )
+      .orderBy(asc(timeOff.employeeId), asc(timeOff.startsAt));
   }
 
   async findTimeOff(id: string): Promise<TimeOffRecord | null> {

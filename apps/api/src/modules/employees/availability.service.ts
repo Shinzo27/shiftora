@@ -48,6 +48,39 @@ export class AvailabilityService {
     };
   }
 
+  /**
+   * Availability of several employees at once, for the week board's conflict badges. One
+   * query instead of one per row; the caller already has access to their shifts.
+   */
+  async slotsFor(
+    employeeIds: string[],
+  ): Promise<Map<string, { weekday: number; start: string; end: string }[]>> {
+    const rows = await this.repository.slotsForEmployees(employeeIds);
+    const byEmployee = new Map<string, { weekday: number; start: string; end: string }[]>();
+    for (const row of rows) {
+      const slots = byEmployee.get(row.employeeId) ?? [];
+      slots.push({ weekday: row.weekday, start: hhmm(row.startLocal), end: hhmm(row.endLocal) });
+      byEmployee.set(row.employeeId, slots);
+    }
+    return byEmployee;
+  }
+
+  /** Several employees' time off overlapping a window, in one query. */
+  async timeOffFor(
+    employeeIds: string[],
+    from: Date,
+    to: Date,
+  ): Promise<Map<string, { id: string; startsAt: Date; endsAt: Date }[]>> {
+    const rows = await this.repository.timeOffForEmployees(employeeIds, from, to);
+    const byEmployee = new Map<string, { id: string; startsAt: Date; endsAt: Date }[]>();
+    for (const row of rows) {
+      const periods = byEmployee.get(row.employeeId) ?? [];
+      periods.push({ id: row.id, startsAt: row.startsAt, endsAt: row.endsAt });
+      byEmployee.set(row.employeeId, periods);
+    }
+    return byEmployee;
+  }
+
   /** Replaces the whole weekly pattern (already checked for overlaps by the schema). */
   async set(employeeId: string, input: SetAvailabilityRequest): Promise<Availability> {
     const before = await this.get(employeeId);
