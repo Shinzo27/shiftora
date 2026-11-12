@@ -49,6 +49,11 @@ const REFRESH_LOCK = 'shiftora-auth-refresh';
  */
 export class ApiClient {
   private accessToken: string | null = null;
+
+  /** The current access token, for the realtime handshake. Never persisted, like the token. */
+  get token(): string | null {
+    return this.accessToken;
+  }
   private refreshInFlight: Promise<boolean> | null = null;
   private readonly fetchImpl: typeof fetch;
 

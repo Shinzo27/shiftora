@@ -20,6 +20,8 @@ import {
   type CreateShiftTemplateRequest,
   type ListSchedulesQuery,
   type ListShiftTemplatesQuery,
+  type PublishPreview,
+  type PublishResult,
   type Schedule,
   type ScheduleConflicts,
   type ShiftTemplate,
@@ -93,6 +95,19 @@ export class SchedulingController {
   @Get('schedules/:id/conflicts')
   conflicts(@Param('id', ParseUUIDPipe) id: string): Promise<ScheduleConflicts> {
     return this.shifts.conflicts(id);
+  }
+
+  /** What publishing would tell staff: the diff against the last publication. */
+  @Get('schedules/:id/publish-preview')
+  publishPreview(@Param('id', ParseUUIDPipe) id: string): Promise<PublishPreview> {
+    return this.schedules.publishPreview(id);
+  }
+
+  /** Publishes the week: one transaction, one outbox event, one audit row. */
+  @Post('schedules/:id/publish')
+  @HttpCode(200)
+  publish(@Param('id', ParseUUIDPipe) id: string): Promise<PublishResult> {
+    return this.schedules.publish(id);
   }
 
   @Post('schedules')

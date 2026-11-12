@@ -88,3 +88,13 @@ export function compactDuration(minutes: number): string {
   if (hours === 0) return `${rest}m`;
   return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
 }
+
+/** "12 Nov, 21:14" for a stored instant, in the viewer's own clock. */
+export function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(iso));
+}

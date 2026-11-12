@@ -46,9 +46,9 @@ pnpm lint && pnpm typecheck
 pnpm test              # unit (vitest)
 pnpm test:int          # integration (Testcontainers Postgres; needs Docker)
 pnpm build
+pnpm test:e2e          # Playwright (needs `pnpm dev` running, or it starts one)
 # added in later weeks:
 pnpm db:seed           # seed the "demo clinic" tenant
-pnpm test:e2e          # Playwright
 ```
 
 Toolchain notes:
@@ -71,7 +71,8 @@ Toolchain notes:
   (from `0000_foundation`), never `current_setting` directly.
 - API (NestJS 12, ESM): tests use Vitest + `unplugin-swc` because esbuild drops the decorator
   metadata Nest's DI needs. Share HTTP setup through `configureApp()` so tests match `main.ts`.
-  Read settings from the injected `AppConfig`, never `process.env`.
+  Read settings from the injected `AppConfig`, never `process.env` — the one exception is the
+  socket gateway's CORS origin, which is evaluated before DI exists (see gotchas).
 
 Before saying a task is done: `pnpm lint && pnpm typecheck && pnpm test` must pass, plus
 `pnpm test:int` if you touched SQL, migrations, tenancy, concurrency or queues. Report
@@ -164,6 +165,19 @@ Do this before writing any code, whatever tool or model you are:
   small lint fixes (e.g. `hooks/use-mobile.ts` uses `useSyncExternalStore`).
 - **Nest + Vitest:** tests compile with SWC (`unplugin-swc`); esbuild would drop the
   decorator metadata DI needs.
+- **WebSockets on Fastify need an explicit adapter:** `app.useWebSocketAdapter(new IoAdapter(app))`
+  in `main.ts`, or `@WebSocketGateway` silently never starts. It is installed in `main.ts` only,
+  which is what keeps the gateway inert in tests (no port, no handles to close).
+- **`@WebSocketGateway()` options run before dependency injection**, so the socket CORS origin is
+  read from `process.env.WEB_ORIGIN` at module load — the single setting in the API that does not
+  come from `AppConfig`. Don't "fix" it by injecting; the decorator cannot see DI.
+- **A schedule's `version` moves on every shift write** (`SchedulesRepository.touch`), so a UI
+  that shows "unpublished changes" must invalidate the schedule query too, not just shifts.
+  `version > published_version` is the only correct test for that badge.
+- **Playwright needs a running stack:** `pnpm test:e2e` reuses a local `pnpm dev` and starts one
+  in CI. The specs seed their own clinic through the API (the API must be on :4000, Postgres on
+  5433); `@types/node` is a dev dependency of `apps/web` **only** so the specs and
+  `playwright.config.ts` typecheck.
 - `pnpm-workspace.yaml` blocks package versions younger than 7 days; if an install fails on
   that, use the previous version or wait, don't remove the setting.
 
@@ -242,6 +256,9 @@ Do this before writing any code, whatever tool or model you are:
   `SELECT … FOR UPDATE` with a stable lock order, plus `Idempotency-Key` support. Add a
   concurrent test (`Promise.all` of N attempts → exactly one winner).
 - Don't remove the shifts exclusion constraint (no double-booking).
+- Realtime events are **hints to refetch**, never data: emit them from the service after the
+  write, catch failures (`RealtimeService` already does), and never let a socket problem fail a
+  request. HTTP remains the source of truth.
 
 ### Audit
 - Changes to schedules, shifts, time entries, pay rules, memberships and permissions write an

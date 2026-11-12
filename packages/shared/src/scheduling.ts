@@ -92,8 +92,10 @@ export const schedule = z.object({
   locationId: z.uuid(),
   weekStart: localDate,
   status: scheduleStatus,
-  /** Increases on every change; clients send it back to detect concurrent edits. */
+  /** Increases on every change (shifts included) and on each publish. */
   version: z.number().int(),
+  /** The version the last publication sent; `version > publishedVersion` = unpublished edits. */
+  publishedVersion: z.number().int().nullable(),
   /** The location's zone the week is counted in. */
   timezone: z.string(),
   /** Local Monday 00:00 and the next Monday 00:00, as UTC instants (167–169 h around DST). */

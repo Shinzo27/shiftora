@@ -87,10 +87,11 @@
 .
 ├── apps/
 │   ├── api/              # NestJS app (HTTP + WebSocket)
-│   │   └── src/modules/  # auth, tenancy, org, employees, scheduling, attendance,
-│   │                     # requests, pay, notifications, audit, realtime
+│   │   └── src/modules/  # auth, tenancy, orgs, employees, locations, job-roles,
+│   │                     # scheduling (shifts, publications), outbox, realtime, audit
 │   ├── worker/           # BullMQ processors + cron (imports domain modules)
 │   ├── web/              # React app: manager dashboard + employee PWA + kiosk route
+│   │                     # (e2e/ = Playwright specs, playwright.config.ts)
 │   └── solver/           # (later) Python OR-Tools worker
 ├── packages/
 │   ├── db/               # Drizzle schema, SQL migrations (incl. RLS), seed scripts
@@ -114,13 +115,13 @@
 | `billing` | plans, subscriptions, entitlements (employee/location limits, message quotas), coupons, GST invoices, Razorpay webhooks | `subscription.changed`, `payment.captured`, `invoice.issued` |
 | `platform-admin` | internal Shiftora staff console: coupons, subscription overview (no tenant business data in v1) | — |
 | `employees` | employee profiles, roles/skills, availability, credentials | `credential.expiring` |
-| `scheduling` | schedules, shifts, templates, coverage, auto-scheduler orchestration | `schedule.published`, `shift.changed` |
+| `scheduling` | schedules, shifts, publications, templates, coverage, auto-scheduler orchestration | `schedule.published` (outbox) |
 | `attendance` | time entries, kiosk QR secrets, offline sync, fraud flags | `clock.in`, `clock.out`, `attendance.flagged` |
 | `requests` | swap/drop/pickup requests, open-shift claims | `request.created`, `request.approved`, `open_shift.claimed` |
 | `pay` | pay rules (versioned), pay periods, timesheets, exports | `pay_period.approved` |
 | `notifications` | templates, channel routing, deliveries, provider adapters | — |
 | `audit` | append-only audit events | — |
-| `realtime` | Socket.IO gateway, rooms per `org:location:week` | — |
+| `realtime` | Socket.IO gateway (auth via the access token + RLS membership read), one room per `org`, `schedule.changed` events; inert when no ws adapter is installed (tests) | — |
 
 Rule: a module may read another module only through its exported service; never import
 another module's tables directly in queries.
@@ -174,7 +175,13 @@ credentials(id, org_id, employee_id, type, number, expires_on)
 
 shift_templates(id, org_id, location_id, job_role_id, name, start_local, end_local, days_mask)
 coverage_requirements(id, org_id, location_id, job_role_id, weekday, start_local, end_local, count)
-schedules(id, org_id, location_id, week_start_date, status: draft|published, version, published_at)
+schedules(id, org_id, location_id, week_start_date, status: draft|published,
+          version, published_version?, published_at?, published_by?)
+  -- CHECK published_version IS NULL OR published_version <= version
+  --   version > published_version ⇒ the board has edits staff were not told about (0007)
+schedule_publications(id, org_id, schedule_id, version, shifts jsonb, affected_employee_ids uuid[],
+                      published_by?, published_at)   -- what each publish actually sent (0007)
+  -- unique (schedule_id, version); never updated, only inserted
 shifts(id, org_id, schedule_id, location_id, job_role_id?, employee_id?,
        starts_at timestamptz, ends_at timestamptz, break_minutes 0–240,
        status: open|assigned|cancelled, version int, notes)
@@ -197,7 +204,9 @@ pay_rules(id, org_id, location_id?, effective_from, effective_to?, rules jsonb, 
 pay_periods(id, org_id, starts_on, ends_on, status: open|approved|exported)
 timesheet_lines(id, org_id, pay_period_id, employee_id, date, kind, minutes, rate_minor, amount_minor)
 
-outbox(id, org_id, topic, payload jsonb, created_at, published_at?)
+outbox(id, org_id, topic: 'entity.past_tense', payload jsonb, created_at, published_at?)
+  -- CHECK topic ~ '^[a-z_]+\.[a-z_]+$'; partial index on pending rows (published_at IS NULL)
+  -- written inside the request's transaction, relayed by the worker (week 4)
 notifications(id, org_id, employee_id, template, payload, created_at)
 deliveries(id, org_id, notification_id, channel, provider, provider_msg_id,
            status: queued|sent|delivered|failed, attempts, last_error, updated_at)
@@ -323,13 +332,29 @@ Money is stored as integer minor units (`*_minor`) with a currency code; duratio
   `disambiguation: 'compatible'`. Weeks run Monday–Sunday in the location's zone; a schedule
   week is 167, 168 or 169 hours long.
 
-### 7.3 Schedule publishing and live board
-- Edits to a `draft` schedule are silent. `Publish` bumps `schedules.version`, computes a diff
-  of affected employees vs the last published snapshot, and writes one `schedule.published`
-  outbox row in the same transaction.
-- Every shift mutation emits a realtime event to room `org:{org}:loc:{loc}:week:{date}`
-  after commit. Optimistic concurrency: shift updates send `version`; a stale version → 409,
-  the client refetches.
+### 7.3 Schedule publishing and live board (implemented, W2 D5–D6)
+- Edits to a schedule are silent until it is published. Every shift write bumps
+  `schedules.version`, so `version > published_version` is "the board has edits staff have not
+  been told about" — the badge, the Publish button's weight, and the dialog's premise all read
+  from those two numbers.
+- **Publishing** (`POST /schedules/:id/publish`) runs in the request's transaction:
+  1. snapshot the week's live shifts as local wall clock (`PublishedShift`);
+  2. diff that against the latest `schedule_publications` row — added / changed / removed, and
+     the employees on **both** sides of a change (`diffPublication`, pure);
+  3. bump `version` and `published_version` together, set status, moment and actor;
+  4. insert the publication (the record of what staff were told);
+  5. write **one** `schedule.published` outbox row carrying `affectedEmployeeIds`;
+  6. audit it.
+  Publishing a week with no edits is allowed and tells nobody (`affectedEmployeeIds: []`), but
+  it still records the publication — "we told them nothing new" is a fact worth keeping.
+  `GET /schedules/:id/publish-preview` computes the same diff without writing, which is what the
+  Publish dialog shows.
+- **Live board** (ADR 016): shift writes and publishes call `RealtimeService.scheduleChanged()`,
+  which emits `schedule.changed` to room `org:{orgId}`. The payload names the schedule; a client
+  refetches shifts, conflicts and the schedule only when the event belongs to the week on screen.
+  Events are a **hint to refetch**, never data: HTTP stays the source of truth.
+- Optimistic concurrency: shift updates send `version`; a stale version → 409, the client
+  refetches.
 
 ### 7.3a Shift conflicts: one hard rule, four warnings
 
@@ -473,6 +498,26 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   with a stable `code` (`packages/shared/src/problem.ts`); unexpected errors become a generic 500.
 - Not yet: email verification and password reset (need the email queue, week 4), 2FA.
 
+### 7.12 Realtime channel (implemented, W2 D6)
+```
+browser ──io(auth:{token})──▶ /socket.io ──▶ ScheduleGateway.handleConnection
+                                             verify access token (TokenService)
+                                             read memberships with RLS for that user
+                                             join "org:<id>" for each organisation
+services ──RealtimeService.scheduleChanged()──▶ server.to("org:<id>").emit("schedule.changed")
+```
+- **One room per organisation.** The payload carries `scheduleId`/`weekStart`, so the client
+  decides whether the open board is affected. Rooms keyed by location and week look tidier but go
+  stale the moment a manager's scope changes; a payload filter cannot.
+- **Auth is the HTTP token, and membership is re-read through RLS** — the socket gets exactly the
+  visibility an HTTP request would, with no bypass role. Failure closes the socket.
+- **Redis adapter when `REDIS_URL` is set** (`@socket.io/redis-adapter`), so several API
+  instances share rooms; without it a warning says realtime is single-process.
+- **Inert in tests.** `main.ts` installs `IoAdapter`; the test app does not, so the gateway never
+  starts and `RealtimeService` is a no-op. Every service stays callable from a test.
+- **Deployment note:** sticky sessions are not required (websocket transport is used first), but
+  if a load balancer terminates websockets it must allow the upgrade on `/socket.io`.
+
 ## 8. API conventions
 
 - REST, JSON, `/api/v1/...`. The organisation a request acts on is chosen with the
@@ -530,7 +575,8 @@ GET  /audit?entity=shift&entityId=
 ## 12. Environments and deployment
 
 - **Local:** `docker compose up` (Postgres, Redis, Mailpit, Grafana stack), `pnpm dev`.
-- **CI:** lint → typecheck → unit → integration (Testcontainers) → build → Docker images.
+- **CI:** lint → typecheck → unit → integration (Testcontainers) → build → Docker images, plus
+  a separate `e2e` job that boots compose + migrations and runs Playwright in Chromium.
 - **Prod:** API and worker as separate services from the same image (different start
   command); migrations run as a release step; daily DB backups + PITR; seeded "demo clinic"
   tenant reset nightly.
@@ -554,3 +600,4 @@ GET  /audit?entity=shift&entityId=
 | 013 | Message quotas: 1,000 WhatsApp + 200 SMS per paid location/month, fall back to push/email | Accepted (2026-11-03) |
 | 014 | Org selected per request with `X-Org-Id`; role loaded from the DB each request (not token claims) | Accepted (2026-11-05) |
 | 015 | Shift overlap blocks (DB exclusion constraint + 409); availability, time off, weekly hours and min rest are returned as warnings | Accepted (2026-11-06) |
+| 016 | Realtime over Socket.IO on the API's own server, one room per org, auth = the access token + RLS membership read, Redis adapter only when configured; events are refetch hints, not data | Accepted (2026-11-12) |

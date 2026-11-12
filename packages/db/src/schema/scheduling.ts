@@ -72,7 +72,10 @@ export const schedules = pgTable(
     /** The local Monday the week starts on. */
     weekStart: date({ mode: 'string' }).notNull(),
     status: scheduleStatus().notNull().default('draft'),
+    /** Increases on every change (shifts included) and on each publish. */
     version: integer().notNull().default(1),
+    /** The version the last publication sent: `version > published_version` = unpublished edits. */
+    publishedVersion: integer(),
     publishedAt: timestamptz(),
     publishedBy: uuid(),
     ...timestamps,
@@ -94,6 +97,10 @@ export const schedules = pgTable(
       sql`${t.status} <> 'published' or ${t.publishedAt} is not null`,
     ),
     check('schedules_version_positive', sql`${t.version} >= 1`),
+    check(
+      'schedules_published_version_behind',
+      sql`${t.publishedVersion} is null or ${t.publishedVersion} <= ${t.version}`,
+    ),
   ],
 );
 

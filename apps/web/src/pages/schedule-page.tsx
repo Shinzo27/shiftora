@@ -2,12 +2,21 @@ import { addDays, startOfWeek, type LocalDate } from '@shiftora/domain';
 import type { Shift } from '@shiftora/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { enGB } from 'date-fns/locale';
-import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, MapPin, Plus } from 'lucide-react';
+import {
+  CalendarCheck,
+  CalendarDays,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  MapPin,
+  Plus,
+} from 'lucide-react';
 import { Link } from 'react-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 
 import { ErrorState, PageHeader } from '@/components/page';
+import { PublishDialog } from '@/components/schedule/publish-dialog';
 import { ShiftSheet } from '@/components/schedule/shift-sheet';
 import { WeekBoard } from '@/components/schedule/week-board';
 import { Badge } from '@/components/ui/badge';
@@ -24,12 +33,14 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
-import { employeesApi, jobRolesApi, schedulesApi, shiftsApi } from '@/lib/api';
+import { api, employeesApi, jobRolesApi, schedulesApi, shiftsApi } from '@/lib/api';
 import { ApiError } from '@/lib/api-client';
 import { errorMessage } from '@/lib/forms';
+import { connectRealtime } from '@/lib/realtime';
 import { useOrg } from '@/lib/org-context';
 import { applyShiftMove, conflictMap, type ShiftMoveRequest } from '@/lib/schedule';
 import {
+  formatDateTime,
   fromCalendarDate,
   readableDate,
   toCalendarDate,
@@ -57,6 +68,7 @@ export function SchedulePage() {
   const today = todayLocalDate();
   const [weekStart, setWeekStart] = useState<LocalDate>(() => startOfWeek(today));
   const [sheet, setSheet] = useState<SheetState | null>(null);
+  const [publishing, setPublishing] = useState(false);
 
   // "All locations" has no single rota; with one branch there is nothing to choose.
   const location =
@@ -151,6 +163,7 @@ export function SchedulePage() {
     onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, schedule?.id] });
       void queryClient.invalidateQueries({ queryKey: ['conflicts', orgId, schedule?.id] });
+      void queryClient.invalidateQueries({ queryKey: ['schedules', orgId] });
     },
   });
 
@@ -162,6 +175,32 @@ export function SchedulePage() {
     (schedule !== null && shifts.isPending);
 
   const defaultDate = weekStart <= today && today <= addDays(weekStart, 6) ? today : weekStart;
+
+  // Someone else's write to this week (another manager, a phone) → refetch what is on screen.
+  // Depends on ids only: a new schedule object on every fetch must not reopen the socket.
+  const openScheduleId = schedule?.id ?? null;
+  useEffect(() => {
+    const token = api.token;
+    if (!token || !openScheduleId) return;
+    return connectRealtime(token, (event) => {
+      if (event.scheduleId !== openScheduleId) return;
+      void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, openScheduleId] });
+      void queryClient.invalidateQueries({ queryKey: ['conflicts', orgId, openScheduleId] });
+      void queryClient.invalidateQueries({ queryKey: ['schedules', orgId] });
+      if (event.kind === 'published') {
+        toast.info('This week was published by someone else', {
+          description: 'The board now matches what staff were told.',
+        });
+      }
+    });
+  }, [orgId, openScheduleId, queryClient]);
+
+  // "The board has edits staff have not been told about": cheap, from the schedule's versions.
+  const unpublishedChanges = schedule
+    ? schedule.publishedVersion === null
+      ? (shifts.data?.length ?? 0) > 0
+      : schedule.version > schedule.publishedVersion
+    : false;
 
   return (
     <>
@@ -177,14 +216,23 @@ export function SchedulePage() {
             <div className="flex flex-wrap items-center gap-2">
               <WeekNav weekStart={weekStart} today={today} onChange={setWeekStart} />
               {canManage ? (
-                <Button
-                  onClick={() =>
-                    setSheet({ shift: null, initial: { date: defaultDate, employeeId: null } })
-                  }
-                  disabled={!schedule}
-                >
-                  <Plus /> Add shift
-                </Button>
+                <>
+                  <Button
+                    variant={unpublishedChanges ? 'default' : 'outline'}
+                    onClick={() => setPublishing(true)}
+                    disabled={!schedule}
+                  >
+                    <CalendarCheck /> Publish
+                  </Button>
+                  <Button
+                    onClick={() =>
+                      setSheet({ shift: null, initial: { date: defaultDate, employeeId: null } })
+                    }
+                    disabled={!schedule}
+                  >
+                    <Plus /> Add shift
+                  </Button>
+                </>
               ) : null}
             </div>
           ) : null
@@ -264,6 +312,16 @@ export function SchedulePage() {
             <Badge variant={schedule.status === 'published' ? 'default' : 'secondary'}>
               {schedule.status === 'published' ? 'Published' : 'Draft'}
             </Badge>
+            {schedule.publishedAt ? (
+              <span className="text-xs text-muted-foreground">
+                {formatDateTime(schedule.publishedAt)}
+              </span>
+            ) : null}
+            {unpublishedChanges ? (
+              <Badge variant="outline" className="border-warning/50 text-warning">
+                {schedule.publishedVersion === null ? 'Not published yet' : 'Unpublished changes'}
+              </Badge>
+            ) : null}
             <span className="text-xs text-muted-foreground">
               {shifts.data?.length ?? 0} shift{shifts.data?.length === 1 ? '' : 's'} ·{' '}
               {employees.data?.items.length ?? 0} people
@@ -285,6 +343,15 @@ export function SchedulePage() {
           />
         </>
       )}
+
+      {publishing && schedule ? (
+        <PublishDialog
+          orgId={orgId}
+          schedule={schedule}
+          employees={employees.data?.items ?? []}
+          onClose={() => setPublishing(false)}
+        />
+      ) : null}
 
       {sheet ? (
         <ShiftSheetDialog

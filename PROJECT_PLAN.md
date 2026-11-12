@@ -80,43 +80,57 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 D2 | `shifts` with an exclusion constraint (no double-booking), shift CRUD API, conflict checks as pure functions | ✅ Done | `345176c` |
 | W2 D3 | Week board UI: rows by employee, colour per job role, today marker, shift create/edit in a Sheet with react-hook-form + Zod, week navigation with shadcn Calendar | ✅ Done | `0338f3e` |
 | W2 D4 | Drag-and-drop with dnd-kit, optimistic moves, conflict badges from a week conflicts endpoint, stale-version toast + refetch | ✅ Done | (uncommitted) |
-| **W2 D5** | **Publish flow: draft → published, diff of affected employees, `outbox` + `schedule.published` in one transaction** | ⏭ **Next** | |
+| W2 D5 | Publish: `schedule_publications` + `outbox` (`0007`), publish-preview and publish endpoints, the diff against the last publication, the Publish dialog, `publishedVersion` and the "Unpublished changes" badge | ✅ Done | (uncommitted) |
+| W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 7 migrations, 357 automated tests (193 unit, 164 integration against real
-Postgres), 53 API endpoints, a React web app on shadcn/ui (login, orgs, locations, employees,
-the draggable week board with conflict badges; light and dark; axe clean on WCAG 2.1 A/AA).
+Numbers today: 8 migrations, 379 automated tests (204 unit, 175 integration against real
+Postgres) plus 2 Playwright end-to-end tests, 55 API endpoints, a React web app on shadcn/ui
+(login, orgs, locations, employees, the draggable week board with conflict badges, the publish
+flow, live updates over a socket; light and dark; axe clean on WCAG 2.1 A/AA).
 
 ### Handoff note (update at the end of every session)
 
 > Last session: 2026-11-12 (Hermes, second dev machine).
 >
-> - **Done:** W2 D4. `GET /schedules/:id/conflicts` (one request, three batched queries) feeds
->   warning badges on the board; chips drag between cells with dnd-kit (pointer, touch-hold and
->   keyboard), a Motion overlay, an optimistic move that rolls back on error, and a stale
->   `version` answering `409 shift.version_conflict` → toast + refetch.
-> - **Checks:** 193 unit + 164 integration tests, lint, typecheck, build green. In Chrome:
->   pointer drag moved a shift between two employees/days with the overlay visible; a drop that
->   would double-book answered 409 and rolled back; a shift edited by "another manager" through
->   the API refused the stale drag and the board refetched (09:00–19:00); the tooltip shows the
->   warning text; keyboard drag (Space, arrows, Space) works; axe 0 violations, no console errors.
-> - **Uncommitted at hand-off:** W2 D4 (the owner commits). Suggested message:
->   `feat(scheduling): week conflicts endpoint and drag-and-drop moves`.
-> - **Next:** W2 D5, the publish flow (see §14): `0007_outbox`, a publish endpoint with the diff
->   of affected employees, one `schedule.published` row in the same transaction, Publish button.
-> - **Open question for the owner:** the publish diff needs a record of what was last published
->   (`schedules.published_snapshot jsonb` vs a `schedule_publications` table) and a rule for
->   republishing after edits. That is the one design decision D5 needs.
-> - **Watch out for:** dnd-kit sensor options must be module constants — a fresh options object
->   each render recreates the sensor mid-drag and silently cancels it. The web bundle is now
->   1,093 kB (339 kB gzip) in one chunk, so the W3 D1 route splitting matters more.
->   Integration tests need `--no-file-parallelism` on this Docker host; `format:check` fails
->   locally because of CRLF.
-
-Working agreement: **the owner commits and pushes**; agents prepare changes, run every check,
-and propose a Conventional Commit message. Ask before adding a dependency.
-
----
+> - **Done: W2 D5 and D6 — week 2 is complete.**
+>   - **Publish** (`0007_publications`): `schedule_publications` stores what each publish
+>     actually sent; `schedules.published_version` (+ CHECK `published_version <= version`)
+>     makes `version > published_version` mean "edits staff have not been told about".
+>     `GET /schedules/:id/publish-preview` returns the diff against the last publication
+>     (added / changed / removed, plus affected employee ids — both sides of a re-assignment);
+>     `POST /schedules/:id/publish` does it all in one transaction: bump both versions, record
+>     the publication, write **one** `schedule.published` outbox row, audit it. Publishing twice
+>     with no edits tells nobody (`affectedEmployeeIds: []`) but still records the publication —
+>     "we told them nothing new" is itself a fact. The Publish dialog shows the diff as counts
+>     and names, and disables itself when it is empty.
+>   - **Realtime** (ADR 016): `RealtimeModule` + `ScheduleGateway`. The handshake verifies the
+>     access token and joins `org:<id>` rooms only for organisations the user really belongs to,
+>     read through RLS with that user's context. `RealtimeService.scheduleChanged()` is called by
+>     the shift writes and by publish; the open board refetches shifts, conflicts and the
+>     schedule when the event names its week, and toasts when someone else published. The Redis
+>     adapter attaches when `REDIS_URL` is set (`.env` has it), otherwise it is single-process.
+>   - **E2E:** Playwright in `apps/web/e2e` seeds its own clinic through the public API, then
+>     drives login → board → add shift → publish in Chromium. `pnpm test:e2e`; a separate CI job
+>     starts compose + migrations first.
+> - **Checks:** 204 unit + 175 integration + 2 E2E, lint, typecheck, build green. Verified in
+>   Chrome: the publish preview read "9 new shifts / 4 people will be told (Asha, Ravi, Nina,
+>   Imran)"; after publishing, the badge read "Published 12 Nov, 12:19"; an edit flipped it to
+>   "Unpublished changes" and the next preview said "1 changed / 1 person will be told"; a shift
+>   created through the API appeared on the open board with no reload; an API publish updated the
+>   badge live.
+> - **Uncommitted at hand-off:** W2 D5 and D6 (the owner commits). Suggested messages, in order:
+>   `feat(scheduling): publish weeks with an outbox event and a diff`,
+>   `feat(realtime): live board updates over Socket.IO`,
+>   `test(e2e): Playwright happy path for build-and-publish`.
+> - **Next:** W3 D1 — attendance: geofenced clock-in, the `attendance` table, the clock screen.
+>   Also the web bundle (1,093 kB → per-route chunks) deferred from W2.
+> - **Watch out for:** `@WebSocketGateway` options are evaluated before DI, so CORS reads
+>   `WEB_ORIGIN` from `process.env` (the only setting not taken from `AppConfig`; noted in
+>   AGENTS.md). With Fastify, `app.useWebSocketAdapter(new IoAdapter(app))` in `main.ts` is what
+>   starts the gateway — and its absence is why the gateway is inert in tests. Playwright reuses
+>   a running dev server locally and starts one in CI. Integration tests still need
+>   `--no-file-parallelism` here; `format:check` still fails locally on CRLF.
 
 ## 3. Product
 
@@ -266,6 +280,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | The board loads **one page of up to 100 employees** for the location and says so when there is more; server-side search stays a follow-up | 2026-11-12 |
 | — | The Schedule nav item is managers-only until "my shifts" ships for employees (W3) | 2026-11-12 |
 | — | **`GET /schedules/:id/conflicts`** returns the week's advisories in one request (`shiftId → warnings`), computed from three batched queries; the board badges chips from it instead of asking per shift | 2026-11-12 |
+| — | **What was published is a table, not a jsonb snapshot on the schedule** (`schedule_publications`): the audit trail of what staff were told, an audience for the notification worker, and the diff becomes a plain comparison against the latest row | 2026-11-12 |
+| — | **`schedules.published_version` is a second counter, not a boolean**: `version > published_version` answers "has the board changed since staff were told?" without diffing, and the CHECK constraint keeps it honest | 2026-11-12 |
+| — | **Realtime is a refetch hint, not data** (ADR 016): Socket.IO over the API's own server, one room per organisation, payload names the schedule; clients refetch over HTTP, so a dropped event costs freshness and never correctness. Redis adapter only when `REDIS_URL` is set | 2026-11-12 |
 | — | A **drag changes the date and/or the assignee only** — never the times (they live in the sheet). Dropping on the open-shifts row unassigns; dropping on a person assigns | 2026-11-12 |
 | — | Moves are **optimistic**: the chip lands at once, the previous list is restored on any error, and a stale `version` shows "Someone else changed this shift" then refetches the week | 2026-11-12 |
 | — | Keyboard drag works (Space to pick up, arrows, Space to drop) and a plain click still opens the sheet: PointerSensor activates after 5 px, TouchSensor after a 250 ms hold | 2026-11-12 |
@@ -535,7 +552,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0005)
+### 10.1 Implemented (migrations 0000–0007)
 
 | Migration | Contents |
 |---|---|
@@ -545,6 +562,7 @@ Fastify
 | `0003_locations` | `location_status` enum; `locations`, `departments`, `job_roles`, `membership_locations`; same-org composite FKs; coordinate/radius CHECKs; RLS |
 | `0004_employees` | `employee_status`, `notify_channel` enums; `employees`, `employee_job_roles`, `employee_locations`, `availability`, `time_off`; same-org FKs; CHECKs; RLS |
 | `0005_scheduling` | `schedule_status` enum; `shift_templates`, `schedules`; same-org FKs (job role FK `ON DELETE SET NULL (job_role_id)`, hand-edited); Monday, break and time CHECKs; RLS |
+| `0007_publications` | `outbox` (topic `entity.past_tense`, jsonb payload, `published_at` null = pending, partial index); `schedule_publications` (what each publish sent, affected employee ids); `schedules.published_version` + CHECK `published_version <= version`; RLS on both new tables |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
 ```
@@ -570,8 +588,14 @@ time_off       (id, org_id, employee_id, starts_at, ends_at, reason?, …)      
 shift_templates (id, org_id, location_id, name citext, start_time time, end_time time,
                 break_minutes 0–240, job_role_id?, …)                RLS, unique (location_id, name), start ≠ end
 schedules      (id, org_id, location_id, week_start date (Monday), status draft|published,
-                version ≥ 1, published_at?, published_by?, …)   RLS, unique (location_id, week_start),
+                version ≥ 1, published_version?, published_at?, published_by?, …)
+                                       CHECK published_version IS NULL OR published_version <= version   RLS, unique (location_id, week_start),
                                                           unique (org_id, id, location_id)   ← FK target
+outbox         (id, org_id, topic (entity.past_tense, CHECK ^[a-z_]+\.[a-z_]+$), payload jsonb,
+                created_at, published_at?)          RLS, partial index on pending rows
+schedule_publications (id, org_id, schedule_id, version, shifts jsonb (what was sent),
+                affected_employee_ids uuid[], published_by?, published_at)
+                                            RLS, unique (schedule_id, version)
 shifts         (id, org_id, schedule_id, location_id, job_role_id?, employee_id?,
                 starts_at, ends_at timestamptz, break_minutes 0–240, status open|assigned|cancelled,
                 version ≥ 1, notes?, …)                         RLS, FK (org_id, schedule_id, location_id),
@@ -587,7 +611,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 
 | Week | Tables |
 |---|---|
-| W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), `outbox` |
+| W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), ~~`outbox`, `schedule_publications`~~ (0007) |
 | W3 | `time_entries` (method gps/qr/manual, geo, accuracy, client_event_id unique, flags) |
 | W4 | `notifications`, `deliveries`, `message_usage` |
 | W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
@@ -648,6 +672,8 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `PATCH /shifts/:id` | token + org | owner, manager (in scope); partial, `version` → 409 when stale; `{ shift, warnings }` |
 | `DELETE /shifts/:id` | token + org | owner, manager (in scope); audited |
 | `GET /schedules/:id/conflicts` | token + org | owner, manager (in scope); every advisory on the week's assigned shifts, keyed by shift id |
+| `GET /schedules/:id/publish-preview` | token + org | owner, manager (in scope); the diff against the last publication + `hasChanges`, read-only |
+| `POST /schedules/:id/publish` | token + org | owner, manager (in scope), writable location; 200 with `{ schedule, publication }`; one `schedule.published` outbox row + one audit row in the same transaction |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
 `auth.unauthenticated`, `auth.email_taken`, `auth.invalid_credentials`,
@@ -670,10 +696,10 @@ clients may retry (clock-in, claim, swap; from week 3); OpenAPI generation plann
 
 | Kind | Tool | Where | Today |
 |---|---|---|---|
-| Unit | Vitest | `*.test.ts` next to code | 193 |
+| Unit | Vitest | `*.test.ts` next to code | 204 |
 | Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 53 |
-| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 111 |
-| E2E | Playwright | planned with the web app | — |
+| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 122 |
+| E2E | Playwright | `apps/web/e2e/*.spec.ts` (`pnpm test:e2e`) | 2 |
 | Property | fast-check | planned for pay rules and scheduler | — |
 
 Required per change: pure logic → unit tests; SQL/migrations → integration incl. cross-tenant
@@ -751,8 +777,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D2 | ✅ | `shifts` (timestamptz range, open/assigned/cancelled, version) with **exclusion constraint** (no double-booking, across locations); shift CRUD API (local times in, instants out, `{ shift, warnings }`); conflict checks as pure functions in `packages/domain/src/scheduling`: overlap, availability, time off, max weekly hours, min rest | Double-booking rejected by the DB (integration test) and by the API with a friendly 409; 28 validation unit tests |
 | D3 | ✅ | Week board UI with shadcn components (rows by employee; colour per job role; today marker; sticky header and team column; scheduled hours per day), shift create/edit/delete in a Sheet using **react-hook-form + Zod** (first complex form), week navigation (prev/next/today + shadcn Calendar that snaps to Monday) | Manager builds a week by hand; done in Chrome: start a week, add/edit/delete shifts, overlap refused with a clear message, warnings stay on screen, dark mode and 390 px checked, axe clean |
 | D4 | ✅ | Drag-and-drop (dnd-kit) with a Motion drag overlay, optimistic moves with rollback, conflict warnings as badges + tooltips from `GET /schedules/:id/conflicts`, optimistic concurrency (`version` → 409 toast + refetch); keyboard drag and touch-hold included | Two managers editing: the stale one gets "Someone else changed this shift" and the week refetches (verified in Chrome, version bumped through the API) |
-| D5 | ⏭ | Publish flow (draft → published, diff of changed employees); `outbox` table + `schedule.published` event in the same transaction | Publishing writes exactly one outbox row; edits after publish produce a diff |
-| D6 | ☐ | Socket.IO + Redis adapter, room per org/location/week; Playwright E2E for the build-and-publish happy path | Second browser sees changes live |
+| D5 | ✅ | Publish flow (draft → published, diff of changed employees); `outbox` table + `schedule.published` event in the same transaction; `0007_publications` | Publishing writes exactly one outbox row; edits after publish produce a diff (11 integration tests; verified in Chrome) |
+| D6 | ✅ | Socket.IO + Redis adapter, one room per org (ADR 016); Playwright E2E for the build-and-publish happy path | Second browser sees changes live (verified: an API write appeared on the open board without a reload) |
 
 ### Week 3: Attendance (geofenced clock-in, timesheets)
 
@@ -890,7 +916,7 @@ invoice format sign-off with a CA (values are config, not code).
 | `auth.int.test.ts` could reuse `src/testing/test-app.ts` | Any time |
 | Web bundle is 1,093 kB / 339 kB gzip (one chunk, now including the schedule page, dnd-kit and Motion): split per route with React Router `lazy` | W3 D1 (PWA) |
 | Employee search filters only the pages already loaded; add server-side `q` to `GET /employees` when lists get long (the board shows the first 100 of a location) | W3+ |
-| Browser E2E tests (Playwright) for login → org → location → employee | W2 D6 |
+| ~~Browser E2E tests (Playwright)~~ Done: `pnpm test:e2e` builds a clinic through the API, then drives login → board → add shift → publish; extend to clock-in in W3 | ✅ W2 D6 |
 | Domain time helpers use `Temporal`; check browser support (Safari) before the web calls them, else add `temporal-polyfill` (ask first) | W2 D3 |
 | ~~Shift warnings are computed on write only~~ Done: `GET /schedules/:id/conflicts` feeds the board's badges | ✅ W2 D4 |
 

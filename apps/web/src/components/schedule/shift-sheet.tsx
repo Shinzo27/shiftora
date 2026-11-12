@@ -90,6 +90,8 @@ export function ShiftSheet({
   function handleSaved(result: { warnings: ShiftWarning[] }) {
     void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, scheduleId] });
     void queryClient.invalidateQueries({ queryKey: ['conflicts'], exact: false });
+    // The schedule's version moved (unpublished changes), so the badges must re-read it.
+    void queryClient.invalidateQueries({ queryKey: ['schedules', orgId] });
     if (result.warnings.length > 0) {
       setWarnings(result.warnings);
       toast.warning('Saved — have a look at the warnings', {
@@ -124,6 +126,7 @@ export function ShiftSheet({
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, scheduleId] });
       void queryClient.invalidateQueries({ queryKey: ['conflicts'], exact: false });
+      void queryClient.invalidateQueries({ queryKey: ['schedules', orgId] });
       toast.success('Shift removed');
       onClose();
     },

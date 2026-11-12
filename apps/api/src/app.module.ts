@@ -9,6 +9,7 @@ import { InvitesModule } from './modules/invites/invites.module.js';
 import { JobRolesModule } from './modules/job-roles/job-roles.module.js';
 import { LocationsModule } from './modules/locations/locations.module.js';
 import { OrgsModule } from './modules/orgs/orgs.module.js';
+import { RealtimeModule } from './modules/realtime/realtime.module.js';
 import { SchedulingModule } from './modules/scheduling/scheduling.module.js';
 import { TenancyModule } from './modules/tenancy/tenancy.module.js';
 
@@ -24,6 +25,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     JobRolesModule,
     EmployeesModule,
     SchedulingModule,
+    RealtimeModule, // sockets: a change on one screen reaches the others
     HealthModule,
   ],
 })

@@ -18,7 +18,8 @@
     "infra:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "infra:down": "docker compose -f infra/docker-compose.yml down",
     "db:generate": "pnpm --filter @shiftora/db generate",
-    "db:migrate": "turbo run build --filter=@shiftora/db && pnpm --filter @shiftora/db migrate"
+    "db:migrate": "turbo run build --filter=@shiftora/db && pnpm --filter @shiftora/db migrate",
+    "test:e2e": "turbo run test:e2e"
   },
   "devDependencies": {
     "prettier": "^3.9.10",

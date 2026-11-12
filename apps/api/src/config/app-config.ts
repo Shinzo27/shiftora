@@ -10,6 +10,8 @@ export class AppConfig {
   readonly accessTokenTtlSeconds: number;
   readonly refreshTokenTtlDays: number;
   readonly webOrigin: string;
+  /** Null when realtime runs in a single process (no Redis configured). */
+  readonly redisUrl: string | null;
   /** Cookies get the Secure flag only in production, so local http works. */
   readonly secureCookies: boolean;
 
@@ -22,6 +24,7 @@ export class AppConfig {
     this.accessTokenTtlSeconds = env.ACCESS_TOKEN_TTL_SECONDS;
     this.refreshTokenTtlDays = env.REFRESH_TOKEN_TTL_DAYS;
     this.webOrigin = env.WEB_ORIGIN;
+    this.redisUrl = env.REDIS_URL ?? null;
     this.secureCookies = env.NODE_ENV === 'production';
   }
 }

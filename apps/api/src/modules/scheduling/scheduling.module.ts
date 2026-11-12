@@ -5,6 +5,9 @@ import { AuditModule } from '../audit/audit.module.js';
 import { EmployeesModule } from '../employees/employees.module.js';
 import { JobRolesModule } from '../job-roles/job-roles.module.js';
 import { LocationsModule } from '../locations/locations.module.js';
+import { OutboxModule } from '../outbox/outbox.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
+import { PublicationsRepository } from './publications.repository.js';
 import { SchedulesRepository } from './schedules.repository.js';
 import { SchedulesService } from './schedules.service.js';
 import { SchedulingController } from './scheduling.controller.js';
@@ -19,7 +22,15 @@ import { ShiftsService } from './shifts.service.js';
  * the availability, time off and hour limits that a shift is checked against.
  */
 @Module({
-  imports: [DatabaseModule, AuditModule, LocationsModule, JobRolesModule, EmployeesModule],
+  imports: [
+    DatabaseModule,
+    AuditModule,
+    LocationsModule,
+    JobRolesModule,
+    EmployeesModule,
+    OutboxModule,
+    RealtimeModule,
+  ],
   controllers: [SchedulingController, ShiftsController],
   providers: [
     ShiftTemplatesService,
@@ -28,6 +39,7 @@ import { ShiftsService } from './shifts.service.js';
     ShiftTemplatesRepository,
     SchedulesRepository,
     ShiftsRepository,
+    PublicationsRepository,
   ],
 })
 export class SchedulingModule {}

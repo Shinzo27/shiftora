@@ -12,6 +12,8 @@ const envSchema = z
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
+    /** Optional: with it, realtime events reach every API instance; without it, one process. */
+    REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })
   .refine(
     (env) => env.NODE_ENV !== 'production' || !env.JWT_ACCESS_SECRET.startsWith(DEV_SECRET_PREFIX),

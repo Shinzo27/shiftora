@@ -3,6 +3,12 @@ export { parseLocalTime, validateWeeklySlots } from './availability/weekly.js';
 export type { AssignableRole, MemberRole } from './tenancy/roles.js';
 export { assignableRoles, canAssignRole, memberRoles } from './tenancy/roles.js';
 export type {
+  PublicationChange,
+  PublicationDiff,
+  PublishedShift,
+} from './scheduling/publication.js';
+export { diffPublication } from './scheduling/publication.js';
+export type {
   AvailabilitySlot,
   ShiftHours,
   ShiftSpan,

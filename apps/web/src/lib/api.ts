@@ -12,6 +12,8 @@ import type {
   LoginRequest,
   OrgSummary,
   Page,
+  PublishPreview,
+  PublishResult,
   Schedule,
   ScheduleConflicts,
   Shift,
@@ -103,6 +105,11 @@ export const schedulesApi = {
   /** Every advisory on the week's shifts, in one request (badges on the board). */
   conflicts: (orgId: string, scheduleId: string) =>
     api.get<ScheduleConflicts>(`/schedules/${scheduleId}/conflicts`, { orgId }),
+  /** What a publish would change and who it would tell — read-only. */
+  publishPreview: (orgId: string, scheduleId: string) =>
+    api.get<PublishPreview>(`/schedules/${scheduleId}/publish-preview`, { orgId }),
+  publish: (orgId: string, scheduleId: string) =>
+    api.post<PublishResult>(`/schedules/${scheduleId}/publish`, { orgId }),
 };
 
 export const shiftsApi = {

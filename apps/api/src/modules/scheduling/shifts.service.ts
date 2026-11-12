@@ -27,7 +27,9 @@ import { AuditService } from '../audit/audit.service.js';
 import { AvailabilityService } from '../employees/availability.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import { JobRolesService } from '../job-roles/job-roles.service.js';
+import { RequestContext } from '../../database/request-context.js';
 import { LocationAccess } from '../locations/location-access.service.js';
+import { RealtimeService } from '../realtime/realtime.service.js';
 import type { LocationRecord } from '../locations/locations.repository.js';
 import { SchedulesRepository, type ScheduleRecord } from './schedules.repository.js';
 import { ShiftsRepository, type ShiftRecord, type ShiftValues } from './shifts.repository.js';
@@ -104,7 +106,20 @@ export class ShiftsService {
     private readonly availability: AvailabilityService,
     private readonly jobRoles: JobRolesService,
     private readonly audit: AuditService,
+    private readonly realtime: RealtimeService,
+    private readonly context: RequestContext,
   ) {}
+
+  /** Other screens looking at this week should refetch (the write has landed by now). */
+  private announce(schedule: ScheduleRecord, locationId: string): void {
+    this.realtime.scheduleChanged({
+      orgId: this.context.orgId,
+      scheduleId: schedule.id,
+      locationId,
+      weekStart: schedule.weekStart,
+      kind: 'shifts',
+    });
+  }
 
   async list(query: ListShiftsQuery): Promise<Shift[]> {
     const schedule = await this.findSchedule(query.scheduleId);
@@ -158,6 +173,8 @@ export class ShiftsService {
       notes: body.notes ?? null,
     };
     const row = await this.write(() => this.shifts.create(values));
+    await this.schedules.touch(schedule.id);
+    this.announce(schedule, location.id);
     const created = toShift(row, location.timezone);
     await this.audit.record({
       action: 'shift.created',
@@ -216,6 +233,8 @@ export class ShiftsService {
     };
     const row = await this.write(() => this.shifts.update(id, current.version, values));
     if (!row) throw versionConflict();
+    await this.schedules.touch(schedule.id);
+    this.announce(schedule, location.id);
 
     const updated = toShift(row, location.timezone);
     await this.audit.record({
@@ -293,8 +312,10 @@ export class ShiftsService {
   }
 
   async remove(id: string): Promise<void> {
-    const { row, location } = await this.findShift(id, { writable: true });
+    const { row, schedule, location } = await this.findShift(id, { writable: true });
     await this.shifts.remove(id);
+    await this.schedules.touch(schedule.id);
+    this.announce(schedule, location.id);
     await this.audit.record({
       action: 'shift.removed',
       entity: 'shift',
