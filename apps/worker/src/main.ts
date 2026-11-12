@@ -1,26 +1,42 @@
 import { createDatabaseConnection } from '@shiftora/db';
-import type { Queue } from 'bullmq';
+import { Worker, type Queue } from 'bullmq';
 
 import { parseWorkerEnv } from './env.js';
+import { handleNotificationJob } from './handlers.js';
+import { createMailer } from './mailer.js';
+import { dispatchDelivery } from './notifications/dispatch.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
-import { connectionOptions, createRedis, notificationsQueue } from './queues.js';
+import {
+  connectionOptions,
+  createRedis,
+  DELIVERIES_QUEUE,
+  deliveriesQueue,
+  NOTIFICATIONS_QUEUE,
+  notificationsQueue,
+  type DeliveryJobData,
+  type NotificationJob,
+} from './queues.js';
 
 /**
- * The worker process.
+ * The worker process: a relay that moves outbox rows onto a queue, and a consumer that turns
+ * each event into messages.
  *
- * Week 4 D1 is the **relay**: it reads the outbox and puts each pending event on the
- * `notifications` queue. Delivery itself (who gets a message, on which channel, with what
- * retry) is D2 onwards — the consumer lands with the notification module, so nothing here
- * quietly acknowledges an event it does not understand.
- *
- * One tick at a time: a slow tick must not overlap the next one and claim the same rows twice
- * (the database would stop that, but the process would waste a connection doing it).
+ * One tick at a time, and one job per record: the relay is cheap (an indexed query every couple
+ * of seconds), the consumer is where the work is.
  */
 async function main(): Promise<void> {
   const env = parseWorkerEnv(process.env);
   const connection = createDatabaseConnection(env.DATABASE_URL);
   const redis = createRedis(env.REDIS_URL);
-  const queue: Queue = notificationsQueue(connectionOptions(redis));
+  const options = connectionOptions(redis);
+  const queue: Queue<NotificationJob> = notificationsQueue(options);
+  const deliveryQueue: Queue<DeliveryJobData> = deliveriesQueue(options);
+  const mailer = createMailer({
+    host: env.SMTP_HOST,
+    port: env.SMTP_PORT,
+    from: env.MAIL_FROM,
+    ...(env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : {}),
+  });
 
   const enqueue: Enqueue = async (event) => {
     await queue.add(
@@ -31,12 +47,35 @@ async function main(): Promise<void> {
         topic: event.topic,
         payload: event.payload,
       },
-      {
-        // The outbox row id as the job id: re-relaying after a crash cannot double-send.
-        jobId: event.id,
-      },
+      // The outbox row id as the job id: re-relaying after a crash cannot double-send.
+      { jobId: event.id },
     );
   };
+
+  const worker = new Worker<NotificationJob>(
+    NOTIFICATIONS_QUEUE,
+    async (job) => handleNotificationJob(connection.db, deliveryQueue, job.data),
+    { connection: options, concurrency: env.WORKER_CONCURRENCY },
+  );
+
+  const sender = new Worker<DeliveryJobData>(
+    DELIVERIES_QUEUE,
+    async (job) => {
+      const result = await dispatchDelivery(connection.db, mailer, job.data);
+      // Throwing is the retry signal: BullMQ backs off, and the delivery row keeps the reason.
+      if (result.status === 'retry') throw new Error(result.reason);
+      return result;
+    },
+    { connection: options, concurrency: env.WORKER_CONCURRENCY },
+  );
+
+  sender.on('failed', (job, error) => {
+    console.error(`deliveries: job ${job?.id ?? '?'} failed`, error.message);
+  });
+
+  worker.on('failed', (job, error) => {
+    console.error(`notifications: job ${job?.id ?? '?'} failed`, error.message);
+  });
 
   let ticking = false;
   let stopping = false;
@@ -57,7 +96,7 @@ async function main(): Promise<void> {
 
   const timer = setInterval(() => void tick(), env.RELAY_INTERVAL_MS);
   console.info(
-    `worker: relaying every ${env.RELAY_INTERVAL_MS} ms, up to ${env.RELAY_BATCH} event(s) per tick`,
+    `worker: relaying every ${env.RELAY_INTERVAL_MS} ms (batch ${env.RELAY_BATCH}), consuming with concurrency ${env.WORKER_CONCURRENCY}`,
   );
   await tick();
 
@@ -66,7 +105,11 @@ async function main(): Promise<void> {
     stopping = true;
     clearInterval(timer);
     console.info(`worker: ${signal}, closing`);
+    await worker.close();
+    await sender.close();
     await queue.close();
+    await deliveryQueue.close();
+    mailer.close();
     await redis.quit();
     await connection.close();
     process.exit(0);

@@ -3,6 +3,7 @@ import { Redis } from 'ioredis';
 
 /** The queue the relay fills and the notification worker drains. */
 export const NOTIFICATIONS_QUEUE = 'notifications';
+export const DELIVERIES_QUEUE = 'deliveries';
 
 export interface NotificationJob {
   /** The outbox row this job came from — also the job id, which is what makes it idempotent. */
@@ -25,6 +26,18 @@ export function createRedis(url: string): Redis {
 
 export function connectionOptions(redis: Redis): ConnectionOptions {
   return redis;
+}
+
+export interface DeliveryJobData {
+  deliveryId: string;
+  orgId: string;
+}
+
+export function deliveriesQueue(connection: ConnectionOptions): Queue<DeliveryJobData> {
+  return new Queue<DeliveryJobData>(DELIVERIES_QUEUE, {
+    connection,
+    defaultJobOptions: jobOptions(),
+  });
 }
 
 export function notificationsQueue(connection: ConnectionOptions): Queue<NotificationJob> {

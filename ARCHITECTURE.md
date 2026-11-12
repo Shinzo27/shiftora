@@ -519,6 +519,23 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   'app.outbox_relay', true) = 'on'` for `SELECT` and `UPDATE`; the flag is transaction-local and
   nothing else has it. Every job after that runs under a single org's context, taken from the
   event (ADR 017).
+- **A notification is one person's message**, not one event: `notifications` carries the
+  employee, `(outbox_id, employee_id)` is unique, and the body is rendered per person (their
+  name, their own shifts). The fan-out only messages the employees in the publication diff —
+  telling the whole rota every week is how people learn to ignore the messages that matter.
+- **Routing is a pure function** in `packages/domain/notifications/routing.ts`: the person's own
+  preference when it has an address and the tenant allows it, else email (the login, so it always
+  exists), with email and push as the ladder. WhatsApp and SMS are never a silent fallback —
+  silence is not consent to a channel that costs the clinic money per message.
+- **Sending is its own job.** The fan-out commits the rows and returns their ids; the handler
+  queues one job per delivery with `jobId = delivery id`, so a replay re-queues nothing.
+  `dispatchDelivery` counts the attempt *before* calling the provider (a crash mid-send leaves
+  evidence), records `sent`/`failed`/`skipped` with the reason, and throws only to ask for
+  backoff. A job for an already-sent delivery is a no-op.
+- **Email is SMTP** (nodemailer): Mailpit on `:1025` locally, any relay in production, one code
+  path. The templates are plain text on purpose — they have to survive a WhatsApp utility body
+  (no markdown, 1024 characters), an SMS that truncates at 160, and an email that renders better
+  without styling.
 - **Retries** are job options (`attempts: 5`, exponential backoff from 5 s), not queue logic:
   a provider having a bad minute should not lose "you are working tomorrow". Failures stay in the
   failed set — the dead-letter list until D4 gives it a reason and a replay button.

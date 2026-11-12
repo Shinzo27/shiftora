@@ -112,6 +112,7 @@ describe('every tenant table is protected', () => {
     expect(tables.map((t) => t.table)).toEqual([
       'audit_events',
       'availability',
+      'deliveries',
       'departments',
       'employee_job_roles',
       'employee_locations',
@@ -121,6 +122,7 @@ describe('every tenant table is protected', () => {
       'locations',
       'membership_locations',
       'memberships',
+      'notifications',
       'organizations',
       'outbox',
       'schedule_publications',

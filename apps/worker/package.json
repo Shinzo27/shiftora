@@ -16,15 +16,18 @@
   },
   "dependencies": {
     "@shiftora/db": "workspace:*",
+    "@shiftora/domain": "workspace:*",
     "@shiftora/shared": "workspace:*",
     "bullmq": "^5.0.0",
     "ioredis": "^5.0.0",
+    "nodemailer": "^10.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@shiftora/config": "workspace:*",
     "@testcontainers/postgresql": "^12.2.1",
     "@types/node": "^26.6.5",
+    "@types/nodemailer": "^8.0.2",
     "eslint": "^10.13.0",
     "typescript": "~6.0.3",
     "vitest": "^4.1.12"

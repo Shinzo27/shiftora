@@ -17,6 +17,13 @@ const envSchema = z.object({
   RELAY_BATCH: z.coerce.number().int().min(1).max(500).default(50),
   /** Jobs one worker process runs at once. */
   WORKER_CONCURRENCY: z.coerce.number().int().min(1).max(50).default(5),
+  /** SMTP: Mailpit on :1025 locally; any relay in production. */
+  SMTP_HOST: z.string().min(1).default('localhost'),
+  SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1025),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  /** What staff see in the From line. */
+  MAIL_FROM: z.string().min(3).default('Shiftora <no-reply@shiftora.local>'),
 });
 
 export type WorkerEnv = z.output<typeof envSchema>;

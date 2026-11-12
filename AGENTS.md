@@ -152,6 +152,11 @@ Do this before writing any code, whatever tool or model you are:
   sends people hunting a broken dependency instead of the Node version. The guard runs from
   `predev`/`prebuild`/`pretest*`/`predb:*` in the root and in both apps — do not remove it, and
   run it directly (`node scripts/require-node.mjs`) when a tool reports a strange loader error.
+- **Sending throws to retry; it does not swallow.** `dispatchDelivery` returns
+  `{status: 'retry', reason}` for a provider failure and the queue worker **throws** that reason,
+  which is what makes BullMQ back off. Recording the failure and returning normally would mark
+  the job complete and lose the message. A delivery already `sent` is a no-op, because the row —
+  not the job — is the source of truth.
 - **A `psql` session as `app_owner` sees nothing in a tenant table.** `FORCE ROW LEVEL
   SECURITY` applies to the owner too, so `select count(*) from outbox` answers `0` on a full
   table. Check with `begin; select set_config('app.org_id', '<uuid>', true); …; commit;` — or, for

@@ -85,6 +85,13 @@
       "when": 1794503123919,
       "tag": "0011_outbox_relay",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794504279805,
+      "tag": "0012_notifications",
+      "breakpoints": true
     }
   ]
 }
