@@ -13,5 +13,7 @@ allowBuilds:
   '@swc/core': false
   cpu-features: false
   esbuild: false
+  # Optional native accelerator for msgpackr (BullMQ's serialiser); the JS fallback is used.
+  msgpackr-extract: false
   protobufjs: false
   ssh2: false

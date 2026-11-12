@@ -1,0 +1,32 @@
+{
+  "name": "@shiftora/worker",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Shiftora background worker: relays the outbox onto BullMQ and delivers notifications",
+  "type": "module",
+  "scripts": {
+    "predev": "node ../../scripts/require-node.mjs",
+    "dev": "node scripts/dev.mjs",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node --env-file-if-exists=../../.env dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.int.config.ts"
+  },
+  "dependencies": {
+    "@shiftora/db": "workspace:*",
+    "@shiftora/shared": "workspace:*",
+    "bullmq": "^5.0.0",
+    "ioredis": "^5.0.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@shiftora/config": "workspace:*",
+    "@testcontainers/postgresql": "^12.2.1",
+    "@types/node": "^26.6.5",
+    "eslint": "^10.13.0",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.12"
+  }
+}

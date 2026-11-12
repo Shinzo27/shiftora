@@ -87,10 +87,11 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | `a72e065` |
 | W3 D4 | Punch ↔ shift matching as pure domain maths, per-org early/late grace (`0009`), derived state/late/early on every read, and the manager Timesheets page (week per branch, badges, worked-vs-rostered totals) | ✅ Done | `3f92fe4` |
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
-| W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | (uncommitted) |
+| W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
+| W4 D1 | `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 11 migrations, 468 automated tests (240 unit, 228 integration against real
+Numbers today: 12 migrations, 479 automated tests (244 unit, 235 integration against real
 Postgres) plus 5 Playwright end-to-end tests, 66 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
@@ -193,8 +194,21 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   punch with no rostered shift counts nothing until a manager says what it was. Deciding what a
 >   runaway punch means is the manager's job; the timesheet's job is not to invent overtime.
 >   Covered by an integration test (two days open, 8-hour shift → 480 minutes in the totals).
-> - **Next:** W3 review, then W4 — the notification worker: relay the outbox, send WhatsApp with
->   SMS and push fallback, and give staff a published-schedule message they can actually read.
+> - **W4 D1 — the relay, and the only cross-tenant read in the system.** `apps/worker` is a plain
+>   Node process: it ticks every 2 s and, in one transaction, sets a transaction-local flag
+>   (`app.outbox_relay`), claims up to 50 pending events with `for update skip locked`, puts each
+>   on the `notifications` queue with **the outbox row id as the job id**, and only then marks them
+>   published. That order is the design: a failed enqueue rolls back (the event is late, not lost),
+>   a crash between insert and commit re-claims the row and BullMQ drops the duplicate, and marking
+>   first would trade both for a "published" row with nothing behind it. Widening RLS needed two
+>   policies on `outbox` alone (ADR 017); every job after that runs under one org's context.
+> - **Checks (D1):** 7 integration tests against real Postgres — claim and publish, nothing left on
+>   the next tick, oldest-first with a batch limit, rollback when the queue refuses, the same job id
+>   after a rollback, three relays racing over three rows with no duplicates, and tenant isolation
+>   without the flag. End to end on the dev database: 20 pending events became 20 jobs with matching
+>   ids and 20 published rows, and restarting the worker queued 0 more.
+> - **Next:** W4 D2 — the notification module: `notifications` + `deliveries` tables, templates,
+>   and channel routing by plan and by each employee's own preference.
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
 >   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
 >   `reject` mode will need a manager override path eventually.
@@ -892,7 +906,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ☐ | `apps/worker`; BullMQ queues; outbox relay (`FOR UPDATE SKIP LOCKED` → enqueue); workers set RLS context per job | Outbox rows become jobs exactly once |
+| D1 | ✅ | `apps/worker` (plain Node, not a second Nest app) with BullMQ; the relay claims pending outbox rows in one transaction (`set_config` flag → `FOR UPDATE SKIP LOCKED` → enqueue → mark published), job id = outbox row id; `pnpm dev` runs it beside the API and web | Outbox rows become jobs exactly once: 20 pending rows became 20 jobs with matching ids and all 20 marked published, and a worker restart queued 0 more. 7 integration tests (claim, order/batch, rollback on enqueue failure, same job id after a rollback, three relays racing, tenant isolation) |
 | D2 | ☐ | Notification module: templates, channel routing by plan + preference; `notifications` and `deliveries` tables | One notification → one delivery per channel |
 | D3 | ☐ | Email adapter (Resend/SES; Mailpit locally) + Web Push (VAPID); **email verification, password reset, invite emails** (deferred from D3/D4) | Invite arrives in Mailpit with a working link |
 | D4 | ☐ | WhatsApp (Meta Cloud API, approved utility templates) + SMS adapters; per-provider rate limits; retries with backoff + jitter; DLQ; quota counter with fallback to push/email | Failure injection → retry → DLQ, test green |

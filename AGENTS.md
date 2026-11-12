@@ -143,11 +143,20 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Known gotchas (learned the hard way)
 
+- **`pnpm dev` now starts three things**: the API, the web app and `@shiftora/worker` (relay +
+  queue). The worker's `dev` script compiles once, then runs `tsc --watch` beside
+  `node --watch`: without the first compile, `node --watch` races tsc and prints
+  `MODULE_NOT_FOUND` on a clean checkout.
 - **`engines` does not enforce anything; `scripts/require-node.mjs` does.** On Node 22
   `pnpm dev` dies inside the Nest watcher with `ERR_REQUIRE_CYCLE_MODULE` naming `ora`, which
   sends people hunting a broken dependency instead of the Node version. The guard runs from
   `predev`/`prebuild`/`pretest*`/`predb:*` in the root and in both apps — do not remove it, and
   run it directly (`node scripts/require-node.mjs`) when a tool reports a strange loader error.
+- **A `psql` session as `app_owner` sees nothing in a tenant table.** `FORCE ROW LEVEL
+  SECURITY` applies to the owner too, so `select count(*) from outbox` answers `0` on a full
+  table. Check with `begin; select set_config('app.org_id', '<uuid>', true); …; commit;` — or, for
+  the whole tenant, `set_config('app.outbox_relay','on',true)` on `outbox` only. A "missing" row
+  is almost always this, not a bug.
 - **`pnpm db:seed` mints the org id before inserting the org.** RLS only accepts rows for the
   org the transaction points at, so a seed (or any direct insert) must `setTenantContext` with the
   id it is about to use — the same sequence `OrgsService.create` follows. Re-running the seed

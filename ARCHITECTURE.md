@@ -502,13 +502,26 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   records `received_at`; large gaps or device-time skew raise flags. Conflicts (e.g. a
   manager already created a manual entry) keep both and flag for review rather than overwrite.
 
-### 7.7 Notifications pipeline
+### 7.7 Notifications pipeline (relay implemented in W4 D1)
 ```
-domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKED)──▶ BullMQ `events`
+domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKED)──▶ BullMQ `notifications`
    ▶ notification fan-out job: resolve recipients, channel by plan + preference
    ▶ per-channel queues `notify:whatsapp|sms|email|push` (BullMQ limiter per provider)
    ▶ provider adapter → `deliveries` row (queued→sent) → provider webhook → delivered/failed
 ```
+- **The relay** lives in `apps/worker` (a plain Node process, not a second Nest app) and ticks
+  every `RELAY_INTERVAL_MS`. Each tick is one transaction: set the relay flag (ADR 017), claim up
+  to `RELAY_BATCH` rows with `for update skip locked`, enqueue them, then mark them published.
+  Enqueue-then-mark is deliberate: a failed enqueue rolls back and the row is still pending, and a
+  crash between insert and commit re-claims the row harmlessly because the BullMQ job id **is**
+  the outbox row id. Several workers can run at once; none of them claims another's rows.
+- **Reading across tenants is one policy wide.** `outbox` accepts `current_setting(
+  'app.outbox_relay', true) = 'on'` for `SELECT` and `UPDATE`; the flag is transaction-local and
+  nothing else has it. Every job after that runs under a single org's context, taken from the
+  event (ADR 017).
+- **Retries** are job options (`attempts: 5`, exponential backoff from 5 s), not queue logic:
+  a provider having a bad minute should not lose "you are working tomorrow". Failures stay in the
+  failed set — the dead-letter list until D4 gives it a reason and a replay button.
 - Retries: exponential backoff with jitter (e.g. 5 attempts over ~30 min); permanent errors
   (invalid number, opted-out) skip retries; exhausted jobs go to a DLQ queue visible on an
   admin page with "replay".
