@@ -1,5 +1,6 @@
 export type { PlannableShift, PunchState, ShiftMatch } from './attendance/match.js';
 export * from './notifications/templates.js';
+export * from './notifications/invite.js';
 export * from './notifications/routing.js';
 
 export { matchShift, workedMinutes } from './attendance/match.js';

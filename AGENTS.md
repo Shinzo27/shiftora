@@ -152,6 +152,11 @@ Do this before writing any code, whatever tool or model you are:
   sends people hunting a broken dependency instead of the Node version. The guard runs from
   `predev`/`prebuild`/`pretest*`/`predb:*` in the root and in both apps — do not remove it, and
   run it directly (`node scripts/require-node.mjs`) when a tool reports a strange loader error.
+- **`ON CONFLICT` cannot infer a partial unique index.** A unique index with a `WHERE` clause
+  looks like the right key for "replay protection", and Postgres rejects it at runtime with
+  `42P10: there is no unique or exclusion constraint matching the ON CONFLICT specification` —
+  only a full index can be inferred. A plain `(outbox_id, recipient_email)` works for both staff
+  rows and address-only ones because NULLs are distinct.
 - **Sending throws to retry; it does not swallow.** `dispatchDelivery` returns
   `{status: 'retry', reason}` for a provider failure and the queue worker **throws** that reason,
   which is what makes BullMQ back off. Recording the failure and returning normally would mark

@@ -17,6 +17,7 @@ import { AuthService } from '../auth/auth.service.js';
 import { MembershipsRepository } from '../orgs/memberships.repository.js';
 import { OrgsRepository } from '../orgs/orgs.repository.js';
 import { toOrgSummary } from '../orgs/orgs.service.js';
+import { OutboxService } from '../outbox/outbox.service.js';
 import { formatInviteCode, parseInviteCode } from './invite-code.js';
 import { InvitesRepository, type InviteRecord } from './invites.repository.js';
 
@@ -47,9 +48,17 @@ export class InvitesService {
     private readonly orgs: OrgsRepository,
     private readonly auth: AuthService,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
+  /**
+   * Creates an invite and writes the email to the outbox **in the same transaction**.
+   *
+   * The code still comes back in the response — a manager standing next to the person may want
+   * to read it out — but the email is the normal path, and it is written here so an invite can
+   * never exist without one on its way.
+   */
   async create(input: CreateInviteRequest): Promise<CreateInviteResponse> {
     if (!canAssignRole(this.context.role!, input.role)) throw forbiddenRole();
     if (await this.memberships.findByEmail(input.email)) {
@@ -72,6 +81,13 @@ export class InvitesService {
       entity: 'invite',
       entityId: invite.id,
       after: { email: invite.email, role: invite.role },
+    });
+    await this.outbox.record('invite.created', {
+      inviteId: invite.id,
+      email: invite.email,
+      role: invite.role,
+      code,
+      expiresInDays: INVITE_TTL_SECONDS / (24 * 60 * 60),
     });
     return { invite: toInvite(invite), code };
   }

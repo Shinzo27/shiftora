@@ -2,6 +2,7 @@ import type { Database } from '@shiftora/db';
 import type { Queue } from 'bullmq';
 
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
+import { handleInviteCreated } from './notifications/invite.js';
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
 /**
@@ -21,6 +22,7 @@ export async function handleNotificationJob(
   db: Database,
   deliveries: Queue<DeliveryJobData>,
   job: NotificationJob,
+  appUrl: string,
 ): Promise<FanOutResult> {
   switch (job.topic) {
     case 'schedule.published': {
@@ -40,6 +42,26 @@ export async function handleNotificationJob(
         console.info(
           `notifications: ${job.topic} → ${result.notifications} message(s), ${result.deliveries} delivery(ies) queued`,
         );
+      }
+      return result;
+    }
+    case 'invite.created': {
+      const result = await handleInviteCreated(
+        db,
+        {
+          id: job.outboxId,
+          orgId: job.orgId,
+          topic: job.topic,
+          payload: job.payload,
+        },
+        appUrl,
+      );
+
+      for (const deliveryId of result.deliveryIds) {
+        await deliveries.add('delivery', { deliveryId, orgId: job.orgId }, { jobId: deliveryId });
+      }
+      if (result.notifications > 0) {
+        console.info(`notifications: invite.created → emailed ${result.deliveries} invite(s)`);
       }
       return result;
     }

@@ -1,4 +1,6 @@
+import { sql } from 'drizzle-orm';
 import {
+  check,
   foreignKey,
   index,
   integer,
@@ -39,8 +41,13 @@ export const notifications = pgTable(
       .references(() => organizations.id, { onDelete: 'cascade' }),
     /** The outbox row that caused this. */
     outboxId: uuid().notNull(),
-    /** Who it is for. One event fans out into one notification per person, each with its own body. */
-    employeeId: uuid().notNull(),
+    /** Who it is for, when that is a staff member. */
+    employeeId: uuid(),
+    /**
+     * Or an address, when the person is not staff yet: an invite goes to an email, and so does a
+     * password reset. At least one of the two is always set (CHECK in migration 0013).
+     */
+    recipientEmail: text(),
     /** `schedule.published`, `shift.reminder`, `attendance.missed`… same vocabulary as the outbox. */
     kind: text().notNull(),
     subject: text().notNull(),
@@ -52,6 +59,7 @@ export const notifications = pgTable(
   (t) => [
     // Replaying an event cannot notify the same person twice.
     uniqueIndex('notifications_outbox_employee_unique').on(t.outboxId, t.employeeId),
+    uniqueIndex('notifications_outbox_email_unique').on(t.outboxId, t.recipientEmail),
     uniqueIndex('notifications_org_id_id_unique').on(t.orgId, t.id),
     foreignKey({
       name: 'notifications_employee_fk',
@@ -59,6 +67,11 @@ export const notifications = pgTable(
       foreignColumns: [employees.orgId, employees.id],
     }).onDelete('cascade'),
     index('notifications_org_created_idx').on(t.orgId, t.createdAt),
+    // A notification nobody is addressed to is a message into the void.
+    check(
+      'notifications_recipient_present',
+      sql`employee_id is not null or recipient_email is not null`,
+    ),
   ],
 );
 

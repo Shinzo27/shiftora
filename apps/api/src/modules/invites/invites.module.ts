@@ -4,12 +4,13 @@ import { DatabaseModule } from '../../database/database.module.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { OrgsModule } from '../orgs/orgs.module.js';
+import { OutboxModule } from '../outbox/outbox.module.js';
 import { InvitesController } from './invites.controller.js';
 import { InvitesRepository } from './invites.repository.js';
 import { InvitesService } from './invites.service.js';
 
 @Module({
-  imports: [DatabaseModule, AuditModule, AuthModule, OrgsModule],
+  imports: [DatabaseModule, AuditModule, AuthModule, OrgsModule, OutboxModule],
   controllers: [InvitesController],
   providers: [InvitesService, InvitesRepository],
 })

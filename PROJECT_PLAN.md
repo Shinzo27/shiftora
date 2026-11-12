@@ -91,7 +91,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D1 | `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 13 migrations, 504 automated tests (261 unit, 243 integration against real
+Numbers today: 14 migrations, 512 automated tests (266 unit, 246 integration against real
 Postgres) plus 5 Playwright end-to-end tests, 66 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
@@ -222,10 +222,22 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   is SMTP, so Mailpit locally and any relay in production run the same code — verified live: a
 >   published change produced a delivery `sent` in one attempt and exactly one message in
 >   Mailpit.
-> - **Still open in D3 (deliberately not claimed as done):** Web Push (VAPID keys, a
->   `push_subscriptions` table, the subscribe endpoint and the staff-app button) and the three
->   auth emails (verification, password reset, invite) — the latter need one-time-token tables
->   and endpoints that do not exist yet, so they are their own slice of work.
+> - **W4 D3 (continued) — the invite email, and the first message to a person who is not staff.**
+>   `POST /invites` writes `invite.created` to the outbox **in the same transaction** as the invite
+>   row, so an invite cannot exist without an email on its way. The recipient is an *address*:
+>   `notifications.employee_id` had to become nullable and gain `recipient_email`, with a CHECK
+>   that one of them is always set — and a plain unique index on `(outbox_id, recipient_email)`
+>   for replay protection. Plain, not partial: Postgres treats NULLs as distinct, so staff rows
+>   never collide, and `ON CONFLICT` cannot infer a partial index (it failed with `42P10` until
+>   this changed). The code still comes back in the API response — a manager standing next to the
+>   person may want to read it out — but the email is the normal path.
+> - **Verified live:** invited `new.manager@sunriseclinic.test`, and Mailpit holds "You are
+>   invited to Sunrise Clinic on Shiftora" with the link `/invite/<orgId>.<code>`; the delivery
+>   row went to `sent`. D3's own done-when ("invite arrives in Mailpit with a working link") is
+>   now met.
+> - **Still open in D3 (deliberately not claimed):** Web Push (VAPID keys, a `push_subscriptions`
+>   table, the subscribe endpoint and the staff-app button) and password reset / email
+>   verification — both need one-time-token tables and endpoints that do not exist yet.
 > - **Next:** finish D3 (push + auth emails), then W4 D4 — WhatsApp and SMS adapters behind the
 >   same dispatch contract, with per-provider rate limits, a dead-letter queue and fallback down
 >   the routing ladder when a channel fails permanently.
@@ -928,7 +940,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 |---|---|---|---|
 | D1 | ✅ | `apps/worker` (plain Node, not a second Nest app) with BullMQ; the relay claims pending outbox rows in one transaction (`set_config` flag → `FOR UPDATE SKIP LOCKED` → enqueue → mark published), job id = outbox row id; `pnpm dev` runs it beside the API and web | Outbox rows become jobs exactly once: 20 pending rows became 20 jobs with matching ids and all 20 marked published, and a worker restart queued 0 more. 7 integration tests (claim, order/batch, rollback on enqueue failure, same job id after a rollback, three relays racing, tenant isolation) |
 | D2 | ✅ | `notifications` + `deliveries` (migration `0012`, RLS, one row per person per notification per channel), the `schedule.published` fan-out in the worker (one personalised message per affected employee, not the whole rota), templates in `packages/domain/notifications` (plain text, WhatsApp- and SMS-safe), and channel routing: their preference, else email, with email/push as the safety net and never a silent WhatsApp | One notification → one delivery per channel: verified live (2 messages → 2 WhatsApp deliveries queued, addresses and statuses correct); 4 integration + 17 domain unit tests |
-| D3 | ◑ | **Done:** SMTP email adapter (nodemailer → Mailpit on :1025), a second BullMQ queue for sends, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), and the live proof: a published change reached Mailpit. **Remaining:** Web Push (VAPID + subscriptions) and the three auth emails (verification, reset, invite) — both listed below | Email send verified end to end: delivery `sent`, attempts 1, subject/body as rendered, one message in Mailpit; 4 integration tests |
+| D3 | ◑ | **Done:** SMTP email adapter (nodemailer → Mailpit on :1025), a second BullMQ queue for sends, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), and the **invite email**: `invites/${id}` writes `invite.created` to the outbox in the same transaction, the worker renders it and emails the invited address (a notification can now be addressed to an email, not only a staff row). **Remaining:** Web Push (VAPID + subscriptions) and password reset / email verification (one-time-token tables + endpoints) | Invite arrives in Mailpit with a working link — verified live (`You are invited to Sunrise Clinic on Shiftora` → `new.manager@…`, link `/invite/<org>.<code>`); 7 integration tests across send and invite |
 | D4 | ☐ | WhatsApp (Meta Cloud API, approved utility templates) + SMS adapters; per-provider rate limits; retries with backoff + jitter; DLQ; quota counter with fallback to push/email | Failure injection → retry → DLQ, test green |
 | D5 | ☐ | Delivery-status webhooks (signature-verified); repeatable jobs: shift reminders, missed clock-in detection; move throttler storage to Redis | Reminder sent 2 h before a shift |
 | D6 | ☐ | End-to-end: publish → employees get WhatsApp/email; failure-injection tests | Publish in UI → message in Mailpit/WhatsApp sandbox |

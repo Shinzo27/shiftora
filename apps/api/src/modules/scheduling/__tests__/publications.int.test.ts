@@ -226,7 +226,9 @@ describe('publishing a week', () => {
     const events = await t.queryAs({ userId: owner.id, orgId: org }, (tx) =>
       tx.select().from(schema.outbox).where(eq(schema.outbox.orgId, org)),
     );
-    expect(events).toHaveLength(0);
+    // Setup may have invited people, and an invite writes its own event; what must not exist is a
+    // publication event from a preview.
+    expect(events.filter((event) => event.topic === 'schedule.published')).toHaveLength(0);
   });
 
   it('publishes an empty week without inventing an audience', async () => {

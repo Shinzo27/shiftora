@@ -54,7 +54,7 @@ async function main(): Promise<void> {
 
   const worker = new Worker<NotificationJob>(
     NOTIFICATIONS_QUEUE,
-    async (job) => handleNotificationJob(connection.db, deliveryQueue, job.data),
+    async (job) => handleNotificationJob(connection.db, deliveryQueue, job.data, env.APP_URL),
     { connection: options, concurrency: env.WORKER_CONCURRENCY },
   );
 
