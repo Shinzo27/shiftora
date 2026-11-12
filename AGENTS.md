@@ -40,7 +40,7 @@ pnpm infra:up          # postgres (localhost:5433), redis (6379), mailpit (smtp 
 pnpm infra:down
 pnpm db:migrate        # apply migrations (runs as app_owner via MIGRATION_DATABASE_URL)
 pnpm db:generate       # drizzle-kit: write the next migration from packages/db/src/schema
-pnpm dev               # web (http://localhost:5173, proxies /api) + api (:4000) via turbo
+pnpm dev               # web (:5173, proxies /api) + api (:4000) + worker, all via turbo
 pnpm format            # prettier --write (pnpm format:check in CI)
 pnpm lint && pnpm typecheck
 pnpm test              # unit (vitest)

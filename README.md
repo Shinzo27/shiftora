@@ -58,6 +58,7 @@ off. After cloning, give it:
 ```
 apps/
   api/       NestJS 12 (Fastify) HTTP API
+  worker/    BullMQ worker: outbox relay, notification fan-out, delivery senders
   web/       React + Vite web app (manager dashboard)
 packages/
   config/    shared TypeScript and ESLint presets

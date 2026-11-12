@@ -119,7 +119,7 @@
 | `attendance` | time entries (geofenced clock-in/out, idempotent by `Idempotency-Key`), kiosk QR secrets, offline sync, fraud flags | `clock.in`, `clock.out`, `attendance.flagged` (planned) |
 | `requests` | swap/drop/pickup requests, open-shift claims | `request.created`, `request.approved`, `open_shift.claimed` |
 | `pay` | pay rules (versioned), pay periods, timesheets, exports | `pay_period.approved` |
-| `notifications` | templates, channel routing, deliveries, provider adapters | — |
+| `notifications` | outbox events → one message per person, channel routing by preference, `deliveries` + dispatch (email live; WhatsApp/SMS/push pending), in the worker | `invite.created` (outbox) |
 | `audit` | append-only audit events | — |
 | `realtime` | Socket.IO gateway (auth via the access token + RLS membership read), one room per `org`, `schedule.changed` events; inert when no ws adapter is installed (tests) | — |
 
@@ -213,10 +213,16 @@ time_entries(id, org_id, employee_id, location_id, shift_id?, clock_in_at, clock
 
 outbox(id, org_id, topic: 'entity.past_tense', payload jsonb, created_at, published_at?)
   -- CHECK topic ~ '^[a-z_]+\.[a-z_]+$'; partial index on pending rows (published_at IS NULL)
-  -- written inside the request's transaction, relayed by the worker (week 4)
-notifications(id, org_id, employee_id, template, payload, created_at)
-deliveries(id, org_id, notification_id, channel, provider, provider_msg_id,
-           status: queued|sent|delivered|failed, attempts, last_error, updated_at)
+  -- written inside the request's transaction; the worker relays it (0011 adds the relay policy)
+notifications(id, org_id, outbox_id, employee_id?, recipient_email?, kind, subject, body,
+              payload jsonb, created_at)
+  -- one row per person per event; unique (outbox_id, employee_id) and (outbox_id, recipient_email)
+  -- CHECK employee_id is not null or recipient_email is not null  (an invite has no staff row)
+deliveries(id, org_id, notification_id, channel: email|whatsapp|sms|push,
+           address?, status: queued|sent|delivered|failed|skipped, attempts,
+           last_error, sent_at, created_at)
+  -- unique (notification_id, channel): one row per channel per message
+  -- written by the fan-out, sent by the deliveries queue; the row, not the job, is the truth
 audit_events(id, org_id, actor_user_id, action, entity, entity_id,
              before jsonb, after jsonb, ip, at)             -- append-only, partitioned by month
 ```
@@ -502,12 +508,13 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   records `received_at`; large gaps or device-time skew raise flags. Conflicts (e.g. a
   manager already created a manual entry) keep both and flag for review rather than overwrite.
 
-### 7.7 Notifications pipeline (relay implemented in W4 D1)
+### 7.7 Notifications pipeline (relay, fan-out and email implemented in W4 D1–D3)
 ```
 domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKED)──▶ BullMQ `notifications`
-   ▶ notification fan-out job: resolve recipients, channel by plan + preference
-   ▶ per-channel queues `notify:whatsapp|sms|email|push` (BullMQ limiter per provider)
-   ▶ provider adapter → `deliveries` row (queued→sent) → provider webhook → delivered/failed
+   ▶ fan-out job: who is affected, what to say, which channel each person allows
+   ▶ one BullMQ `deliveries` job per (message, channel); job id = delivery id
+   ▶ provider adapter by channel (email live; WhatsApp/SMS/push pending)
+   ▶ `deliveries` row: queued → sent | failed (reason recorded) → provider webhook → delivered
 ```
 - **The relay** lives in `apps/worker` (a plain Node process, not a second Nest app) and ticks
   every `RELAY_INTERVAL_MS`. Each tick is one transaction: set the relay flag (ADR 017), claim up

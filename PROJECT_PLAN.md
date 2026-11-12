@@ -750,7 +750,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 |---|---|
 | W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), ~~`outbox`, `schedule_publications`~~ (0007) |
 | W3 | ~~`time_entries`~~ (0008) |
-| W4 | `notifications`, `deliveries`, `message_usage` |
+| W4 | ~~`notifications`, `deliveries`~~ (0012, 0013) — `message_usage` still to come (D4 quota) |
 | W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
 | W6 | `pay_rules` (versioned JSON), `pay_periods`, `timesheet_lines` |
 | W7 | `coverage_requirements`; `audit_events` partitioned by month |
