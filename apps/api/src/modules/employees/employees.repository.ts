@@ -71,6 +71,20 @@ export class EmployeesRepository {
     return row ?? null;
   }
 
+  /**
+   * The staff profile linked to this login. One per org (`unique (org_id, user_id)`), so a
+   * manager who also works shifts gets exactly one row — and an owner who only administers
+   * gets none, which is a normal state, not an error.
+   */
+  async findByUserId(userId: string): Promise<EmployeeRecord | null> {
+    const [row] = await this.context.tx
+      .select()
+      .from(employees)
+      .where(and(eq(employees.orgId, this.context.orgId), eq(employees.userId, userId)))
+      .limit(1);
+    return row ?? null;
+  }
+
   /** Several employees by id (archived included: history points at them). */
   async findByIds(ids: string[]): Promise<EmployeeRecord[]> {
     if (ids.length === 0) return [];

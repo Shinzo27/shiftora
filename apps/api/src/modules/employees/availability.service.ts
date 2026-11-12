@@ -106,6 +106,21 @@ export class AvailabilityService {
     return rows.map(toTimeOff);
   }
 
+  /**
+   * The caller's own time off. No access check by design: this is their own record, and a
+   * login that is not linked to a staff profile simply has none.
+   */
+  async listMine(userId: string, query: TimeOffQuery): Promise<TimeOff[]> {
+    const employee = await this.employees.findByUserId(userId);
+    if (!employee) return [];
+    const rows = await this.repository.timeOff(
+      employee.id,
+      query.from ? new Date(query.from) : undefined,
+      query.to ? new Date(query.to) : undefined,
+    );
+    return rows.map(toTimeOff);
+  }
+
   async addTimeOff(employeeId: string, input: CreateTimeOffRequest): Promise<TimeOff> {
     await this.employees.findAccessible(employeeId);
     const row = await this.repository.createTimeOff({

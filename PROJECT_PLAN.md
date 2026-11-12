@@ -79,58 +79,52 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 D1 | Time helpers on native Temporal (local → UTC, DST, weeks), shift templates, schedules | ✅ Done | `a2ca31f` |
 | W2 D2 | `shifts` with an exclusion constraint (no double-booking), shift CRUD API, conflict checks as pure functions | ✅ Done | `345176c` |
 | W2 D3 | Week board UI: rows by employee, colour per job role, today marker, shift create/edit in a Sheet with react-hook-form + Zod, week navigation with shadcn Calendar | ✅ Done | `0338f3e` |
-| W2 D4 | Drag-and-drop with dnd-kit, optimistic moves, conflict badges from a week conflicts endpoint, stale-version toast + refetch | ✅ Done | (uncommitted) |
-| W2 D5 | Publish: `schedule_publications` + `outbox` (`0007`), publish-preview and publish endpoints, the diff against the last publication, the Publish dialog, `publishedVersion` and the "Unpublished changes" badge | ✅ Done | (uncommitted) |
-| W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | (uncommitted) |
+| W2 D4 | Drag-and-drop with dnd-kit, optimistic moves, conflict badges from a week conflicts endpoint, stale-version toast + refetch | ✅ Done | `700d7fd` |
+| W2 D5 | Publish: `schedule_publications` + `outbox` (`0007`), publish-preview and publish endpoints, the diff against the last publication, the Publish dialog, `publishedVersion` and the "Unpublished changes" badge | ✅ Done | `a531452` |
+| W2 D6 | Realtime: Socket.IO on the API's HTTP server, one room per org, Redis adapter when `REDIS_URL` is set; other people's writes refresh the open board. Playwright E2E + a CI job | ✅ Done | `a531452` |
+| W3 D1 | `/me` API (profile, my shifts, my time off); PWA (manifest, icons, service worker, offline shell); route-level code splitting; the staff app: bottom tabs, shift cards, Vaul drawer | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 8 migrations, 379 automated tests (204 unit, 175 integration against real
-Postgres) plus 2 Playwright end-to-end tests, 55 API endpoints, a React web app on shadcn/ui
+Numbers today: 8 migrations, 390 automated tests (206 unit, 184 integration against real
+Postgres) plus 2 Playwright end-to-end tests, 58 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
-flow, live updates over a socket; light and dark; axe clean on WCAG 2.1 A/AA).
+flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
+clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
 
-> Last session: 2026-11-12 (Hermes, second dev machine).
+> Last session: 2026-11-12 (Hermes, second dev machine) — week 3 started.
 >
-> - **Done: W2 D5 and D6 — week 2 is complete.**
->   - **Publish** (`0007_publications`): `schedule_publications` stores what each publish
->     actually sent; `schedules.published_version` (+ CHECK `published_version <= version`)
->     makes `version > published_version` mean "edits staff have not been told about".
->     `GET /schedules/:id/publish-preview` returns the diff against the last publication
->     (added / changed / removed, plus affected employee ids — both sides of a re-assignment);
->     `POST /schedules/:id/publish` does it all in one transaction: bump both versions, record
->     the publication, write **one** `schedule.published` outbox row, audit it. Publishing twice
->     with no edits tells nobody (`affectedEmployeeIds: []`) but still records the publication —
->     "we told them nothing new" is itself a fact. The Publish dialog shows the diff as counts
->     and names, and disables itself when it is empty.
->   - **Realtime** (ADR 016): `RealtimeModule` + `ScheduleGateway`. The handshake verifies the
->     access token and joins `org:<id>` rooms only for organisations the user really belongs to,
->     read through RLS with that user's context. `RealtimeService.scheduleChanged()` is called by
->     the shift writes and by publish; the open board refetches shifts, conflicts and the
->     schedule when the event names its week, and toasts when someone else published. The Redis
->     adapter attaches when `REDIS_URL` is set (`.env` has it), otherwise it is single-process.
->   - **E2E:** Playwright in `apps/web/e2e` seeds its own clinic through the public API, then
->     drives login → board → add shift → publish in Chromium. `pnpm test:e2e`; a separate CI job
->     starts compose + migrations first.
-> - **Checks:** 204 unit + 175 integration + 2 E2E, lint, typecheck, build green. Verified in
->   Chrome: the publish preview read "9 new shifts / 4 people will be told (Asha, Ravi, Nina,
->   Imran)"; after publishing, the badge read "Published 12 Nov, 12:19"; an edit flipped it to
->   "Unpublished changes" and the next preview said "1 changed / 1 person will be told"; a shift
->   created through the API appeared on the open board with no reload; an API publish updated the
->   badge live.
-> - **Uncommitted at hand-off:** W2 D5 and D6 (the owner commits). Suggested messages, in order:
->   `feat(scheduling): publish weeks with an outbox event and a diff`,
->   `feat(realtime): live board updates over Socket.IO`,
->   `test(e2e): Playwright happy path for build-and-publish`.
-> - **Next:** W3 D1 — attendance: geofenced clock-in, the `attendance` table, the clock screen.
->   Also the web bundle (1,093 kB → per-route chunks) deferred from W2.
-> - **Watch out for:** `@WebSocketGateway` options are evaluated before DI, so CORS reads
->   `WEB_ORIGIN` from `process.env` (the only setting not taken from `AppConfig`; noted in
->   AGENTS.md). With Fastify, `app.useWebSocketAdapter(new IoAdapter(app))` in `main.ts` is what
->   starts the gateway — and its absence is why the gateway is inert in tests. Playwright reuses
->   a running dev server locally and starts one in CI. Integration tests still need
->   `--no-file-parallelism` here; `format:check` still fails locally on CRLF.
+> - **Done: W2 D5 + D6 committed by the owner** as `a531452` (publish, outbox, realtime,
+>   Playwright, CI job). **W3 D1 is uncommitted** (see below for the suggested message).
+> - **W3 D1 — the staff app exists.**
+>   - **API:** `GET /me` (staff profile with roles and locations, `profile: null` for a login
+>     that is not on the rota), `GET /me/shifts?from=&to=` (own shifts, each turned into the wall
+>     clock of *its* location before the date filter, with location name and role name),
+>     `GET /me/time-off`. All three are readable by every member — method-level `@Roles` overrides
+>     the class-level owner/manager rule on both controllers. None of them is location-scope
+>     checked: these are the caller's own rows.
+>   - **PWA:** `vite-plugin-pwa` with a manifest (standalone, portrait, teal), generated icons
+>     (`apps/web/scripts/make-icons.py` rasterises the same mark as the favicon), a precached
+>     shell and **no runtime caching of `/api`** — a stale rota is worse than a spinner. Chrome's
+>     `Page.getInstallabilityErrors` returns `[]`; the shell still paints offline.
+>   - **Code splitting:** every page is `lazy()`; the entry chunk went from 1,093 kB to 413 kB
+>     (130 kB gzip), with the board (322 kB) and the staff pages (37 kB) loaded on demand.
+>   - **Staff UI:** `EmployeeLayout` (phone-width column, sticky header, bottom tabs Shifts /
+>     Time off / Profile), shift cards grouped by day with "Today" highlighted, a Vaul drawer with
+>     the details, and live refetch on the realtime event. `/o/:orgId` now redirects by role, read
+>     from the org itself so nobody sees the wrong shell first.
+> - **Checks:** 206 unit + 184 integration + 2 E2E, lint, typecheck, build green. In Chrome at
+>   390×844: employee login → `/o/:id/shifts`, 3 cards under Yesterday/Tomorrow/Sat 14 Nov, drawer
+>   opens with where/break/role/notes, axe 0 violations on all three tabs (drawer open too).
+> - **Next:** W3 D2 — `time_entries` (method, geo, accuracy, `client_event_id`), clock-in/out API
+>   with the server-side haversine geofence (`radius + min(accuracy, 100 m)`), `Idempotency-Key`.
+>   Decide on D1/D2: the "reject or flag" policy is an org setting that does not exist yet.
+> - **Watch out for:** `react-hooks/purity` rejects `Date.now()` anywhere in render (even inside
+>   `useMemo`); the time-off page carries the fetch moment from its `queryFn` instead. A `<div>`
+>   inside a `<dl>` may only wrap `dt`/`dd` pairs — the icon belongs *inside* the `dt` (axe
+>   `definition-list`). `vite preview` does not inherit `server.proxy`, so the built app cannot
+>   reach `/api` on :4173 (fine for manifest/SW checks, remember it for QA).
 
 ## 3. Product
 
@@ -282,6 +276,8 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **`GET /schedules/:id/conflicts`** returns the week's advisories in one request (`shiftId → warnings`), computed from three batched queries; the board badges chips from it instead of asking per shift | 2026-11-12 |
 | — | **What was published is a table, not a jsonb snapshot on the schedule** (`schedule_publications`): the audit trail of what staff were told, an audience for the notification worker, and the diff becomes a plain comparison against the latest row | 2026-11-12 |
 | — | **`schedules.published_version` is a second counter, not a boolean**: `version > published_version` answers "has the board changed since staff were told?" without diffing, and the CHECK constraint keeps it honest | 2026-11-12 |
+| — | **`/me` is its own surface, not a filtered `/employees`**: three self-service reads (profile, my shifts, my time off) that any member may call, returning `profile: null` / empty lists when the login is not linked to a staff record. Employees could not read anything about themselves before this | 2026-11-12 |
+| — | **The PWA precaches the shell and nothing else** — no runtime caching of `/api`, because a stale rota shown to staff as if it were current is worse than an error; offline clock-in will be an explicit IndexedDB queue (W3 D6), not a cached GET | 2026-11-12 |
 | — | **Realtime is a refetch hint, not data** (ADR 016): Socket.IO over the API's own server, one room per organisation, payload names the schedule; clients refetch over HTTP, so a dropped event costs freshness and never correctness. Redis adapter only when `REDIS_URL` is set | 2026-11-12 |
 | — | A **drag changes the date and/or the assignee only** — never the times (they live in the sheet). Dropping on the open-shifts row unassigns; dropping on a person assigns | 2026-11-12 |
 | — | Moves are **optimistic**: the chip lands at once, the previous list is restored on any error, and a stale `version` shows "Someone else changed this shift" then refetches the week | 2026-11-12 |
@@ -673,6 +669,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `DELETE /shifts/:id` | token + org | owner, manager (in scope); audited |
 | `GET /schedules/:id/conflicts` | token + org | owner, manager (in scope); every advisory on the week's assigned shifts, keyed by shift id |
 | `GET /schedules/:id/publish-preview` | token + org | owner, manager (in scope); the diff against the last publication + `hasChanges`, read-only |
+| `GET /me` | token + org | any member; own staff profile + roles + locations, `profile: null` when not linked |
+| `GET /me/shifts?from=&to=` | token + org | any member; own shifts in a local-date range, with location and role names |
+| `GET /me/time-off` | token + org | any member; own time off, empty when not linked |
 | `POST /schedules/:id/publish` | token + org | owner, manager (in scope), writable location; 200 with `{ schedule, publication }`; one `schedule.published` outbox row + one audit row in the same transaction |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
@@ -696,9 +695,9 @@ clients may retry (clock-in, claim, swap; from week 3); OpenAPI generation plann
 
 | Kind | Tool | Where | Today |
 |---|---|---|---|
-| Unit | Vitest | `*.test.ts` next to code | 204 |
+| Unit | Vitest | `*.test.ts` next to code | 206 |
 | Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 53 |
-| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 122 |
+| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 131 |
 | E2E | Playwright | `apps/web/e2e/*.spec.ts` (`pnpm test:e2e`) | 2 |
 | Property | fast-check | planned for pay rules and scheduler | — |
 
@@ -784,7 +783,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ☐ | PWA setup (manifest, icons, splash, service worker via vite-plugin-pwa); employee "My shifts" view designed mobile-first (bottom navigation, cards, Vaul drawer for details) | Installable on Android; looks and feels like a native app |
+| D1 | ✅ | `/me` API for self-service reads; PWA (manifest, generated icons, service worker, offline shell); route-level `lazy()` splitting; staff app with bottom tabs, day-grouped shift cards and a Vaul drawer | Installable (Chrome: no installability errors), shell paints offline, axe 0 violations at 390×844; verified as a linked employee in Chrome |
 | D2 | ☐ | `time_entries`; clock-in/out API with server-side haversine geofence (`radius + min(accuracy, 100 m)`); `Idempotency-Key` | Outside the fence → rejected or flagged per org setting |
 | D3 | ☐ | Clock-in UI: geolocation permission and error states, low-accuracy handling | Works on a real phone |
 | D4 | ☐ | Match entries to shifts; early/late tolerance; flags (outside fence, device-time skew) | Flags visible to managers |

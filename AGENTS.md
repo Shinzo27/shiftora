@@ -174,6 +174,17 @@ Do this before writing any code, whatever tool or model you are:
 - **A schedule's `version` moves on every shift write** (`SchedulesRepository.touch`), so a UI
   that shows "unpublished changes" must invalidate the schedule query too, not just shifts.
   `version > published_version` is the only correct test for that badge.
+- **`react-hooks/purity` rejects `Date.now()`/`new Date()` during render**, even inside
+  `useMemo`. When a list needs "now" (upcoming vs past), carry the moment out of the `queryFn`
+  with the data instead of reading the clock in the component.
+- **A `<div>` inside a `<dl>` may only wrap `dt`/`dd` pairs** — put an icon *inside* its `dt`, not
+  beside it, or axe fails `definition-list` (use `components/definition-row.tsx`).
+- **Routes are `lazy()`:** a new page needs the import at the top of `router.tsx`, and the shell
+  that renders it provides the `Suspense` boundary (`OrgLayout` / `EmployeeLayout`), with one more
+  around `RouterProvider` in `main.tsx` for the first chunk.
+- **`vite preview` does not inherit `server.proxy`**, so the built app on :4173 cannot reach
+  `/api` on :4000. Fine for manifest/service-worker checks; use `pnpm dev` for anything that
+  needs data.
 - **Playwright needs a running stack:** `pnpm test:e2e` reuses a local `pnpm dev` and starts one
   in CI. The specs seed their own clinic through the API (the API must be on :4000, Postgres on
   5433); `@types/node` is a dev dependency of `apps/web` **only** so the specs and

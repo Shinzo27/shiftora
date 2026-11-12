@@ -26,7 +26,8 @@ import { MembershipLocationsRepository } from './membership-locations.repository
     DepartmentsRepository,
     MembershipLocationsRepository,
   ],
-  // Shifts, schedules and clock-ins will check location access through this.
-  exports: [LocationAccess],
+  // Shifts, schedules and clock-ins check location access through this; the repository is
+  // exported so list endpoints can name locations in one query instead of one per row.
+  exports: [LocationAccess, LocationsRepository],
 })
 export class LocationsModule {}

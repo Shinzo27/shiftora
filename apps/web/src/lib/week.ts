@@ -1,4 +1,4 @@
-import { dayOfWeek, weekDates, type LocalDate } from '@shiftora/domain';
+import { addDays, dayOfWeek, weekDates, type LocalDate } from '@shiftora/domain';
 
 /**
  * Display helpers for the week board. Dates here are plain calendar dates ("2026-11-10") in
@@ -97,4 +97,17 @@ export function formatDateTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso));
+}
+
+/**
+ * A day heading for a list of one person's shifts: "Today" and "Tomorrow" are what they look
+ * for, anything else is a plain date. `today` is injectable so this is testable.
+ */
+export function dayHeading(date: LocalDate, today = todayLocalDate()): string {
+  if (date === today) return 'Today';
+  const tomorrow = addDays(today, 1);
+  if (date === tomorrow) return 'Tomorrow';
+  const yesterday = addDays(today, -1);
+  if (date === yesterday) return 'Yesterday';
+  return `${weekdayShort(date)} ${dayOfMonth(date)} ${monthShort(date)}`;
 }

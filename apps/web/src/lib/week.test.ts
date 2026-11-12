@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   compactDuration,
+  dayHeading,
   dayOfMonth,
   fromCalendarDate,
   isWeekend,
@@ -71,5 +72,20 @@ describe('compactDuration', () => {
     expect(compactDuration(45)).toBe('45m');
     expect(compactDuration(480)).toBe('8h');
     expect(compactDuration(450)).toBe('7h 30m');
+  });
+});
+
+describe('dayHeading', () => {
+  const today = '2026-11-12';
+
+  it('names the days people actually think in', () => {
+    expect(dayHeading(today, today)).toBe('Today');
+    expect(dayHeading('2026-11-13', today)).toBe('Tomorrow');
+    expect(dayHeading('2026-11-11', today)).toBe('Yesterday');
+  });
+
+  it('falls back to a date, including across a month end', () => {
+    expect(dayHeading('2026-11-14', today)).toBe('Sat 14 Nov');
+    expect(dayHeading('2026-12-01', today)).toBe('Tue 1 Dec');
   });
 });

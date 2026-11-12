@@ -3,9 +3,52 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vite';
+import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    /**
+     * Installable app (W3 D1): manifest + a precached shell, so the staff app opens from the
+     * home screen and survives a dead connection as a shell — data still comes from the API.
+     *
+     * Deliberately no runtime caching of `/api`: a stale rota is worse than a spinner, and the
+     * clock-in path will need its own offline queue (IndexedDB) rather than a cached GET.
+     */
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
+      manifest: {
+        name: 'Shiftora — shifts and attendance',
+        short_name: 'Shiftora',
+        description: 'Staff scheduling, attendance and payroll for clinics and shops.',
+        theme_color: '#0f766e',
+        background_color: '#ffffff',
+        display: 'standalone',
+        orientation: 'portrait',
+        start_url: '/',
+        scope: '/',
+        icons: [
+          { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+          {
+            src: 'icons/icon-maskable-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable',
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        navigateFallback: '/index.html',
+        // Never answer an API or socket request with the shell.
+        navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
+        cleanupOutdatedCaches: true,
+      },
+    }),
+  ],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   server: {
     port: 5173,

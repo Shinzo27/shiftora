@@ -13,16 +13,20 @@ import {
 import {
   createShiftRequest,
   listShiftsQuery,
+  myShiftsQuery,
   updateShiftRequest,
   type CreateShiftRequest,
   type ListShiftsQuery,
+  type MyShifts,
+  type MyShiftsQuery,
   type Shift,
   type ShiftWriteResult,
   type UpdateShiftRequest,
 } from '@shiftora/shared';
 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
-import { Roles } from '../tenancy/decorators.js';
+import { CurrentMember, Roles } from '../tenancy/decorators.js';
+import type { OrgMember } from '../tenancy/member.js';
 import { ShiftsService } from './shifts.service.js';
 
 /**
@@ -36,6 +40,19 @@ import { ShiftsService } from './shifts.service.js';
 @Controller()
 export class ShiftsController {
   constructor(private readonly shifts: ShiftsService) {}
+
+  /**
+   * The caller's own shifts — every member, not just managers. Method-level `@Roles` replaces
+   * the class-level rule; a login with no staff profile gets an empty list.
+   */
+  @Get('me/shifts')
+  @Roles('owner', 'manager', 'employee')
+  mine(
+    @CurrentMember() member: OrgMember,
+    @Query(new ZodValidationPipe(myShiftsQuery)) query: MyShiftsQuery,
+  ): Promise<MyShifts> {
+    return this.shifts.listMine(member, query);
+  }
 
   @Get('shifts')
   list(@Query(new ZodValidationPipe(listShiftsQuery)) query: ListShiftsQuery): Promise<Shift[]> {

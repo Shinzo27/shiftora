@@ -114,8 +114,8 @@
 | `org` | organizations, locations, departments, roles, memberships, manager location scopes | `location.created` |
 | `billing` | plans, subscriptions, entitlements (employee/location limits, message quotas), coupons, GST invoices, Razorpay webhooks | `subscription.changed`, `payment.captured`, `invoice.issued` |
 | `platform-admin` | internal Shiftora staff console: coupons, subscription overview (no tenant business data in v1) | — |
-| `employees` | employee profiles, roles/skills, availability, credentials | `credential.expiring` |
-| `scheduling` | schedules, shifts, publications, templates, coverage, auto-scheduler orchestration | `schedule.published` (outbox) |
+| `employees` | employee profiles, roles/skills, availability, credentials; `GET /me` and `GET /me/time-off` for every member | `credential.expiring` |
+| `scheduling` | schedules, shifts, publications, templates, coverage, auto-scheduler orchestration; `GET /me/shifts` for every member | `schedule.published` (outbox) |
 | `attendance` | time entries, kiosk QR secrets, offline sync, fraud flags | `clock.in`, `clock.out`, `attendance.flagged` |
 | `requests` | swap/drop/pickup requests, open-shift claims | `request.created`, `request.approved`, `open_shift.claimed` |
 | `pay` | pay rules (versioned), pay periods, timesheets, exports | `pay_period.approved` |
@@ -376,6 +376,30 @@ Rationale in [ADR 015](docs/adr/015-shift-conflict-policy.md). Warnings are neve
 are recomputed from the employee's current rules, and a write returns `{ shift, warnings }`.
 The database window for the checks is the schedule's week plus two days each side (the largest
 allowed rest rule), queried once per employee.
+
+### 7.3b The staff app and the installable build (from W3)
+The same React app serves two audiences with two shells under `/o/:orgId`, chosen by the role
+read from the org (not from the token):
+- **Manager shell** — sidebar, location switcher, the rota, locations and employees.
+- **Staff shell** — a phone-width column, a sticky header and three bottom tabs (Shifts, Time
+  off, Profile). No location switcher: an employee works where the rota says.
+
+Staff never read the manager's endpoints. `GET /me`, `GET /me/shifts` and `GET /me/time-off` are
+the only routes they call, and each one answers about the caller alone — `profile: null` and
+empty lists when a login is not linked to a staff record, which is the normal state for an owner
+who only administers. None of the three is location-scope checked: these rows are the caller's.
+
+`GET /me/shifts?from=&to=` takes *local dates* and applies them per shift: each row is converted
+to the wall clock of its own location before its date is compared, so someone working across two
+zones sees exactly the days they asked for. The SQL window is a day wider at each end to make
+that exact rather than lucky.
+
+**Installable:** `vite-plugin-pwa` generates a manifest (standalone, portrait, teal, 192/512 +
+maskable icons rasterised from the same mark as the favicon) and a service worker that precaches
+the built shell. There is deliberately **no runtime caching of `/api`**: a stale rota presented as
+current is worse than a spinner. Offline clock-in (W3 D6) will be an explicit IndexedDB queue,
+not a cached GET. Every route is `lazy()`-loaded, so the entry chunk is the shell plus the login
+page (130 kB gzip) instead of the whole app (339 kB before).
 
 ### 7.4 Open shifts and swaps: concurrency
 - Claiming an open shift:

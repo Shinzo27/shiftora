@@ -35,6 +35,15 @@ export class LocationsRepository {
   }
 
   /** How many of these ids are locations of the current org. */
+  /** Several locations by id, for naming rows in a list (no scope check: callers filter first). */
+  async findByIds(ids: string[]): Promise<LocationRecord[]> {
+    if (ids.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(locations)
+      .where(and(eq(locations.orgId, this.context.orgId), inArray(locations.id, ids)));
+  }
+
   async countExisting(ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
     const rows = await this.context.tx

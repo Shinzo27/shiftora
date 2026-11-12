@@ -14,6 +14,8 @@ import {
   shiftTemplateIssue,
   type CreateShiftRequest,
   type ListShiftsQuery,
+  type MyShifts,
+  type MyShiftsQuery,
   type ScheduleConflicts,
   type Shift,
   type ShiftConflict,
@@ -29,8 +31,10 @@ import { EmployeesService } from '../employees/employees.service.js';
 import { JobRolesService } from '../job-roles/job-roles.service.js';
 import { RequestContext } from '../../database/request-context.js';
 import { LocationAccess } from '../locations/location-access.service.js';
+import { LocationsRepository } from '../locations/locations.repository.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import type { LocationRecord } from '../locations/locations.repository.js';
+import type { OrgMember } from '../tenancy/member.js';
 import { SchedulesRepository, type ScheduleRecord } from './schedules.repository.js';
 import { ShiftsRepository, type ShiftRecord, type ShiftValues } from './shifts.repository.js';
 
@@ -105,10 +109,58 @@ export class ShiftsService {
     private readonly employees: EmployeesService,
     private readonly availability: AvailabilityService,
     private readonly jobRoles: JobRolesService,
+    private readonly locations: LocationsRepository,
     private readonly audit: AuditService,
     private readonly realtime: RealtimeService,
     private readonly context: RequestContext,
   ) {}
+
+  /**
+   * The caller's own shifts, for the phone app.
+   *
+   * The range is given in local dates and applied **per shift**: each row is turned into the
+   * wall clock of its own location before its date is compared, so a person who works across
+   * two time zones sees exactly the days they asked for. The SQL window is a day wider at each
+   * end to make that exact rather than lucky.
+   *
+   * No location-scope check: these are shifts already assigned to the caller.
+   */
+  async listMine(member: OrgMember, query: MyShiftsQuery): Promise<MyShifts> {
+    const employee = await this.employees.findByUserId(member.userId);
+    if (!employee) return { items: [] };
+
+    const from = new Date(`${query.from}T00:00:00Z`);
+    const to = new Date(`${query.to}T00:00:00Z`);
+    from.setUTCDate(from.getUTCDate() - 1);
+    to.setUTCDate(to.getUTCDate() + 2);
+
+    const rows = await this.shifts.forEmployee(employee.id, from, to);
+    if (rows.length === 0) return { items: [] };
+
+    const [locations, roles] = await Promise.all([
+      this.locations.findByIds([...new Set(rows.map((row) => row.locationId))]),
+      this.jobRoles.list(),
+    ]);
+    const locationById = new Map(locations.map((location) => [location.id, location]));
+    const roleName = new Map(roles.map((role) => [role.id, role.name]));
+
+    const items = rows
+      .map((row) => {
+        const location = locationById.get(row.locationId);
+        if (!location) return null;
+        const shift = toShift(row, location.timezone);
+        if (shift.date < query.from || shift.date > query.to) return null;
+        return {
+          ...shift,
+          locationName: location.name,
+          locationTimezone: location.timezone,
+          jobRoleName: row.jobRoleId ? (roleName.get(row.jobRoleId) ?? null) : null,
+        };
+      })
+      .filter((item) => item !== null);
+
+    return { items: items.sort((a, b) => a.startsAt.localeCompare(b.startsAt)) };
+  }
 
   /** Other screens looking at this week should refetch (the write has landed by now). */
   private announce(schedule: ScheduleRecord, locationId: string): void {

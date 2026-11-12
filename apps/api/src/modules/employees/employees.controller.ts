@@ -25,13 +25,15 @@ import {
   type ListEmployeesQuery,
   type Page,
   type SetAvailabilityRequest,
+  type Me,
   type TimeOff,
   type TimeOffQuery,
   type UpdateEmployeeRequest,
 } from '@shiftora/shared';
 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
-import { Roles } from '../tenancy/decorators.js';
+import { CurrentMember, Roles } from '../tenancy/decorators.js';
+import type { OrgMember } from '../tenancy/member.js';
 import { AvailabilityService } from './availability.service.js';
 import { EmployeesService } from './employees.service.js';
 
@@ -43,6 +45,27 @@ export class EmployeesController {
     private readonly employees: EmployeesService,
     private readonly availability: AvailabilityService,
   ) {}
+
+  /**
+   * The caller's own staff profile, for the phone app. Method-level `@Roles` replaces the
+   * class-level owner/manager rule: every member may call it, and a login with no staff record
+   * gets `profile: null` rather than a 403.
+   */
+  @Get('me')
+  @Roles('owner', 'manager', 'employee')
+  me(@CurrentMember() member: OrgMember): Promise<Me> {
+    return this.employees.findMine(member);
+  }
+
+  /** The caller's own time off (empty when their login is not on the rota). */
+  @Get('me/time-off')
+  @Roles('owner', 'manager', 'employee')
+  myTimeOff(
+    @CurrentMember() member: OrgMember,
+    @Query(new ZodValidationPipe(timeOffQuery)) query: TimeOffQuery,
+  ): Promise<TimeOff[]> {
+    return this.availability.listMine(member.userId, query);
+  }
 
   @Get('employees')
   list(

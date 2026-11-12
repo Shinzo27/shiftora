@@ -4,6 +4,7 @@ import {
   type CreateEmployeeRequest,
   type Employee,
   type ListEmployeesQuery,
+  type Me,
   type Page,
   type UpdateEmployeeRequest,
 } from '@shiftora/shared';
@@ -14,7 +15,9 @@ import { uniqueViolation } from '../../common/db-errors.js';
 import { AuditService } from '../audit/audit.service.js';
 import { JobRolesService } from '../job-roles/job-roles.service.js';
 import { LocationAccess } from '../locations/location-access.service.js';
+import { LocationsRepository } from '../locations/locations.repository.js';
 import { MembershipsRepository } from '../orgs/memberships.repository.js';
+import type { OrgMember } from '../tenancy/member.js';
 import {
   EmployeesRepository,
   type EmployeeFields,
@@ -50,8 +53,56 @@ export class EmployeesService {
     private readonly access: LocationAccess,
     private readonly jobRoles: JobRolesService,
     private readonly memberships: MembershipsRepository,
+    private readonly locations: LocationsRepository,
     private readonly audit: AuditService,
   ) {}
+
+  /** The staff profile behind this login, or null when this person is not on the rota. */
+  findByUserId(userId: string): Promise<EmployeeRecord | null> {
+    return this.employees.findByUserId(userId);
+  }
+
+  /**
+   * The caller's own profile for the staff app.
+   *
+   * Deliberately not scope-checked: a person's own record, roles and locations are theirs to
+   * see even if a manager later trims their location scope — that is a staffing question, not
+   * a privacy one.
+   */
+  async findMine(member: OrgMember): Promise<Me> {
+    const employee = await this.employees.findByUserId(member.userId);
+    if (!employee) return { userId: member.userId, role: member.role, profile: null };
+
+    const [roleIdsByEmployee, locationIdsByEmployee, roles] = await Promise.all([
+      this.employees.jobRoleIds([employee.id]),
+      this.employees.locationIds([employee.id]),
+      this.jobRoles.list(),
+    ]);
+    const locations = await this.locations.findByIds(locationIdsByEmployee.get(employee.id) ?? []);
+    const roleName = new Map(roles.map((role) => [role.id, role.name]));
+
+    return {
+      userId: member.userId,
+      role: member.role,
+      profile: {
+        employeeId: employee.id,
+        name: employee.name,
+        email: employee.email,
+        phone: employee.phone,
+        notifyChannel: employee.notifyChannel,
+        jobRoleNames: (roleIdsByEmployee.get(employee.id) ?? [])
+          .map((id) => roleName.get(id))
+          .filter((name): name is string => Boolean(name)),
+        locations: locations
+          .map((location) => ({
+            id: location.id,
+            name: location.name,
+            timezone: location.timezone,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      },
+    };
+  }
 
   async list(query: ListEmployeesQuery): Promise<Page<Employee>> {
     if (query.locationId) await this.access.assertAccess(query.locationId);

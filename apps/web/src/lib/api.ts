@@ -10,6 +10,8 @@ import type {
   JobRole,
   Location,
   LoginRequest,
+  Me,
+  MyShifts,
   OrgSummary,
   Page,
   PublishPreview,
@@ -19,6 +21,7 @@ import type {
   Shift,
   ShiftWriteResult,
   SignupRequest,
+  TimeOff,
   UpdateEmployeeRequest,
   UpdateLocationRequest,
   UpdateShiftRequest,
@@ -120,4 +123,13 @@ export const shiftsApi = {
   update: (orgId: string, id: string, body: UpdateShiftRequest) =>
     api.patch<ShiftWriteResult>(`/shifts/${id}`, { orgId, body }),
   remove: (orgId: string, id: string) => api.delete<void>(`/shifts/${id}`, { orgId }),
+};
+
+/** Everything a signed-in person may ask about themselves, whatever their role. */
+export const meApi = {
+  get: (orgId: string) => api.get<Me>('/me', { orgId }),
+  /** Shifts assigned to the caller between two local dates (inclusive). */
+  shifts: (orgId: string, from: string, to: string) =>
+    api.get<MyShifts>(`/me/shifts?from=${from}&to=${to}`, { orgId }),
+  timeOff: (orgId: string) => api.get<TimeOff[]>('/me/time-off', { orgId }),
 };
