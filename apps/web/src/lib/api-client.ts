@@ -143,6 +143,15 @@ export class ApiClient {
 }
 
 async function toApiError(res: Response): Promise<ApiError> {
+  // A dev proxy answers 502 when the API is not listening at all: nothing about the request is
+  // wrong, and `statusText` alone ("Bad Gateway") sends people looking in the wrong place.
+  if (res.status === 502 || res.status === 503 || res.status === 504) {
+    return new ApiError(
+      res.status,
+      'api_unreachable',
+      'The API is not responding. Start it with pnpm dev (it runs beside the web app) and check the api task in that window for why it stopped.',
+    );
+  }
   try {
     const problem = (await res.json()) as Partial<ProblemDetails>;
     return new ApiError(

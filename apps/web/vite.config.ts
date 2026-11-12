@@ -55,9 +55,11 @@ export default defineConfig({
     // Same-origin in development: the browser talks to :5173, Vite forwards /api to the API.
     // No CORS, and the refresh cookie (Path=/api/v1/auth) works as it will in production.
     proxy: {
-      '/api': 'http://localhost:4000',
+      // 127.0.0.1, not localhost: the API binds 0.0.0.0 (IPv4), and on Windows 'localhost'
+      // can resolve to ::1 first — which is a 502 that looks like the API being down.
+      '/api': 'http://127.0.0.1:4000',
       // Socket.IO handshake + upgrades: same origin, so `io()` needs no URL.
-      '/socket.io': { target: 'http://localhost:4000', ws: true },
+      '/socket.io': { target: 'http://127.0.0.1:4000', ws: true },
     },
   },
   test: {
