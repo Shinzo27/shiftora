@@ -174,4 +174,44 @@ export class TimeEntriesRepository {
       )
       .orderBy(asc(timeEntries.clockInAt));
   }
+
+  /**
+   * The review queue: flagged punches nobody has answered yet, for one branch, oldest first.
+   * The partial index \`time_entries_review_queue_idx\` is what keeps this cheap once a clinic
+   * has a year of punches.
+   */
+  async flagged(locationId: string, from: Date, to: Date): Promise<TimeEntryRow[]> {
+    return this.tx
+      .select()
+      .from(timeEntries)
+      .where(
+        and(
+          eq(timeEntries.orgId, this.context.orgId),
+          eq(timeEntries.locationId, locationId),
+          isNull(timeEntries.reviewedAt),
+          gte(timeEntries.clockInAt, from),
+          lte(timeEntries.clockInAt, to),
+          sql`cardinality(${timeEntries.flags}) > 0`,
+        ),
+      )
+      .orderBy(asc(timeEntries.clockInAt));
+  }
+
+  /** A manager's verdict on a flagged punch. The queue index stops seeing the row after this. */
+  async review(
+    id: string,
+    values: { decision: 'accepted' | 'disputed'; by: string; note: string | null; at: Date },
+  ): Promise<TimeEntryRow | null> {
+    const [row] = await this.tx
+      .update(timeEntries)
+      .set({
+        reviewedAt: values.at,
+        reviewedBy: values.by,
+        reviewDecision: values.decision,
+        reviewNote: values.note,
+      })
+      .where(and(eq(timeEntries.orgId, this.context.orgId), eq(timeEntries.id, id)))
+      .returning();
+    return row ?? null;
+  }
 }

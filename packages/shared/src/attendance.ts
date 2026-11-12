@@ -20,6 +20,34 @@ export type AttendanceFlag = z.output<typeof attendanceFlag>;
 export const punchState = z.enum(['on_time', 'early', 'late', 'unscheduled']);
 export type PunchState = z.output<typeof punchState>;
 
+/** A manager's verdict on a flagged punch: it stands, or it is disputed. */
+export const reviewDecision = z.enum(['accepted', 'disputed']);
+export type ReviewDecision = z.output<typeof reviewDecision>;
+
+/** What a manager said about a flagged punch, and when. */
+export const timeEntryReview = z.object({
+  decision: reviewDecision,
+  at: z.iso.datetime(),
+  by: z.string().nullable(),
+  note: z.string().nullable(),
+});
+export type TimeEntryReview = z.output<typeof timeEntryReview>;
+
+/**
+ * A review. The note is optional because "accepted" needs no explanation; a dispute without a
+ * reason would leave the employee with nothing to answer.
+ */
+export const reviewTimeEntryRequest = z
+  .object({
+    decision: reviewDecision,
+    note: z.string().trim().max(300).optional(),
+  })
+  .refine((body) => body.decision !== 'disputed' || (body.note?.length ?? 0) >= 3, {
+    message: 'Say what was wrong with this punch',
+    path: ['note'],
+  });
+export type ReviewTimeEntryRequest = z.output<typeof reviewTimeEntryRequest>;
+
 const latitude = z.number().min(-90).max(90);
 const longitude = z.number().min(-180).max(180);
 /** Horizontal accuracy reported by the device, in metres. */
@@ -78,6 +106,8 @@ export const timeEntry = z.object({
   accuracyM: z.number().int(),
   flags: z.array(attendanceFlag),
   edited: z.boolean(),
+  /** Null until a manager has dealt with this punch's flags. */
+  review: timeEntryReview.nullable(),
   /** Against the matched shift, beyond the organisation's grace: 0 when on time. */
   lateMinutes: z.number().int(),
   earlyMinutes: z.number().int(),

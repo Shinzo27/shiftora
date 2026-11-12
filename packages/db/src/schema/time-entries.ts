@@ -21,6 +21,9 @@ import { shifts } from './shifts.js';
 /** How the punch was made. `gps` is the phone; `qr` is a kiosk tablet; `manual` is a manager. */
 export const attendanceMethod = pgEnum('attendance_method', ['gps', 'qr', 'manual']);
 
+/** A manager's verdict on a flagged punch: it stands, or it is disputed. */
+export const reviewDecision = pgEnum('review_decision', ['accepted', 'disputed']);
+
 /**
  * One worked period: a clock-in, and later a clock-out (both optional on the way in).
  *
@@ -65,6 +68,11 @@ export const timeEntries = pgTable(
       .default(sql`'{}'::text[]`),
     /** Set when a manager changed the times by hand (the audit row carries before/after). */
     edited: boolean().notNull().default(false),
+    /** A flagged punch waits in the review queue until a manager says which way it goes. */
+    reviewedAt: timestamptz(),
+    reviewedBy: uuid(),
+    reviewDecision: reviewDecision(),
+    reviewNote: text(),
     clientEventId: uuid()
       .notNull()
       .$defaultFn(() => newId()),

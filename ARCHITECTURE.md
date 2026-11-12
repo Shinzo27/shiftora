@@ -463,8 +463,23 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   the before/after, which is what `GET /time-entries/:id` replays as the on-screen history.
   Reopening a forgotten clock-out (`clockOutTime: null`) is allowed, but two open punches for one
   person are not — that is a 409, not a constraint violation.
-- **Planned (W3 D6+):** rotating QR for a kiosk tablet, optional selfie, offline queue in
-  IndexedDB, and a review queue for flagged punches.
+- **The review queue** (W3 D6) is a list of punches, not a count: each row carries the distance
+  from the branch and the accuracy of the fix, which is what makes "accept or dispute" a decision
+  rather than a guess. A review is `accepted` or `disputed`; a dispute requires a note, because
+  the person it is about will read it. The punch keeps its times and its flags — the verdict is a
+  separate fact, and the four review columns are all-or-nothing by CHECK. `reviewed_at IS NULL` is
+  the queue's only filter, covered by a partial index (`0010`), so the queue does not slow down
+  with age.
+- **Export** is the week plus its worked-vs-rostered totals, written with RFC-4180 quoting and a
+  BOM (Excel on Windows reads it as UTF-8 rather than mojibake). It is generated from the rows the
+  manager is already looking at, so the file and the screen never disagree.
+- **The demo tenant** is a fixture, not a simulation: `pnpm db:seed` inserts Sunrise Clinic
+  directly, in one transaction with the org context set, because a seed that goes through the API
+  needs the API running and hides which row a failure came from. It mints the org id first — RLS
+  only accepts rows for the org the transaction points at. Re-running deletes the demo org, so the
+  fixture is idempotent.
+- **Planned (W3 D6+):** rotating QR for a kiosk tablet, optional selfie, and an offline queue in
+  IndexedDB.
 - **Rotating QR (kiosk):** tablet shows `HMAC_SHA256(location.qr_secret, floor(now/30s))`
   truncated, plus the location id. Server accepts the current or previous window only, and a
   code+employee pair can be used once. Kiosk is a `kiosk` membership with a long-lived

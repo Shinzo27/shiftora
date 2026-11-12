@@ -14,6 +14,7 @@ import {
   clockInRequest,
   clockOutRequest,
   attendanceQuery,
+  reviewTimeEntryRequest,
   updateTimeEntryRequest,
   myTimeEntriesQuery,
   type ClockInRequest,
@@ -21,6 +22,7 @@ import {
   type ClockResult,
   type Attendance,
   type AttendanceQuery,
+  type ReviewTimeEntryRequest,
   type TimeEntryWithEdits,
   type UpdateTimeEntryRequest,
   type MyTimeEntries,
@@ -66,6 +68,26 @@ export class AttendanceController {
   }
 
   /** The caller's own punches in a local-date range: what the clock screen and week view read. */
+  /** The review queue for a branch: flagged punches nobody has answered yet. */
+  @Get('attendance/flags')
+  @Roles('owner', 'manager')
+  flagged(
+    @Query(new ZodValidationPipe(attendanceQuery)) query: AttendanceQuery,
+  ): Promise<Attendance> {
+    return this.attendance.flagged(query);
+  }
+
+  /** Accept or dispute a flagged punch. The note is required to dispute. */
+  @Post('time-entries/:id/review')
+  @HttpCode(200)
+  @Roles('owner', 'manager')
+  review(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(reviewTimeEntryRequest)) body: ReviewTimeEntryRequest,
+  ): Promise<TimeEntryWithEdits> {
+    return this.attendance.review(id, body);
+  }
+
   /** One punch with its correction history. */
   @Get('time-entries/:id')
   @Roles('owner', 'manager')

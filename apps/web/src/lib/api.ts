@@ -150,6 +150,14 @@ export const attendanceApi = {
   /** One punch with its corrections. */
   detail: (orgId: string, id: string) =>
     api.get<TimeEntryWithEdits>(`/time-entries/${id}`, { orgId }),
+  /** Flagged punches nobody has answered yet, for this branch and range. */
+  flags: (orgId: string, locationId: string, from: string, to: string) =>
+    api.get<Attendance>(`/attendance/flags?locationId=${locationId}&from=${from}&to=${to}`, {
+      orgId,
+    }),
+  /** Accept or dispute a flagged punch. A dispute needs a note. */
+  review: (orgId: string, id: string, body: { decision: 'accepted' | 'disputed'; note?: string }) =>
+    api.post<TimeEntryWithEdits>(`/time-entries/${id}/review`, { orgId, body }),
   /** Correct a punch; the reason is required and lands in the audit trail. */
   edit: (
     orgId: string,

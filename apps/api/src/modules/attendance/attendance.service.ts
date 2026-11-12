@@ -21,6 +21,7 @@ import {
   type MyTimeEntriesQuery,
   type TimeEntry,
   type TimeEntryWithEdits,
+  type ReviewTimeEntryRequest,
   type UpdateTimeEntryRequest,
 } from '@shiftora/shared';
 
@@ -344,6 +345,87 @@ export class AttendanceService {
     return this.detail(id);
   }
 
+  /**
+   * The punches waiting for a decision: flagged by the geofence, the GPS accuracy or the clock,
+   * and not yet answered. A queue rather than a badge, because "12 flagged" is not actionable
+   * and "Asha was 340 m away at 09:02" is.
+   */
+  async flagged(query: AttendanceQuery): Promise<Attendance> {
+    const location = await this.access.assertAccess(query.locationId);
+    const { from, to } = windowOf(query.from, query.to);
+
+    const rows = await this.entries.flagged(location.id, from, to);
+    if (rows.length === 0) {
+      return {
+        locationId: location.id,
+        locationName: location.name,
+        from: query.from,
+        to: query.to,
+        items: [],
+        totals: [],
+      };
+    }
+
+    const employeeIds = [...new Set(rows.map((row) => row.employeeId))];
+    const [employees, shiftById, grace] = await Promise.all([
+      this.employees.findMany(employeeIds),
+      this.shiftsById(rows),
+      this.orgs.attendanceGraceMinutes(),
+    ]);
+
+    const items: AttendanceRow[] = rows.flatMap((row) => {
+      const entry = this.toEntry(row, location, shiftById.get(row.shiftId ?? '') ?? null, grace);
+      if (entry.date < query.from || entry.date > query.to) return [];
+      return [{ ...entry, employeeName: employees.get(row.employeeId)?.name ?? 'Former employee' }];
+    });
+
+    return {
+      locationId: location.id,
+      locationName: location.name,
+      from: query.from,
+      to: query.to,
+      items,
+      totals: [],
+    };
+  }
+
+  /**
+   * Answers one flagged punch. The decision is not a correction — the times stay as recorded —
+   * so a dispute is the manager saying "I do not accept this as attendance" while the punch, and
+   * the argument for it, stay on the record for the conversation that follows.
+   */
+  async review(id: string, body: ReviewTimeEntryRequest): Promise<TimeEntryWithEdits> {
+    const row = await this.entries.findById(id);
+    if (!row) throw timeEntryNotFound();
+    await this.access.assertAccess(row.locationId);
+
+    if (row.reviewedAt) {
+      throw new AppException(
+        409,
+        errorCodes.validationFailed,
+        'This punch has already been reviewed.',
+      );
+    }
+
+    const updated = await this.entries.review(id, {
+      decision: body.decision,
+      by: this.context.userId,
+      note: body.note ?? null,
+      at: new Date(),
+    });
+    if (!updated) throw timeEntryNotFound();
+
+    await this.audit.record({
+      action: 'attendance.reviewed',
+      entity: 'time_entry',
+      entityId: id,
+      before: { decision: null, note: null, flags: row.flags },
+      after: { decision: body.decision, note: body.note ?? null, flags: row.flags },
+    });
+
+    return this.detail(id);
+  }
+
   /** One punch with its corrections, for the manager who is about to change it again. */
   async detail(id: string): Promise<TimeEntryWithEdits> {
     const row = await this.entries.findById(id);
@@ -529,6 +611,14 @@ export class AttendanceService {
       accuracyM: row.inAccuracyM,
       flags: row.flags as TimeEntry['flags'],
       edited: row.edited,
+      review: row.reviewDecision
+        ? {
+            decision: row.reviewDecision,
+            at: row.reviewedAt?.toISOString() ?? '',
+            by: row.reviewedBy,
+            note: row.reviewNote,
+          }
+        : null,
       lateMinutes: against?.lateMinutes ?? 0,
       earlyMinutes: against?.earlyMinutes ?? 0,
       state: against?.state ?? 'unscheduled',

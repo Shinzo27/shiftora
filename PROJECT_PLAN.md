@@ -86,11 +86,12 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D2 | `time_entries` (`0008`) with geofence policy, unique `client_event_id` and one open punch per person; `POST /clock-in`, `POST /clock-out`, `GET /me/time-entries`; haversine fence as pure domain maths; `Idempotency-Key` | ✅ Done | `bcea665` |
 | W3 D3 | Clock card on the staff app: geolocation on tap, permission/secure-context/timeout states, a confirm step for a ±100 m fix, check-in notes for a flagged punch, live elapsed time; 3 Playwright tests with a granted permission and a placed device | ✅ Done | `a72e065` |
 | W3 D4 | Punch ↔ shift matching as pure domain maths, per-org early/late grace (`0009`), derived state/late/early on every read, and the manager Timesheets page (week per branch, badges, worked-vs-rostered totals) | ✅ Done | `3f92fe4` |
-| W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | (uncommitted) |
+| W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
+| W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | (uncommitted) |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 10 migrations, 458 automated tests (236 unit, 222 integration against real
-Postgres) plus 5 Playwright end-to-end tests, 64 API endpoints, a React web app on shadcn/ui
+Numbers today: 11 migrations, 467 automated tests (240 unit, 227 integration against real
+Postgres) plus 5 Playwright end-to-end tests, 66 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
@@ -165,9 +166,28 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   corrected 15:31 → 14:55–19:30 from the sheet, the row reads "edited" with no late badge, the
 >   history shows "15:31–… → 14:55–19:30", and both invalid-input messages appear; axe 0 with
 >   the sheet open.
-> - **Next:** W3 D6 — the week’s numbers: per-person timesheet totals over a pay-period range,
->   CSV export for the accountant, and the flag review queue (punches outside the fence waiting
->   for a manager to accept or dispute them).
+> - **W3 D6 — a demo in one command, and what to do about a flag.** `pnpm db:seed` builds
+>   Sunrise Clinic: two branches at real Mumbai coordinates, four logins, three staff with rates
+>   and availability, a **published** week and Monday’s punches — one on time, one 22 minutes
+>   late, one 334 m outside the fence with a ±380 m fix. It is a fixture, inserted directly
+>   inside one transaction with the org context set (the org id is minted first, because RLS
+>   only accepts rows for the org the transaction points at — the same dance `OrgsService`
+>   does). Re-running it deletes the demo org first, so it is idempotent.
+> - **The buffer went to the review queue.** A count is not actionable, so `GET /attendance/flags`
+>   returns the punches themselves with the distance and the accuracy as badges (`334 m away`,
+>   `±380 m`). `POST /time-entries/:id/review` records `accepted` or `disputed`; a dispute needs a
+>   note, because the employee will read it. The punch keeps its times and its flags — the verdict
+>   is a separate fact, shown beside them. `reviewed_at IS NULL` is the queue’s only filter,
+>   covered by a partial index (`0010`). "Export CSV" writes the week and its totals with
+>   RFC-4180 quoting and a BOM, so Excel reads it as UTF-8.
+> - **Checks (D6):** 5 integration tests (queue lists only unreviewed flagged punches, a clean
+>   punch never appears, a dispute needs a note, a second review is a 409, the verdict shows on
+>   the entry but is not an edit, employee 403 and out-of-scope manager 404), 4 unit tests for the
+>   CSV writer, and the seed verified end to end through the API and in Chrome. The queue was
+>   driven in Chrome: one accepted, one disputed with a note, both badges on their rows, queue
+>   then empty; axe 0 at 1440 and 390 px.
+> - **Next:** W3 review, then W4 — the notification worker: relay the outbox, send WhatsApp with
+>   SMS and push fallback, and give staff a published-schedule message they can actually read.
 > - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
 >   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
 >   `reject` mode will need a manager override path eventually.
@@ -859,7 +879,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D3 | ✅ | Clock-in UI on the staff app (clock card): location requested on tap, permission / insecure-context / timeout / no-fix states each with a next step, a confirm step for a poor fix, flagged-punch notes, live elapsed time | Verified in Chrome at 390×844 with a placed device: inside the fence, 2 km away (flagged), ±400 m (confirm then flag), permission denied; axe 0 violations; 3 Playwright tests cover the same paths |
 | D4 | ✅ | Match entries to shifts (nearest start within ±2 h, pure domain function); early/late tolerance as an org setting (`attendance_grace_minutes`, default 5); flags from the punch plus derived lateness on every read; Timesheets page per branch and week with worked-vs-rostered totals | Flags visible to managers: verified in Chrome (a 35-minute-late punch reads "35 min late"), axe 0 violations at 1440 and 390 px; 9 new integration tests (grace, early, unscheduled, out-of-scope manager) |
 | D5 | ✅ | Manager corrections in the location’s wall clock (a clock-out before the clock-in reads as the next morning; over 16 h is refused as a typo), a required reason, before/after in the same audit row, `GET /time-entries/:id` returning the punch with its history, and the correction sheet that shows it | Edited entry shows before/after in audit: verified in Chrome (15:31 corrected to 14:55–19:30 reads "15:31–… → 14:55–19:30" with the reason beneath), 8 integration tests; pay-period totals stay with the pay-rules engine in W6 |
-| D6 | ☐ | Buffer; tests for the clock-in path; seed script for a "demo clinic" tenant (`pnpm db:seed`) | Demo data in one command |
+| D6 | ✅ | `pnpm db:seed` builds Sunrise Clinic — 2 branches, 4 logins, 3 staff, roles, availability, a published week and Monday's punches (one on time, one 22 minutes late, one 334 m outside the fence with a ±380 m fix) — in one transaction with the org context set, idempotent by deleting the demo org first. The buffer went to the flag review queue (`reviewed_at` + partial index, accept/dispute with a required reason) and a CSV export of the week with its worked-vs-rostered totals | Demo data in one command: `pnpm db:seed` then sign in as `priya@sunriseclinic.test` / `demo-clinic-2026`; verified through the API (org, 2 locations, punches with states, Bandra queue with 334 m) and in Chrome, 5 integration + 4 unit tests |
 
 ### Week 4: Notifications and reminders
 

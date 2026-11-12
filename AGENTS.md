@@ -143,6 +143,11 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Known gotchas (learned the hard way)
 
+- **`pnpm db:seed` mints the org id before inserting the org.** RLS only accepts rows for the
+  org the transaction points at, so a seed (or any direct insert) must `setTenantContext` with the
+  id it is about to use — the same sequence `OrgsService.create` follows. Re-running the seed
+  deletes the demo org first, so it is idempotent; it needs `MIGRATION_DATABASE_URL`, not the app
+  URL, because it writes tenant rows on purpose.
 - **A punch correction is wall clock, and the server converts it.** `PATCH /time-entries/:id`
   takes `clockInTime`/`clockOutTime` as `HH:MM` plus an optional `date`, never instants: the
   service calls `toInstant(day, time, location.timezone)`. A clock-out earlier than the clock-in

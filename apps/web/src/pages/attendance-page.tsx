@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, Clock, MapPin, Pencil } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
 import { EditPunchSheet } from '@/components/attendance/edit-punch-sheet';
+import { ExportButton, FlagQueue } from '@/components/attendance/flag-queue';
 import { ErrorState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -54,6 +55,9 @@ export function AttendancePage() {
           </p>
         </div>
         <div className="flex items-center gap-1">
+          {attendance.data ? (
+            <ExportButton attendance={attendance.data} weekStart={weekStart} />
+          ) : null}
           <Button
             variant="outline"
             size="icon"
@@ -108,6 +112,7 @@ export function AttendancePage() {
         </section>
       ) : (
         <div className="space-y-6">
+          <FlagQueue orgId={orgId} locationId={locationId} from={from} to={to} />
           {groups.map(([date, rows]) => (
             <section key={date} aria-labelledby={`day-${date}`}>
               <h2
@@ -238,6 +243,9 @@ function punchBadges(row: AttendanceRow): PunchBadge[] {
   if (row.flags.includes('outside_geofence')) badges.push({ label: 'off site', tone: 'warning' });
   if (row.flags.includes('low_accuracy')) badges.push({ label: 'weak GPS', tone: 'warning' });
   if (row.flags.includes('device_skew')) badges.push({ label: 'phone clock', tone: 'warning' });
+  // The verdict matters more than the flag it answers: a disputed punch stays visible.
+  if (row.review?.decision === 'disputed') badges.push({ label: 'disputed', tone: 'warning' });
+  if (row.review?.decision === 'accepted') badges.push({ label: 'accepted', tone: 'neutral' });
   return badges;
 }
 
