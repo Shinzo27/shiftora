@@ -125,6 +125,7 @@ describe('every tenant table is protected', () => {
       'notifications',
       'organizations',
       'outbox',
+      'push_subscriptions',
       'schedule_publications',
       'schedules',
       'shift_templates',

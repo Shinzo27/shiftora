@@ -12,6 +12,8 @@ export class AppConfig {
   readonly webOrigin: string;
   /** Null when realtime runs in a single process (no Redis configured). */
   readonly redisUrl: string | null;
+  /** Null when Web Push is not configured: the staff app then hides its notification button. */
+  readonly vapidPublicKey: string | null;
   /** Cookies get the Secure flag only in production, so local http works. */
   readonly secureCookies: boolean;
 
@@ -25,6 +27,7 @@ export class AppConfig {
     this.refreshTokenTtlDays = env.REFRESH_TOKEN_TTL_DAYS;
     this.webOrigin = env.WEB_ORIGIN;
     this.redisUrl = env.REDIS_URL ?? null;
+    this.vapidPublicKey = env.VAPID_PUBLIC_KEY ?? null;
     this.secureCookies = env.NODE_ENV === 'production';
   }
 }

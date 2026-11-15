@@ -1,13 +1,19 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import {
+  forgotPasswordRequest,
   loginRequest,
+  resetPasswordRequest,
   signupRequest,
+  verifyEmailRequest,
   type AccessTokenResponse,
   type AuthResponse,
   type AuthUser,
+  type ForgotPasswordRequest,
   type LoginRequest,
+  type ResetPasswordRequest,
   type SignupRequest,
+  type VerifyEmailRequest,
 } from '@shiftora/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
@@ -42,6 +48,42 @@ export class AuthController {
     @Res({ passthrough: true }) reply: FastifyReply,
   ): Promise<AuthResponse> {
     return this.withCookie(reply, await this.auth.signup(body, requestMeta(request)));
+  }
+
+  /** Confirms an address from the link in the email. */
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Post('verify-email')
+  @HttpCode(204)
+  async verifyEmail(
+    @Body(new ZodValidationPipe(verifyEmailRequest)) body: VerifyEmailRequest,
+  ): Promise<void> {
+    await this.auth.verifyEmail(body.token);
+  }
+
+  /**
+   * Asks for a reset link. Always 202, whether or not the address exists — the alternative is an
+   * endpoint that answers "who works here?".
+   */
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Post('password/forgot')
+  @HttpCode(202)
+  async forgotPassword(
+    @Body(new ZodValidationPipe(forgotPasswordRequest)) body: ForgotPasswordRequest,
+  ): Promise<void> {
+    await this.auth.requestPasswordReset(body.email);
+  }
+
+  /** Redeems a reset link: new password, other sessions revoked. */
+  @Public()
+  @UseGuards(ThrottlerGuard)
+  @Post('password/reset')
+  @HttpCode(204)
+  async resetPassword(
+    @Body(new ZodValidationPipe(resetPasswordRequest)) body: ResetPasswordRequest,
+  ): Promise<void> {
+    await this.auth.resetPassword(body.token, body.password);
   }
 
   @Public()

@@ -143,7 +143,7 @@ describe('dispatchDelivery', () => {
     const { deliveryId, body } = await queueOneDelivery();
     const { mailer, sent } = fakeMailer();
 
-    const outcome = await dispatchDelivery(db, mailer, { deliveryId, orgId });
+    const outcome = await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
 
     expect(outcome).toEqual({ status: 'sent' });
     expect(sent).toHaveLength(1);
@@ -169,8 +169,8 @@ describe('dispatchDelivery', () => {
     const { deliveryId } = await queueOneDelivery();
     const { mailer, sent } = fakeMailer();
 
-    await dispatchDelivery(db, mailer, { deliveryId, orgId });
-    const again = await dispatchDelivery(db, mailer, { deliveryId, orgId });
+    await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
+    const again = await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
 
     expect(again.status).toBe('skipped');
     expect(sent).toHaveLength(1);
@@ -179,10 +179,14 @@ describe('dispatchDelivery', () => {
   it('records the provider error and asks for a retry', async () => {
     const { deliveryId } = await queueOneDelivery();
 
-    const outcome = await dispatchDelivery(db, fakeMailer('SMTP 421 try later').mailer, {
-      deliveryId,
-      orgId,
-    });
+    const outcome = await dispatchDelivery(
+      db,
+      { mailer: fakeMailer('SMTP 421 try later').mailer, push: null },
+      {
+        deliveryId,
+        orgId,
+      },
+    );
 
     expect(outcome).toEqual({ status: 'retry', reason: 'SMTP 421 try later' });
 
@@ -209,7 +213,11 @@ describe('dispatchDelivery', () => {
         .where(sql`id = ${deliveryId}`);
     });
 
-    const outcome = await dispatchDelivery(db, fakeMailer().mailer, { deliveryId, orgId });
+    const outcome = await dispatchDelivery(
+      db,
+      { mailer: fakeMailer().mailer, push: null },
+      { deliveryId, orgId },
+    );
     expect(outcome).toEqual({ status: 'retry', reason: 'No whatsapp adapter yet' });
     // The row says why, so nobody has to read the queue's failed list to find out.
     expect(await reasonOf(deliveryId)).toContain('whatsapp');

@@ -5,6 +5,7 @@ import { parseWorkerEnv } from './env.js';
 import { handleNotificationJob } from './handlers.js';
 import { createMailer } from './mailer.js';
 import { dispatchDelivery } from './notifications/dispatch.js';
+import { createWebPushSender } from './notifications/push.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
 import {
   connectionOptions,
@@ -38,6 +39,19 @@ async function main(): Promise<void> {
     ...(env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : {}),
   });
 
+  // No keys, no push channel: the daily job of a small clinic still runs on email and WhatsApp.
+  const push =
+    env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY
+      ? await createWebPushSender({
+          publicKey: env.VAPID_PUBLIC_KEY,
+          privateKey: env.VAPID_PRIVATE_KEY,
+          subject: env.VAPID_SUBJECT,
+        })
+      : null;
+  if (!push) console.warn('worker: Web Push is not configured (no VAPID keys) — push is skipped');
+
+  const adapters = { mailer, push };
+
   const enqueue: Enqueue = async (event) => {
     await queue.add(
       event.topic,
@@ -54,14 +68,15 @@ async function main(): Promise<void> {
 
   const worker = new Worker<NotificationJob>(
     NOTIFICATIONS_QUEUE,
-    async (job) => handleNotificationJob(connection.db, deliveryQueue, job.data, env.APP_URL),
+    async (job) =>
+      handleNotificationJob(connection.db, deliveryQueue, job.data, env.APP_URL, mailer),
     { connection: options, concurrency: env.WORKER_CONCURRENCY },
   );
 
   const sender = new Worker<DeliveryJobData>(
     DELIVERIES_QUEUE,
     async (job) => {
-      const result = await dispatchDelivery(connection.db, mailer, job.data);
+      const result = await dispatchDelivery(connection.db, adapters, job.data);
       // Throwing is the retry signal: BullMQ backs off, and the delivery row keeps the reason.
       if (result.status === 'retry') throw new Error(result.reason);
       return result;

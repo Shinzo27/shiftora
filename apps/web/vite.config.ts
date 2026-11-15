@@ -46,6 +46,8 @@ export default defineConfig({
         // Never answer an API or socket request with the shell.
         navigateFallbackDenylist: [/^\/api\//, /^\/socket\.io\//],
         cleanupOutdatedCaches: true,
+        // Our own push + notificationclick handlers, imported into the generated worker.
+        importScripts: ['push-handler.js'],
       },
     }),
   ],

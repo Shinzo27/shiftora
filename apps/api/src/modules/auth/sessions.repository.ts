@@ -70,6 +70,17 @@ export class SessionsRepository {
     });
   }
 
+  /**
+   * Revokes every live session for a person. Used when a password is reset: whoever knew the old
+   * password should not keep a token that proves they did.
+   */
+  async revokeAllForUser(userId: string, now: Date): Promise<void> {
+    await this.database.db
+      .update(sessions)
+      .set({ revokedAt: now })
+      .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+  }
+
   /** Logout: revokes one session. No-op if it's unknown or already revoked. */
   async revoke(tokenHash: string, now: Date): Promise<void> {
     await this.database.db

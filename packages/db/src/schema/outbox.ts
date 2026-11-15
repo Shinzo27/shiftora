@@ -15,7 +15,8 @@ export const outbox = pgTable(
   'outbox',
   {
     id: id(),
-    orgId: uuid().notNull(),
+    /** Null for platform events (an email verification, a password reset): they belong to no tenant. */
+    orgId: uuid(),
     /** `entity.past_tense`, e.g. `schedule.published`; the relay routes on this. */
     topic: text().notNull(),
     /** Everything the worker needs; never secrets, never precise coordinates. */

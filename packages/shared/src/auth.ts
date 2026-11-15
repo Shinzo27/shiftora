@@ -16,6 +16,25 @@ export type SignupRequest = z.output<typeof signupRequest>;
 export const loginRequest = z.object({ email, password: z.string().min(1, 'Required').max(128) });
 export type LoginRequest = z.output<typeof loginRequest>;
 
+/**
+ * A token as it arrives from an email link. Not trimmed: whitespace would be part of the secret.
+ * The length bound is a sanity check on a query parameter, not a format the server invented.
+ */
+const oneTimeToken = z.string().min(20, 'Invalid link').max(200);
+
+export const verifyEmailRequest = z.object({ token: oneTimeToken });
+export type VerifyEmailRequest = z.output<typeof verifyEmailRequest>;
+
+/**
+ * A forgotten password. The response is always the same, whether or not the address exists:
+ * otherwise this endpoint becomes a way to ask "who works here?".
+ */
+export const forgotPasswordRequest = z.object({ email });
+export type ForgotPasswordRequest = z.output<typeof forgotPasswordRequest>;
+
+export const resetPasswordRequest = z.object({ token: oneTimeToken, password: newPassword });
+export type ResetPasswordRequest = z.output<typeof resetPasswordRequest>;
+
 export const authUser = z.object({
   id: z.uuid(),
   email: z.string(),

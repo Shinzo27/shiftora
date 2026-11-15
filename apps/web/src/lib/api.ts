@@ -67,6 +67,40 @@ export const authApi = {
     await api.post('/auth/logout');
     api.setAccessToken(null);
   },
+
+  /** Redeems the link from the confirmation email. A bad link is a 400, not a crash. */
+  verifyEmail: async (token: string): Promise<void> => {
+    await api.post('/auth/verify-email', { body: { token } });
+  },
+
+  /** Always succeeds from the caller's point of view: the server will not say who exists. */
+  forgotPassword: async (email: string): Promise<void> => {
+    await api.post('/auth/password/forgot', { body: { email } });
+  },
+
+  resetPassword: async (token: string, password: string): Promise<void> => {
+    await api.post('/auth/password/reset', { body: { token, password } });
+  },
+};
+
+export const pushApi = {
+  /** Null when the server has no VAPID keys: the app then says notifications are unavailable. */
+  publicKey: async (): Promise<string | null> => {
+    const res = await api.get<{ publicKey: string | null }>('/push/public-key');
+    return res.publicKey;
+  },
+  subscribe: async (
+    orgId: string,
+    body: { endpoint: string; keys: { p256dh: string; auth: string } },
+  ): Promise<void> => {
+    await api.post('/me/push-subscriptions', { orgId, body });
+  },
+  unsubscribe: async (
+    orgId: string,
+    body: { endpoint: string; keys: { p256dh: string; auth: string } },
+  ): Promise<void> => {
+    await api.delete('/me/push-subscriptions', { orgId, body });
+  },
 };
 
 export const orgsApi = {

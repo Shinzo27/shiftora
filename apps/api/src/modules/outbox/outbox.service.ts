@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
-import { schema } from '@shiftora/db';
+import { Inject, Injectable } from '@nestjs/common';
+import { schema, type DatabaseConnection } from '@shiftora/db';
 
+import { DATABASE } from '../../database/database.module.js';
 import { RequestContext } from '../../database/request-context.js';
 
 /**
@@ -15,7 +16,10 @@ import { RequestContext } from '../../database/request-context.js';
  */
 @Injectable()
 export class OutboxService {
-  constructor(private readonly context: RequestContext) {}
+  constructor(
+    private readonly context: RequestContext,
+    @Inject(DATABASE) private readonly database: DatabaseConnection,
+  ) {}
 
   async record(topic: string, payload: Record<string, unknown>): Promise<void> {
     await this.context.tx.insert(schema.outbox).values({
@@ -23,5 +27,17 @@ export class OutboxService {
       topic,
       payload,
     });
+  }
+
+  /**
+   * A platform event: an email verification or a password reset, which belongs to a person and
+   * not to a tenant. `org_id` is null and migration 0014 allows exactly that; every tenant row
+   * still goes through `record()`, under the request's own org.
+   */
+  async recordPlatform(topic: string, payload: Record<string, unknown>): Promise<void> {
+    // Its own transaction, because auth routes have none: signup and password reset are not
+    // tenant requests, so there is no request transaction to join. A lost event here costs one
+    // email, and the resend endpoint exists for exactly that.
+    await this.database.db.insert(schema.outbox).values({ orgId: null, topic, payload });
   }
 }

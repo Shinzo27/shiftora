@@ -8,6 +8,10 @@ export const errorCodes = {
   emailTaken: 'auth.email_taken',
   invalidCredentials: 'auth.invalid_credentials',
   invalidRefreshToken: 'auth.invalid_refresh_token',
+  /** A one-time link that is unknown, expired or already used — the same answer for all three. */
+  invalidToken: 'auth.invalid_token',
+  /** The address is already confirmed, so there is nothing to do. */
+  alreadyVerified: 'auth.already_verified',
   forbidden: 'auth.forbidden',
   orgRequired: 'org.required',
   notMember: 'org.not_member',

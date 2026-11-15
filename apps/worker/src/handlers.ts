@@ -1,8 +1,10 @@
 import type { Database } from '@shiftora/db';
 import type { Queue } from 'bullmq';
 
+import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
+import { sendAccountMail } from './platform-mail.js';
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
 /**
@@ -23,6 +25,7 @@ export async function handleNotificationJob(
   deliveries: Queue<DeliveryJobData>,
   job: NotificationJob,
   appUrl: string,
+  mailer: Mailer,
 ): Promise<FanOutResult> {
   switch (job.topic) {
     case 'schedule.published': {
@@ -64,6 +67,16 @@ export async function handleNotificationJob(
         console.info(`notifications: invite.created → emailed ${result.deliveries} invite(s)`);
       }
       return result;
+    }
+    // Platform mail: no tenant, so no notification rows — the handler sends it directly.
+    case 'auth.verify_email':
+    case 'auth.reset_password': {
+      const result = await sendAccountMail(mailer, appUrl, job);
+      return {
+        notifications: 0,
+        deliveries: result.sent ? 1 : 0,
+        deliveryIds: [],
+      };
     }
     default:
       console.warn(`notifications: no handler for topic '${job.topic}' (job ${job.outboxId})`);

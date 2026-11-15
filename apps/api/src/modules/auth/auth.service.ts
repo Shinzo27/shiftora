@@ -12,11 +12,28 @@ import {
 
 import { AppException } from '../../common/app-exception.js';
 import { CLOCK } from '../../common/clock.js';
+import { randomToken, sha256Hex } from '../../common/crypto.js';
+import { OutboxService } from '../outbox/outbox.service.js';
 import { AppConfig } from '../../config/app-config.js';
 import { PasswordHasher } from './password-hasher.js';
+import { OneTimeTokensRepository } from './one-time-tokens.repository.js';
 import { SessionsRepository, type NewSession } from './sessions.repository.js';
 import { hashRefreshToken, TokenService } from './token.service.js';
 import { UsersRepository, type User } from './users.repository.js';
+
+/** A verification link is good for a day; a reset link for an hour, because it is a door key. */
+const VERIFY_TTL_HOURS = 24;
+const RESET_TTL_HOURS = 1;
+
+const invalidToken = (): AppException =>
+  new AppException(
+    400,
+    errorCodes.invalidToken,
+    'This link is not valid any more. Ask for a new one.',
+  );
+
+const alreadyVerified = (): AppException =>
+  new AppException(409, errorCodes.alreadyVerified, 'This address is already confirmed.');
 
 /** Client details stored with a session, to show "your devices" later. */
 export interface RequestMeta {
@@ -58,6 +75,8 @@ export class AuthService {
     private readonly sessions: SessionsRepository,
     private readonly passwords: PasswordHasher,
     private readonly tokens: TokenService,
+    private readonly oneTimeTokens: OneTimeTokensRepository,
+    private readonly outbox: OutboxService,
     private readonly config: AppConfig,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
@@ -72,6 +91,7 @@ export class AuthService {
         'An account with this email already exists.',
       );
     }
+    await this.sendVerification(user);
     return this.startSession(user, meta);
   }
 
@@ -126,6 +146,94 @@ export class AuthService {
       throw new AppException(401, errorCodes.unauthenticated, 'Please log in again.');
     }
     return toAuthUser(user);
+  }
+
+  /**
+   * Confirms an address. The token is looked up by hash and consumed with a conditional UPDATE,
+   * so two clicks on one link cannot both succeed — the second is simply an invalid link.
+   */
+  async verifyEmail(token: string): Promise<void> {
+    const now = this.clock.now();
+    const record = await this.oneTimeTokens.findByHash(sha256Hex(token), 'verify_email');
+    if (!record || record.usedAt || record.expiresAt <= now) throw invalidToken();
+
+    if (!(await this.oneTimeTokens.consume(record.id, now))) throw invalidToken();
+    await this.users.markEmailVerified(record.userId, now);
+  }
+
+  /**
+   * Starts a password reset. **Always the same answer**, whether or not the address exists: the
+   * alternative turns this endpoint into a way to ask "who works here?".
+   */
+  async requestPasswordReset(email: string): Promise<void> {
+    const user = await this.users.findByEmail(email);
+    if (!user) return;
+    await this.sendPasswordReset(user);
+  }
+
+  /** Redeems a reset link: new password, every live session revoked, every other link retired. */
+  async resetPassword(token: string, password: string): Promise<void> {
+    const now = this.clock.now();
+    const record = await this.oneTimeTokens.findByHash(sha256Hex(token), 'reset_password');
+    if (!record || record.usedAt || record.expiresAt <= now) throw invalidToken();
+
+    if (!(await this.oneTimeTokens.consume(record.id, now))) throw invalidToken();
+
+    const passwordHash = await this.passwords.hash(password);
+    await this.users.setPassword(record.userId, passwordHash);
+    // Whoever knew the old password must not keep a token that proves they did.
+    await this.sessions.revokeAllForUser(record.userId, now);
+    this.logger.log(`password reset for user ${record.userId}`);
+  }
+
+  /** Re-issues a verification link, retiring the previous one. */
+  async resendVerification(userId: string): Promise<void> {
+    const user = await this.users.findById(userId);
+    if (!user || user.emailVerifiedAt) throw alreadyVerified();
+    await this.sendVerification(user);
+  }
+
+  private async sendVerification(user: User): Promise<void> {
+    const now = this.clock.now();
+    await this.oneTimeTokens.retire(user.id, 'verify_email', now);
+    const { token, hash } = this.newOneTimeToken();
+    await this.oneTimeTokens.create({
+      userId: user.id,
+      purpose: 'verify_email',
+      tokenHash: hash,
+      expiresAt: addSeconds(now, VERIFY_TTL_HOURS * 3600),
+    });
+    await this.outbox.recordPlatform('auth.verify_email', {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      token,
+      expiresInHours: VERIFY_TTL_HOURS,
+    });
+  }
+
+  private async sendPasswordReset(user: User): Promise<void> {
+    const now = this.clock.now();
+    await this.oneTimeTokens.retire(user.id, 'reset_password', now);
+    const { token, hash } = this.newOneTimeToken();
+    await this.oneTimeTokens.create({
+      userId: user.id,
+      purpose: 'reset_password',
+      tokenHash: hash,
+      expiresAt: addSeconds(now, RESET_TTL_HOURS * 3600),
+    });
+    await this.outbox.recordPlatform('auth.reset_password', {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      token,
+      expiresInHours: RESET_TTL_HOURS,
+    });
+  }
+
+  private newOneTimeToken(): { token: string; hash: string } {
+    const token = randomToken();
+    return { token, hash: sha256Hex(token) };
   }
 
   private async startSession(user: User, meta: RequestMeta): Promise<IssuedSession<AuthResponse>> {

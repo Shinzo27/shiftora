@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Mail, MapPin, Phone, ShieldCheck, UserRound } from 'lucide-react';
 
 import { DefinitionRow } from '@/components/definition-row';
+import { PushToggle } from '@/components/push-toggle';
 import { initials } from '@/components/page';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -95,6 +96,8 @@ export function MyProfilePage() {
           </ul>
         )}
       </section>
+
+      <PushToggle orgId={orgId} />
 
       <p className="mt-4 px-1 text-xs text-muted-foreground">
         Your manager keeps these details up to date. Ask them to change your phone number or how

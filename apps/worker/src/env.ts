@@ -24,6 +24,10 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   /** The web app's public URL: links in emails are built from it. */
   APP_URL: z.url().default('http://localhost:5173'),
+  /** VAPID keys for Web Push. Absent means no push channel: the button hides, nothing crashes. */
+  VAPID_PUBLIC_KEY: z.string().optional(),
+  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_SUBJECT: z.string().default('mailto:admin@shiftora.local'),
   /** What staff see in the From line. */
   MAIL_FROM: z.string().min(3).default('Shiftora <no-reply@shiftora.local>'),
 });

@@ -95,6 +95,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
                 </Button>
               </FieldGroup>
             </form>
+            {isLogin && (
+              <p className="text-center text-sm">
+                <Link
+                  className="text-muted-foreground underline-offset-4 hover:underline"
+                  to="/forgot-password"
+                >
+                  Forgotten your password?
+                </Link>
+              </p>
+            )}
             <p className="text-center text-sm text-muted-foreground">
               {isLogin ? 'New to Shiftora? ' : 'Already have an account? '}
               <Link

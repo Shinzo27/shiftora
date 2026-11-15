@@ -12,6 +12,8 @@ const envSchema = z
     ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
+    /** Handed to the browser so it can subscribe; absent disables the push button. */
+    VAPID_PUBLIC_KEY: z.string().optional(),
     /** Optional: with it, realtime events reach every API instance; without it, one process. */
     REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
   })

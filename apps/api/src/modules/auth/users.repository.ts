@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { eq, schema, type DatabaseConnection } from '@shiftora/db';
+import { and, eq, isNull, schema, type DatabaseConnection } from '@shiftora/db';
 
 import { DATABASE } from '../../database/database.module.js';
 
@@ -37,5 +37,16 @@ export class UsersRepository {
       .onConflictDoNothing({ target: users.email })
       .returning();
     return user ?? null;
+  }
+
+  async markEmailVerified(userId: string, at: Date): Promise<void> {
+    await this.database.db
+      .update(users)
+      .set({ emailVerifiedAt: at })
+      .where(and(eq(users.id, userId), isNull(users.emailVerifiedAt)));
+  }
+
+  async setPassword(userId: string, passwordHash: string): Promise<void> {
+    await this.database.db.update(users).set({ passwordHash }).where(eq(users.id, userId));
   }
 }

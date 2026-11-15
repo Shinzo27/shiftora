@@ -14,6 +14,15 @@ import { useSession } from '@/lib/session';
  */
 const AuthPage = lazy(async () => ({ default: (await import('@/pages/auth-page')).AuthPage }));
 const OrgsPage = lazy(async () => ({ default: (await import('@/pages/orgs-page')).OrgsPage }));
+const ForgotPasswordPage = lazy(async () => ({
+  default: (await import('@/pages/account-pages')).ForgotPasswordPage,
+}));
+const ResetPasswordPage = lazy(async () => ({
+  default: (await import('@/pages/account-pages')).ResetPasswordPage,
+}));
+const VerifyEmailPage = lazy(async () => ({
+  default: (await import('@/pages/account-pages')).VerifyEmailPage,
+}));
 const OrgLayout = lazy(async () => ({ default: (await import('@/pages/org-layout')).OrgLayout }));
 const EmployeeLayout = lazy(async () => ({
   default: (await import('@/pages/employee-layout')).EmployeeLayout,
@@ -79,6 +88,9 @@ export const router = createBrowserRouter([
     children: [
       { path: '/login', element: <AuthPage mode="login" /> },
       { path: '/signup', element: <AuthPage mode="signup" /> },
+      { path: '/forgot-password', element: <ForgotPasswordPage /> },
+      { path: '/reset-password', element: <ResetPasswordPage /> },
+      { path: '/verify-email', element: <VerifyEmailPage /> },
       {
         element: <RequireAuth />,
         children: [
