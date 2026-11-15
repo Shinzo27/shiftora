@@ -91,7 +91,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 16 migrations, 536 automated tests (271 unit, 265 integration against real
+Numbers today: 16 migrations, 541 automated tests (272 unit, 269 integration against real
 Postgres) plus 5 Playwright end-to-end tests, 72 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
@@ -143,6 +143,21 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   test push with `vite preview`, never `dev`. `notifications.outbox_id` is `NOT NULL`, so any
 >   fixture needs an outbox row first. `.env.example` ships VAPID keys **empty** on purpose:
 >   generate your own pair, or leave them blank and push is simply off.
+>
+> **Same day, after the handoff — the WhatsApp hole.** Publishing to staff who chose WhatsApp
+> produced a delivery row on a channel with no sender: it retried five times and stayed in the
+> failed set, and because the fan-out inserted only the *first* rung of the routing ladder, those
+> people received **nothing at all** — no email fallback. Three changes fixed it:
+> `sendableChannels(adapters)` turns "is there a provider?" into the channel policy handed to
+> `routeChannels`, so routing never offers a channel this worker cannot send on; a row that still
+> lands on a sender-less channel (or push with no VAPID keys) is `skipped` with the reason, never
+> `retried`, because five attempts cannot conjure a provider; and the push rung now reads real
+> `push_subscriptions` counts instead of a hard-coded `0`, which is why push was unreachable
+> even after D3 shipped it. A `MessageSender` contract (same shape as `Mailer`) is in place for
+> the providers D4 adds. Verified live: Asha — a WhatsApp preference — now gets an **email
+> delivery `sent` on the first attempt**, and the message is in Mailpit; the two pre-fix rows
+> stay in the failed set as the before-picture. 272 unit + 269 integration, lint, typecheck and
+> build clean.
 
 ## 3. Product
 
@@ -308,6 +323,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Push subscriptions are **per device, upserted on the endpoint**: a browser that changes hands moves its row rather than leaving messages going to the last person | 2026-11-15 |
 | — | Push is one **delivery row per channel** and many devices: sent if at least one device took it, "no device has notifications on" is a *skip* (a retry would spin forever), and a 404/410 from the push service deletes the subscription | 2026-11-15 |
 | — | The push toggle says **why** it cannot work (no service worker in dev, no VAPID keys, permission blocked) instead of failing at the click | 2026-11-15 |
+| — | **A channel with no sender is a routing decision, not a failed delivery** (`sendableChannels(adapters)` → the policy `routeChannels` gets): a person who chose WhatsApp on a deployment without that provider falls to email, then push, instead of queueing a message that can only fail. Silence was never the fallback plan | 2026-11-15 |
+| — | **"No provider" is permanent, so the row is `skipped`, not `retried`**: a missing WhatsApp/SMS sender or missing VAPID keys cannot be fixed by a second attempt, and five failed attempts hide "nobody was told" behind a queue that looks like it is trying. `retry` is reserved for provider failures the adapter says a retry could fix | 2026-11-15 |
+| — | **Push is offered only to someone with a subscribed device**: the device count comes from `push_subscriptions` on every fan-out (one grouped query), because a preference is not a subscription — assuming `0` made the push rung unreachable even after W4 D3 shipped it | 2026-11-15 |
 | — | **Realtime is a refetch hint, not data** (ADR 016): Socket.IO over the API's own server, one room per organisation, payload names the schedule; clients refetch over HTTP, so a dropped event costs freshness and never correctness. Redis adapter only when `REDIS_URL` is set | 2026-11-12 |
 | — | A **drag changes the date and/or the assignee only** — never the times (they live in the sheet). Dropping on the open-shifts row unassigns; dropping on a person assigns | 2026-11-12 |
 | — | Moves are **optimistic**: the chip lands at once, the previous list is restored on any error, and a stale `version` shows "Someone else changed this shift" then refetches the week | 2026-11-12 |
@@ -760,10 +778,11 @@ clients may retry (clock-in, claim, swap; from week 3); OpenAPI generation plann
 
 | Kind | Tool | Where | Today |
 |---|---|---|---|
-| Unit | Vitest | `*.test.ts` next to code | 219 |
+| Unit | Vitest | `*.test.ts` next to code | 272 |
 | Integration (DB) | Vitest + Testcontainers | `packages/db/src/__tests__/*.int.test.ts` | 53 |
-| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 151 |
-| E2E | Playwright | `apps/web/e2e/*.spec.ts` (`pnpm test:e2e`) | 2 |
+| Integration (API, full HTTP) | Vitest + Testcontainers + Fastify inject | `apps/api/src/**/__tests__/*.int.test.ts`, helper `src/testing/test-app.ts` | 187 |
+| Integration (worker, real Postgres + queues) | Vitest + Testcontainers | `apps/worker/src/**/*.int.test.ts` | 29 |
+| E2E | Playwright | `apps/web/e2e/*.spec.ts` (`pnpm test:e2e`) | 5 |
 | Property | fast-check | planned for pay rules and scheduler | — |
 
 Required per change: pure logic → unit tests; SQL/migrations → integration incl. cross-tenant
@@ -798,7 +817,7 @@ Part-time pace: ~6 sessions a week (weekday evenings ~2 h, Saturday ~5 h). **Sun
 and review**: update the changelog, write a build-in-public post, plan the next week.
 If a day spills over, use Sunday; if a week spills over, cut scope (not tests).
 
-Legend: ✅ done · ⏭ next · ☐ planned
+Legend: ✅ done · ⏳ partly done (the row says what is left) · ⏭ next · ☐ planned
 
 ### 14.1 UI and design system
 
@@ -862,7 +881,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D1 | ✅ | `apps/worker` (plain Node, not a second Nest app) with BullMQ; the relay claims pending outbox rows in one transaction (`set_config` flag → `FOR UPDATE SKIP LOCKED` → enqueue → mark published), job id = outbox row id; `pnpm dev` runs it beside the API and web | Outbox rows become jobs exactly once: 20 pending rows became 20 jobs with matching ids and all 20 marked published, and a worker restart queued 0 more. 7 integration tests (claim, order/batch, rollback on enqueue failure, same job id after a rollback, three relays racing, tenant isolation) |
 | D2 | ✅ | `notifications` + `deliveries` (migration `0012`, RLS, one row per person per notification per channel), the `schedule.published` fan-out in the worker (one personalised message per affected employee, not the whole rota), templates in `packages/domain/notifications` (plain text, WhatsApp- and SMS-safe), and channel routing: their preference, else email, with email/push as the safety net and never a silent WhatsApp | One notification → one delivery per channel: verified live (2 messages → 2 WhatsApp deliveries queued, addresses and statuses correct); 4 integration + 17 domain unit tests |
 | D3 | ✅ | **Email:** SMTP adapter (nodemailer → Mailpit :1025), a `deliveries` queue, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), the **invite email** (`invite.created` written in the same transaction as the invite). **Account mail:** `one_time_tokens` (`0014`, hash + expiry + `used_at`, platform table with no RLS), `POST /auth/verify-email`, `POST /auth/password/forgot` (always 202 — never reveals who exists), `POST /auth/password/reset` (new password, every live session revoked, link burned), signup mints a verification link, and `renderVerifyEmail`/`renderResetPassword` in `packages/domain/notifications`; platform events ride the outbox with `org_id IS NULL` (ADR 018). **Web Push:** `push_subscriptions` (`0015`, endpoint unique, same-org FK, RLS), `GET /push/public-key`, `POST`/`DELETE /me/push-subscriptions`, a `push` branch in `dispatchDelivery` (one delivery row per channel, many devices, gone subscriptions pruned on 404/410), `web-push` with VAPID loaded only when both keys exist, `public/push-handler.js` (push + notificationclick) imported into the generated service worker, and a per-device toggle on the staff profile | Email: invite and both account mails arrived in Mailpit with working links; verification 204 then 400 on replay; reset changed the password (old 401, new 200) and refused the used link. Push: a real Chrome subscription stored, FCM accepted the VAPID push (`201`, message id returned), the toggle flipped to "on". Tests: 6 account + 6 push (API), 7 push (worker), 5 templates (domain) — commit `5c5a244` |
-| D4 | ☐ | WhatsApp (Meta Cloud API, approved utility templates) + SMS adapters; per-provider rate limits; retries with backoff + jitter; DLQ; quota counter with fallback to push/email | Failure injection → retry → DLQ, test green |
+| D4 | ⏳ ⏭ | **Landed early as a hotfix (2026-11-15):** the routing ladder — `sendableChannels` gates the policy given to `routeChannels`, a channel with no sender is `skipped` instead of retried, push reads real device counts, and a `MessageSender` contract (same shape as `Mailer`) exists for the providers. **Still to do:** WhatsApp (Meta Cloud API, approved utility templates) + SMS senders behind that contract; per-provider rate limits; retries with backoff + jitter; DLQ; `message_usage` quota with fallback to push/email | Failure injection → retry → DLQ, test green |
 | D5 | ☐ | Delivery-status webhooks (signature-verified); repeatable jobs: shift reminders, missed clock-in detection; move throttler storage to Redis | Reminder sent 2 h before a shift |
 | D6 | ☐ | End-to-end: publish → employees get WhatsApp/email; failure-injection tests | Publish in UI → message in Mailpit/WhatsApp sandbox |
 

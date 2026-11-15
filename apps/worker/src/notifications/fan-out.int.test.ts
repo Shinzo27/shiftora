@@ -6,9 +6,16 @@ import {
   type Database,
 } from '@shiftora/db';
 import { startTestDatabase, type TestDatabase } from '@shiftora/db/testing';
+import { ALL_CHANNELS, type ChannelPolicy } from '@shiftora/domain';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { fanOutSchedulePublished } from './fan-out.js';
+
+/**
+ * What a worker with SMTP and Web Push can send — the state this repo ships in until the
+ * WhatsApp and SMS providers land (W4 D4).
+ */
+const NO_TEXT_PROVIDERS: ChannelPolicy = { ...ALL_CHANNELS, whatsapp: false, sms: false };
 
 let database: TestDatabase;
 let db: Database;
@@ -164,7 +171,7 @@ function event(overrides: { employeeIds?: string[]; outboxId?: string } = {}) {
 
 describe('schedule.published fan-out', () => {
   it('writes one message per affected person, on the channel they asked for', async () => {
-    const result = await fanOutSchedulePublished(db, event());
+    const result = await fanOutSchedulePublished(db, event(), ALL_CHANNELS);
 
     // The archived employee is skipped: no message goes to someone who has left.
     expect(result).toMatchObject({ notifications: 2, deliveries: 2 });
@@ -205,12 +212,96 @@ describe('schedule.published fan-out', () => {
     );
   });
 
+  it('moves a WhatsApp person down the ladder when no WhatsApp provider is configured', async () => {
+    const kiran = await asOrg(async (tx) => {
+      const [row] = await tx
+        .insert(schema.employees)
+        .values({
+          orgId,
+          name: 'Kiran Rao',
+          email: 'kiran@sunriseclinic.test',
+          phone: '+919820000009',
+          notifyChannel: 'whatsapp',
+        })
+        .returning({ id: schema.employees.id });
+      return row!.id;
+    });
+
+    const result = await fanOutSchedulePublished(
+      db,
+      event({ employeeIds: [kiran] }),
+      NO_TEXT_PROVIDERS,
+    );
+    expect(result).toMatchObject({ notifications: 1, deliveries: 1 });
+
+    const [delivery] = await asOrg((tx) =>
+      tx
+        .select({
+          channel: schema.deliveries.channel,
+          address: schema.deliveries.address,
+          status: schema.deliveries.status,
+        })
+        .from(schema.deliveries)
+        .where(sql`notification_id in (select id from notifications where employee_id = ${kiran})`),
+    );
+
+    // Their choice is WhatsApp and this worker has no WhatsApp sender, so the ladder moves down:
+    // an email they can read beats a delivery row that can only ever fail. Choosing a channel the
+    // deployment cannot send on is a routing problem, not a queue problem.
+    expect(delivery).toMatchObject({
+      channel: 'email',
+      address: 'kiran@sunriseclinic.test',
+      status: 'queued',
+    });
+  });
+
+  it('only offers push to someone with a subscribed device', async () => {
+    const [subscribed, unsubscribed] = await asOrg(async (tx) => {
+      const rows = await tx
+        .insert(schema.employees)
+        .values([
+          { orgId, name: 'Devika Nair', email: 'devika@sunriseclinic.test', notifyChannel: 'push' },
+          { orgId, name: 'Karan Shah', email: 'karan@sunriseclinic.test', notifyChannel: 'push' },
+        ])
+        .returning({ id: schema.employees.id });
+
+      await tx.insert(schema.pushSubscriptions).values({
+        orgId,
+        employeeId: rows[0]!.id,
+        endpoint: 'https://fcm.googleapis.com/fcm/send/fan-out-test',
+        p256dh: 'p256dh-key',
+        auth: 'auth-secret',
+      });
+      return [rows[0]!.id, rows[1]!.id] as const;
+    });
+
+    await fanOutSchedulePublished(
+      db,
+      event({ employeeIds: [subscribed, unsubscribed] }),
+      ALL_CHANNELS,
+    );
+
+    const rows = await asOrg((tx) =>
+      tx
+        .select({ employeeId: schema.notifications.employeeId, channel: schema.deliveries.channel })
+        .from(schema.deliveries)
+        .innerJoin(schema.notifications, sql`notifications.id = deliveries.notification_id`)
+        .where(sql`notifications.employee_id in (${subscribed}, ${unsubscribed})`),
+    );
+
+    // The device count is read from `push_subscriptions`: a preference is not a subscription, and
+    // assuming zero devices (as the first version did) made the push rung unreachable for good.
+    const channelFor = new Map(rows.map((row) => [row.employeeId, row.channel]));
+    expect(channelFor.get(subscribed)).toBe('push');
+    expect(channelFor.get(unsubscribed)).toBe('email');
+  });
+
   it('does nothing the second time the same event arrives', async () => {
     const first = event();
-    await fanOutSchedulePublished(db, first);
+    await fanOutSchedulePublished(db, first, ALL_CHANNELS);
     const before = await counts();
 
-    const replay = await fanOutSchedulePublished(db, first);
+    const replay = await fanOutSchedulePublished(db, first, ALL_CHANNELS);
 
     // The queue may deliver a job twice after a crash; the staff still get one message.
     expect(replay).toMatchObject({ notifications: 0, deliveries: 0, deliveryIds: [] });
@@ -226,7 +317,11 @@ describe('schedule.published fan-out', () => {
       return row!.id;
     });
 
-    const result = await fanOutSchedulePublished(db, event({ employeeIds: [noAddressId] }));
+    const result = await fanOutSchedulePublished(
+      db,
+      event({ employeeIds: [noAddressId] }),
+      ALL_CHANNELS,
+    );
     expect(result).toMatchObject({ notifications: 1, deliveries: 1 });
 
     const [delivery] = await asOrg((tx) =>
@@ -255,7 +350,7 @@ describe('schedule.published fan-out', () => {
       return row!.id;
     });
 
-    await fanOutSchedulePublished(db, event({ employeeIds: [id] }));
+    await fanOutSchedulePublished(db, event({ employeeIds: [id] }), ALL_CHANNELS);
     const [message] = await asOrg((tx) =>
       tx
         .select({ body: schema.notifications.body })

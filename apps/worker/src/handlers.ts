@@ -1,4 +1,5 @@
 import type { Database } from '@shiftora/db';
+import type { ChannelPolicy } from '@shiftora/domain';
 import type { Queue } from 'bullmq';
 
 import type { Mailer } from './mailer.js';
@@ -20,25 +21,39 @@ import type { DeliveryJobData, NotificationJob } from './queues.js';
  * warning names it, because a typo in an outbox insert is a bug to see in the logs, not something
  * to discover by asking staff who never got a message.
  */
+export interface NotificationHandlerDeps {
+  deliveries: Queue<DeliveryJobData>;
+  appUrl: string;
+  mailer: Mailer;
+  /** Channels this worker can actually send on, so routing never offers one it cannot deliver. */
+  usable: ChannelPolicy;
+}
+
 export async function handleNotificationJob(
   db: Database,
-  deliveries: Queue<DeliveryJobData>,
+  deps: NotificationHandlerDeps,
   job: NotificationJob,
-  appUrl: string,
-  mailer: Mailer,
 ): Promise<FanOutResult> {
   switch (job.topic) {
     case 'schedule.published': {
-      const result = await fanOutSchedulePublished(db, {
-        id: job.outboxId,
-        orgId: job.orgId,
-        topic: job.topic,
-        payload: job.payload,
-      });
+      const result = await fanOutSchedulePublished(
+        db,
+        {
+          id: job.outboxId,
+          orgId: job.orgId,
+          topic: job.topic,
+          payload: job.payload,
+        },
+        deps.usable,
+      );
 
       // Idempotent by job id: a replayed event re-queues the same ids, which BullMQ drops.
       for (const deliveryId of result.deliveryIds) {
-        await deliveries.add('delivery', { deliveryId, orgId: job.orgId }, { jobId: deliveryId });
+        await deps.deliveries.add(
+          'delivery',
+          { deliveryId, orgId: job.orgId },
+          { jobId: deliveryId },
+        );
       }
 
       if (result.notifications > 0) {
@@ -57,11 +72,15 @@ export async function handleNotificationJob(
           topic: job.topic,
           payload: job.payload,
         },
-        appUrl,
+        deps.appUrl,
       );
 
       for (const deliveryId of result.deliveryIds) {
-        await deliveries.add('delivery', { deliveryId, orgId: job.orgId }, { jobId: deliveryId });
+        await deps.deliveries.add(
+          'delivery',
+          { deliveryId, orgId: job.orgId },
+          { jobId: deliveryId },
+        );
       }
       if (result.notifications > 0) {
         console.info(`notifications: invite.created → emailed ${result.deliveries} invite(s)`);
@@ -71,7 +90,7 @@ export async function handleNotificationJob(
     // Platform mail: no tenant, so no notification rows — the handler sends it directly.
     case 'auth.verify_email':
     case 'auth.reset_password': {
-      const result = await sendAccountMail(mailer, appUrl, job);
+      const result = await sendAccountMail(deps.mailer, deps.appUrl, job);
       return {
         notifications: 0,
         deliveries: result.sent ? 1 : 0,

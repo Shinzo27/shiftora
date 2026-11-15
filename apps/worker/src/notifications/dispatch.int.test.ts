@@ -6,10 +6,11 @@ import {
   type Database,
 } from '@shiftora/db';
 import { startTestDatabase, type TestDatabase } from '@shiftora/db/testing';
+import { ALL_CHANNELS } from '@shiftora/domain';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import type { Mailer } from '../mailer.js';
-import { dispatchDelivery } from './dispatch.js';
+import { dispatchDelivery, type MessageSender } from './dispatch.js';
 import { fanOutSchedulePublished } from './fan-out.js';
 
 let database: TestDatabase;
@@ -112,21 +113,45 @@ function fakeMailer(failWith?: string) {
   return { mailer, sent };
 }
 
-async function queueOneDelivery(): Promise<{ deliveryId: string; body: string }> {
-  const result = await fanOutSchedulePublished(db, {
-    id: crypto.randomUUID(),
-    orgId,
-    topic: 'schedule.published',
-    payload: {
-      locationId,
-      weekStart: '2026-11-09',
-      version: 2,
-      added: 1,
-      changed: 0,
-      removed: 0,
-      affectedEmployeeIds: [ashaId],
+/** A stand-in WhatsApp/SMS provider, so the text path is testable without Meta or Twilio. */
+function fakeSender(failWith?: string) {
+  const sent: { to: string; subject: string; body: string }[] = [];
+  const sender: MessageSender = {
+    send(message) {
+      if (failWith) return Promise.reject(new Error(failWith));
+      sent.push(message);
+      return Promise.resolve({ messageId: `fake-${sent.length}` });
     },
-  });
+  };
+  return { sender, sent };
+}
+
+/**
+ * The worker as it ships today: SMTP and Web Push, no WhatsApp or SMS provider.
+ * A channel in this state is never offered by routing, and dispatching one is a skip.
+ */
+const emailOnly = (mailer: Mailer) => ({ mailer, push: null, whatsapp: null, sms: null });
+
+async function queueOneDelivery(): Promise<{ deliveryId: string; body: string }> {
+  const result = await fanOutSchedulePublished(
+    db,
+    {
+      id: crypto.randomUUID(),
+      orgId,
+      topic: 'schedule.published',
+      payload: {
+        locationId,
+        weekStart: '2026-11-09',
+        version: 2,
+        added: 1,
+        changed: 0,
+        removed: 0,
+        affectedEmployeeIds: [ashaId],
+      },
+    },
+    ALL_CHANNELS,
+  );
+
   const deliveryId = result.deliveryIds[0]!;
   const [row] = await asOrg((tx) =>
     tx
@@ -143,7 +168,7 @@ describe('dispatchDelivery', () => {
     const { deliveryId, body } = await queueOneDelivery();
     const { mailer, sent } = fakeMailer();
 
-    const outcome = await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
+    const outcome = await dispatchDelivery(db, emailOnly(mailer), { deliveryId, orgId });
 
     expect(outcome).toEqual({ status: 'sent' });
     expect(sent).toHaveLength(1);
@@ -169,8 +194,8 @@ describe('dispatchDelivery', () => {
     const { deliveryId } = await queueOneDelivery();
     const { mailer, sent } = fakeMailer();
 
-    await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
-    const again = await dispatchDelivery(db, { mailer, push: null }, { deliveryId, orgId });
+    await dispatchDelivery(db, emailOnly(mailer), { deliveryId, orgId });
+    const again = await dispatchDelivery(db, emailOnly(mailer), { deliveryId, orgId });
 
     expect(again.status).toBe('skipped');
     expect(sent).toHaveLength(1);
@@ -179,14 +204,10 @@ describe('dispatchDelivery', () => {
   it('records the provider error and asks for a retry', async () => {
     const { deliveryId } = await queueOneDelivery();
 
-    const outcome = await dispatchDelivery(
-      db,
-      { mailer: fakeMailer('SMTP 421 try later').mailer, push: null },
-      {
-        deliveryId,
-        orgId,
-      },
-    );
+    const outcome = await dispatchDelivery(db, emailOnly(fakeMailer('SMTP 421 try later').mailer), {
+      deliveryId,
+      orgId,
+    });
 
     expect(outcome).toEqual({ status: 'retry', reason: 'SMTP 421 try later' });
 
@@ -204,25 +225,76 @@ describe('dispatchDelivery', () => {
     expect(row).toMatchObject({ status: 'failed', error: 'SMTP 421 try later', attempts: 1 });
   });
 
-  it('says plainly that a WhatsApp delivery has no adapter yet', async () => {
+  it('records a skip, not a retry, when the channel has no sender', async () => {
     const { deliveryId } = await queueOneDelivery();
-    await asOrg(async (tx) => {
-      await tx
-        .update(schema.deliveries)
-        .set({ channel: 'whatsapp', address: '+919820000001' })
-        .where(sql`id = ${deliveryId}`);
+    await moveTo(deliveryId, 'whatsapp', '+919820000001');
+
+    const outcome = await dispatchDelivery(db, emailOnly(fakeMailer().mailer), {
+      deliveryId,
+      orgId,
     });
+
+    // A missing provider is permanent: retrying cannot conjure one. Five failed attempts would
+    // also hide "nobody was told about this week" behind a queue that looks like it is trying.
+    expect(outcome).toEqual({ status: 'skipped', reason: 'No whatsapp sender is configured' });
+    expect(await statusOf(deliveryId)).toBe('skipped');
+    expect(await reasonOf(deliveryId)).toBe('No whatsapp sender is configured');
+  });
+
+  it('sends through the WhatsApp sender once one is configured', async () => {
+    const { deliveryId, body } = await queueOneDelivery();
+    await moveTo(deliveryId, 'whatsapp', '+919820000001');
+    const { sender, sent } = fakeSender();
 
     const outcome = await dispatchDelivery(
       db,
-      { mailer: fakeMailer().mailer, push: null },
+      { ...emailOnly(fakeMailer().mailer), whatsapp: sender },
       { deliveryId, orgId },
     );
-    expect(outcome).toEqual({ status: 'retry', reason: 'No whatsapp adapter yet' });
-    // The row says why, so nobody has to read the queue's failed list to find out.
-    expect(await reasonOf(deliveryId)).toContain('whatsapp');
+
+    expect(outcome).toEqual({ status: 'sent' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ to: '+919820000001' });
+    // The same rendered message, not a second template: one body for every channel.
+    expect(sent[0]!.body).toBe(body);
+    expect(await statusOf(deliveryId)).toBe('sent');
+  });
+
+  it('asks for a retry when the provider itself fails', async () => {
+    const { deliveryId } = await queueOneDelivery();
+    await moveTo(deliveryId, 'whatsapp', '+919820000001');
+
+    const outcome = await dispatchDelivery(
+      db,
+      { ...emailOnly(fakeMailer().mailer), whatsapp: fakeSender('429 rate limited').sender },
+      { deliveryId, orgId },
+    );
+
+    expect(outcome).toEqual({ status: 'retry', reason: '429 rate limited' });
+    expect(await statusOf(deliveryId)).toBe('failed');
+    expect(await reasonOf(deliveryId)).toBe('429 rate limited');
   });
 });
+
+/** Points an already-queued delivery at another channel, as a stored row from an earlier run would. */
+async function moveTo(deliveryId: string, channel: 'whatsapp' | 'sms', address: string) {
+  await asOrg(async (tx) => {
+    await tx
+      .update(schema.deliveries)
+      .set({ channel, address })
+      .where(sql`id = ${deliveryId}`);
+  });
+}
+
+async function statusOf(deliveryId: string): Promise<string> {
+  const [row] = await asOrg((tx) =>
+    tx
+      .select({ status: schema.deliveries.status })
+      .from(schema.deliveries)
+      .where(sql`id = ${deliveryId}`),
+  );
+  return row?.status ?? '';
+}
 
 async function reasonOf(deliveryId: string): Promise<string> {
   const [row] = await asOrg((tx) =>

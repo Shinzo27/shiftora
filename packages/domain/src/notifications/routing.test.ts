@@ -38,6 +38,16 @@ describe('routeChannels', () => {
     ).toEqual(['email']);
   });
 
+  it('skips a channel the deployment cannot send on and keeps the rest of the ladder', () => {
+    // The worker passes what it has a provider for. A person who chose WhatsApp, on a deployment
+    // with no WhatsApp sender, is still reachable: email first, then their subscribed devices.
+    const channels = routeChannels(
+      person({ preferredChannel: 'whatsapp', phone: '+919820000001', pushSubscriptions: 2 }),
+      { ...ALL_CHANNELS, whatsapp: false },
+    );
+    expect(channels).toEqual(['email', 'push']);
+  });
+
   it('puts push first for someone who subscribed, with email behind it', () => {
     expect(
       routeChannels(person({ preferredChannel: 'push', pushSubscriptions: 2 }), ALL_CHANNELS),

@@ -4,7 +4,7 @@ import { Worker, type Queue } from 'bullmq';
 import { parseWorkerEnv } from './env.js';
 import { handleNotificationJob } from './handlers.js';
 import { createMailer } from './mailer.js';
-import { dispatchDelivery } from './notifications/dispatch.js';
+import { dispatchDelivery, sendableChannels, type Adapters } from './notifications/dispatch.js';
 import { createWebPushSender } from './notifications/push.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
 import {
@@ -50,7 +50,18 @@ async function main(): Promise<void> {
       : null;
   if (!push) console.warn('worker: Web Push is not configured (no VAPID keys) — push is skipped');
 
-  const adapters = { mailer, push };
+  // A sender is what makes a channel real. WhatsApp and SMS have none until their providers land
+  // (W4 D4), so `sendableChannels` reports them as unusable and routing quietly moves a person who
+  // chose WhatsApp down the ladder to email. Queueing a message nobody can send is not honesty,
+  // it is silence with extra steps.
+  const adapters: Adapters = { mailer, push, whatsapp: null, sms: null };
+  const usable = sendableChannels(adapters);
+  const missing = (['whatsapp', 'sms'] as const).filter((channel) => !usable[channel]);
+  if (missing.length > 0) {
+    console.warn(
+      `worker: no ${missing.join(' or ')} sender configured — staff who chose it are reached by email`,
+    );
+  }
 
   const enqueue: Enqueue = async (event) => {
     await queue.add(
@@ -69,7 +80,11 @@ async function main(): Promise<void> {
   const worker = new Worker<NotificationJob>(
     NOTIFICATIONS_QUEUE,
     async (job) =>
-      handleNotificationJob(connection.db, deliveryQueue, job.data, env.APP_URL, mailer),
+      handleNotificationJob(
+        connection.db,
+        { deliveries: deliveryQueue, appUrl: env.APP_URL, mailer, usable },
+        job.data,
+      ),
     { connection: options, concurrency: env.WORKER_CONCURRENCY },
   );
 

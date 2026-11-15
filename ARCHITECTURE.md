@@ -554,6 +554,14 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   path. The templates are plain text on purpose — they have to survive a WhatsApp utility body
   (no markdown, 1024 characters), an SMS that truncates at 160, and an email that renders better
   without styling.
+- **A channel the worker cannot send on is never offered.** `sendableChannels(adapters)` turns
+  "is there a provider?" into the `ChannelPolicy` handed to `routeChannels`, so a person who chose
+  WhatsApp on a deployment without that sender is routed to email (then push) instead of being
+  queued a message that can only fail. A row that still lands on such a channel — queued before
+  the provider existed, or after keys were removed — is `skipped` **with the reason** and the job
+  completes: a missing provider is permanent, and five retries cannot conjure one. The same rule
+  covers push with no VAPID keys. Push counts `push_subscriptions` per person for the same reason
+  it is a policy question at all: a preference is not a device.
 - **Retries** are job options (`attempts: 5`, exponential backoff from 5 s), not queue logic:
   a provider having a bad minute should not lose "you are working tomorrow". Failures stay in the
   failed set — the dead-letter list until D4 gives it a reason and a replay button.

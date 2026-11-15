@@ -1,4 +1,5 @@
 import { and, eq, schema, sql, type Database } from '@shiftora/db';
+import type { ChannelPolicy } from '@shiftora/domain';
 
 import type { Mailer } from '../mailer.js';
 import { sendPushToEmployee, type PushSender } from './push.js';
@@ -11,11 +12,42 @@ export interface DeliveryJob {
 export type DispatchResult =
   { status: 'sent' } | { status: 'skipped'; reason: string } | { status: 'retry'; reason: string };
 
+/**
+ * A provider that sends plain text to an address — a phone number, for WhatsApp and SMS.
+ *
+ * Deliberately the same shape as `Mailer`, so a fake transport and a real one are
+ * interchangeable and a failure-injection test costs nothing.
+ */
+export interface MessageSender {
+  send(message: { to: string; subject: string; body: string }): Promise<unknown>;
+}
+
 /** What each channel needs. Push needs no address: it goes to the person's subscribed devices. */
 export interface Adapters {
   mailer: Mailer;
   /** Null when Web Push is not configured; the push channel then records a failure, not a lie. */
   push: PushSender | null;
+  /** Null until the provider is configured: a channel with no sender is never offered. */
+  whatsapp: MessageSender | null;
+  sms: MessageSender | null;
+}
+
+/**
+ * Which channels this deployment can actually send on, in `ChannelPolicy` shape.
+ *
+ * `routeChannels` answers "where could this person be reached"; this answers "which of those
+ * does the worker have a provider for". Handing it to the routing as the tenant policy is what
+ * makes a missing adapter a routing decision instead of a failed delivery: the ladder simply
+ * moves down to the next rung (email, then push) and the person still hears about their week.
+ */
+export function sendableChannels(adapters: Adapters): ChannelPolicy {
+  return {
+    // SMTP has no optional keys: a worker without a mailer cannot boot.
+    email: true,
+    push: adapters.push !== null,
+    whatsapp: adapters.whatsapp !== null,
+    sms: adapters.sms !== null,
+  };
 }
 
 /**
@@ -81,11 +113,28 @@ export async function dispatchDelivery(
     return { status: 'skipped', reason: 'No address' };
   }
 
-  if (found.channel !== 'email') {
-    // WhatsApp and SMS adapters arrive in D4: queueing them is honest, sending them is not
-    // implemented yet, and pretending otherwise would mark a message delivered that never was.
-    await finish(db, job, 'failed', `No ${found.channel} adapter yet`);
-    return { status: 'retry', reason: `No ${found.channel} adapter yet` };
+  if (found.channel === 'whatsapp' || found.channel === 'sms') {
+    // A channel with no sender is a **permanent** condition: retrying cannot conjure a provider.
+    // Fan-out does not offer such a channel in the first place (`sendableChannels`); this is the
+    // belt to that braces, for rows queued before the sender existed or after keys were removed.
+    const sender = found.channel === 'whatsapp' ? adapters.whatsapp : adapters.sms;
+    if (!sender) {
+      const reason = `No ${found.channel} sender is configured`;
+      await finish(db, job, 'skipped', reason);
+      return { status: 'skipped', reason };
+    }
+
+    try {
+      await sender.send({ to: found.address, subject: found.subject, body: found.body });
+      await finish(db, job, 'sent', null);
+      return { status: 'sent' };
+    } catch (error) {
+      // A real provider failure: an invalid number is permanent, a 503 is not, and the adapter
+      // is the only layer that can tell the difference — so it throws only when a retry helps.
+      const reason = error instanceof Error ? error.message : String(error);
+      await finish(db, job, 'failed', reason);
+      return { status: 'retry', reason };
+    }
   }
 
   try {
@@ -110,8 +159,9 @@ async function dispatchPush(
   found: { subject: string; body: string; employeeId: string | null; payload: unknown },
 ): Promise<DispatchResult> {
   if (!adapters.push) {
-    await finish(db, job, 'failed', 'Web Push is not configured');
-    return { status: 'retry', reason: 'Web Push is not configured' };
+    // Same rule as a missing WhatsApp sender: no keys is permanent, so it is a skip, not a retry.
+    await finish(db, job, 'skipped', 'Web Push is not configured');
+    return { status: 'skipped', reason: 'Web Push is not configured' };
   }
   if (!found.employeeId) {
     await finish(db, job, 'skipped', 'No employee to push to');

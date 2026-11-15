@@ -142,7 +142,7 @@ describe('sending a push', () => {
     const sender = fakePush(['sent', 'sent']);
     const outcome = await dispatchDelivery(
       db,
-      { mailer: null as never, push: sender },
+      { mailer: null as never, push: sender, whatsapp: null, sms: null },
       { deliveryId, orgId },
     );
 
@@ -167,7 +167,7 @@ describe('sending a push', () => {
 
     const outcome = await dispatchDelivery(
       db,
-      { mailer: null as never, push: fakePush(['gone', 'sent']) },
+      { mailer: null as never, push: fakePush(['gone', 'sent']), whatsapp: null, sms: null },
       { deliveryId, orgId },
     );
     expect(outcome).toEqual({ status: 'sent' });
@@ -196,7 +196,7 @@ describe('sending a push', () => {
     const { deliveryId } = await queueDelivery('push', { employeeId: noDevices });
     const outcome = await dispatchDelivery(
       db,
-      { mailer: null as never, push: fakePush() },
+      { mailer: null as never, push: fakePush(), whatsapp: null, sms: null },
       { deliveryId, orgId },
     );
 
@@ -216,7 +216,7 @@ describe('sending a push', () => {
 
     const outcome = await dispatchDelivery(
       db,
-      { mailer: null as never, push: fakePush(['failed']) },
+      { mailer: null as never, push: fakePush(['failed']), whatsapp: null, sms: null },
       { deliveryId, orgId },
     );
     expect(outcome.status).toBe('retry');
@@ -231,22 +231,26 @@ describe('sending a push', () => {
     expect(row?.lastError).toContain('refused');
   });
 
-  it('says so, rather than pretending, when Web Push is not configured', async () => {
+  it('records a skip, not a retry, when Web Push is not configured', async () => {
     const { deliveryId } = await queueDelivery('push');
     const outcome = await dispatchDelivery(
       db,
-      { mailer: null as never, push: null },
+      { mailer: null as never, push: null, whatsapp: null, sms: null },
       { deliveryId, orgId },
     );
 
-    expect(outcome).toEqual({ status: 'retry', reason: 'Web Push is not configured' });
+    // No VAPID keys is permanent: a retry cannot add them, so the job completes and the row says
+    // why. (The fan-out no longer offers push in this state either — this covers rows queued
+    // while push was configured and the keys were removed afterwards.)
+    expect(outcome).toEqual({ status: 'skipped', reason: 'Web Push is not configured' });
     const [row] = await asOrg((tx) =>
       tx
         .select()
         .from(schema.deliveries)
         .where(sql`id = ${deliveryId}`),
     );
-    expect(row?.status).toBe('failed');
+    expect(row?.status).toBe('skipped');
+    expect(row?.lastError).toBe('Web Push is not configured');
   });
 });
 

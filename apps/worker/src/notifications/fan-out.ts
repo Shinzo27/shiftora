@@ -5,7 +5,6 @@ import {
   routeChannels,
   addressFor,
   toLocal,
-  ALL_CHANNELS,
   type Channel,
   type ChannelPolicy,
   type ShiftLine,
@@ -34,7 +33,7 @@ interface SchedulePublishedPayload {
 
 /**
  * Turns `schedule.published` into one message per affected employee, each with a delivery on the
- * first channel their own preferences allow.
+ * first channel their own preferences allow **and this deployment can send on**.
  *
  * Everything happens in one transaction under the event's org context, so a fan-out that dies
  * half-way leaves nothing behind and the queue retry starts clean. Idempotent by
@@ -43,10 +42,16 @@ interface SchedulePublishedPayload {
  * "Affected" comes from the publication diff, not from the whole rota — staff whose week did not
  * change are not messaged. That is the difference between a useful notification and a weekly
  * nuisance.
+ *
+ * `usable` is the channel policy the worker passes in: what it has a provider for (and, from
+ * week 8, what the org's plan and message quota still allow). A channel that appears in someone's
+ * preference but not in `usable` is not chosen — routing falls to the next rung, which is the
+ * difference between "email instead of WhatsApp" and "no message at all".
  */
 export async function fanOutSchedulePublished(
   db: Database,
   event: OutboxEvent,
+  usable: ChannelPolicy,
 ): Promise<FanOutResult> {
   const payload = (event.payload ?? {}) as SchedulePublishedPayload;
   const employeeIds = payload.affectedEmployeeIds ?? [];
@@ -99,9 +104,10 @@ export async function fanOutSchedulePublished(
       );
 
     const roleNames = await roleNamesById(tx);
-    // Plans arrive with billing (W8); until then a clinic may use every channel, and the honest
-    // gate is the employee's own preference.
-    const policy: ChannelPolicy = ALL_CHANNELS;
+    // Push is a real channel only for a person with a subscribed device, so the count is part of
+    // routing and comes from the table. Assuming zero (as the first version did) made the push
+    // rung unreachable even after the adapter shipped.
+    const pushDevices = await pushSubscriptionCounts(tx, employeeIds);
 
     let notifications = 0;
     let deliveries = 0;
@@ -157,16 +163,13 @@ export async function fanOutSchedulePublished(
       if (!notification) continue;
       notifications += 1;
 
-      const chain = routeChannels(
-        {
-          preferredChannel: person.notifyChannel,
-          email: person.email,
-          phone: person.phone,
-          // Push subscriptions arrive with the Web Push adapter (D3); nobody has one yet.
-          pushSubscriptions: 0,
-        },
-        policy,
-      );
+      const recipient = {
+        preferredChannel: person.notifyChannel,
+        email: person.email,
+        phone: person.phone,
+        pushSubscriptions: pushDevices.get(person.id) ?? 0,
+      };
+      const chain = routeChannels(recipient, usable);
 
       if (chain.length === 0) {
         // Nowhere to send: record the decision instead of pretending it was sent.
@@ -186,7 +189,9 @@ export async function fanOutSchedulePublished(
         continue;
       }
 
-      // The first channel is queued now; the rest of the chain is the fallback ladder for D4.
+      // The first rung is queued now. The rest of the chain is the fallback ladder for D4, which
+      // needs the next channel recorded on the row so a permanent provider failure can move down
+      // without recomputing who was reachable at publish time.
       const channel: Channel = chain[0]!;
       const [created] = await tx
         .insert(schema.deliveries)
@@ -194,15 +199,7 @@ export async function fanOutSchedulePublished(
           orgId: event.orgId,
           notificationId: notification.id,
           channel,
-          address: addressFor(
-            {
-              preferredChannel: person.notifyChannel,
-              email: person.email,
-              phone: person.phone,
-              pushSubscriptions: 0,
-            },
-            channel,
-          ),
+          address: addressFor(recipient, channel),
           status: 'queued',
         })
         .onConflictDoNothing({
@@ -232,4 +229,23 @@ async function roleNamesById(tx: Transaction): Promise<Map<string, string>> {
     .select({ id: schema.jobRoles.id, name: schema.jobRoles.name })
     .from(schema.jobRoles);
   return new Map(rows.map((row) => [row.id, row.name]));
+}
+
+/** How many browsers each of these people has subscribed, in one query rather than one each. */
+async function pushSubscriptionCounts(
+  tx: Transaction,
+  employeeIds: string[],
+): Promise<Map<string, number>> {
+  if (employeeIds.length === 0) return new Map();
+
+  const rows = await tx
+    .select({
+      employeeId: schema.pushSubscriptions.employeeId,
+      devices: sql<number>`count(*)::int`,
+    })
+    .from(schema.pushSubscriptions)
+    .where(inArray(schema.pushSubscriptions.employeeId, employeeIds))
+    .groupBy(schema.pushSubscriptions.employeeId);
+
+  return new Map(rows.map((row) => [row.employeeId, Number(row.devices)]));
 }

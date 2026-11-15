@@ -274,6 +274,12 @@ Do this before writing any code, whatever tool or model you are:
 
 ### Notifications, push and account mail
 
+- **A channel with no sender is never offered, and never retried.** `sendableChannels(adapters)` is
+  the policy the fan-out routes with, so a missing WhatsApp/SMS provider (or absent VAPID keys)
+  drops that channel out of the ladder and the person still gets email. A delivery that reaches a
+  sender-less channel anyway is `skipped` with a reason; `retry` is only for a provider failure a
+  second attempt could fix.
+
 - **A platform event is an outbox row with `org_id IS NULL`** (`0014` + ADR 018). Insert it with
   `OutboxService.recordPlatform()`, which runs on its own connection: auth routes have no request
   transaction to join. Never open a tenant path for account mail.
