@@ -508,12 +508,12 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   records `received_at`; large gaps or device-time skew raise flags. Conflicts (e.g. a
   manager already created a manual entry) keep both and flag for review rather than overwrite.
 
-### 7.7 Notifications pipeline (relay, fan-out and email implemented in W4 D1–D3)
+### 7.7 Notifications pipeline (relay, fan-out, email and push — W4 D1–D3)
 ```
 domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKED)──▶ BullMQ `notifications`
    ▶ fan-out job: who is affected, what to say, which channel each person allows
    ▶ one BullMQ `deliveries` job per (message, channel); job id = delivery id
-   ▶ provider adapter by channel (email live; WhatsApp/SMS/push pending)
+   ▶ provider adapter by channel (email and Web Push live; WhatsApp/SMS arrive in D4)
    ▶ `deliveries` row: queued → sent | failed (reason recorded) → provider webhook → delivered
 ```
 - **The relay** lives in `apps/worker` (a plain Node process, not a second Nest app) and ticks
@@ -539,6 +539,17 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   `dispatchDelivery` counts the attempt *before* calling the provider (a crash mid-send leaves
   evidence), records `sent`/`failed`/`skipped` with the reason, and throws only to ask for
   backoff. A job for an already-sent delivery is a no-op.
+- **Web Push is one row per channel, many devices.** `push_subscriptions` holds the browser's
+  endpoint and its `p256dh`/`auth` keys; the endpoint is unique, so a browser that changes hands
+  moves its row. `dispatchDelivery` sends to every subscription the person has, reports the
+  delivery sent when at least one device took it, treats "no device subscribed" as a **skip** (a
+  retry would spin forever), and deletes any subscription the push service answers 404/410 for.
+  The VAPID keys are optional: with no keys the sender is `null`, the channel records
+  "not configured", and the staff app hides its button.
+- **Account mail never enters this pipeline** (ADR 018). Verification and password-reset emails
+  belong to a person who may have no organisation at all, so the outbox row carries
+  `org_id IS NULL`, and the worker renders and sends straight through the mailer — the record
+  that matters is the hashed one-time token, not a delivery row.
 - **Email is SMTP** (nodemailer): Mailpit on `:1025` locally, any relay in production, one code
   path. The templates are plain text on purpose — they have to survive a WhatsApp utility body
   (no markdown, 1024 characters), an SMS that truncates at 160, and an email that renders better

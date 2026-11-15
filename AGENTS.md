@@ -272,6 +272,22 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Non-negotiable rules
 
+### Notifications, push and account mail
+
+- **A platform event is an outbox row with `org_id IS NULL`** (`0014` + ADR 018). Insert it with
+  `OutboxService.recordPlatform()`, which runs on its own connection: auth routes have no request
+  transaction to join. Never open a tenant path for account mail.
+- **`notifications.outbox_id` is `NOT NULL`** — a message always descends from an event. A test
+  fixture that inserts a notification directly needs an outbox row first.
+- **`psql` as `app_user` sees nothing** for tenant tables without `app.org_id` set — the RLS
+  policy returns an empty set, not an error, which reads exactly like "the write did not happen".
+  To inspect data by hand, connect as `postgres`: `docker exec shiftora-postgres-1 psql -U postgres -d shiftora`.
+- **The service worker only exists in a build.** `vite-plugin-pwa` emits nothing in `dev`, so
+  `navigator.serviceWorker.getRegistration()` is `null` there and push cannot work. Test push
+  against `pnpm --filter @shiftora/web build` + `npx vite preview` (proxy configured), never `dev`.
+- **`web-push` is imported dynamically** in `apps/worker`, so a worker without VAPID keys still
+  boots and still sends email.
+
 ### Tenancy and security
 - Every tenant table has `org_id uuid not null`, **RLS enabled and forced**, and a
   `tenant_isolation` policy on `current_org_id()`. A new table without an RLS policy is a bug

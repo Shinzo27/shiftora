@@ -88,171 +88,61 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D4 | Punch ↔ shift matching as pure domain maths, per-org early/late grace (`0009`), derived state/late/early on every read, and the manager Timesheets page (week per branch, badges, worked-vs-rostered totals) | ✅ Done | `3f92fe4` |
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
-| W4 D1 | `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | (uncommitted) |
+| W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 14 migrations, 512 automated tests (266 unit, 246 integration against real
-Postgres) plus 5 Playwright end-to-end tests, 66 API endpoints, a React web app on shadcn/ui
+Numbers today: 16 migrations, 536 automated tests (271 unit, 265 integration against real
+Postgres) plus 5 Playwright end-to-end tests, 72 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
-flow, live updates over a socket, and an installable staff app for phones; light and dark; axe
+flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
+staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
 
-> Last session: 2026-11-12 (Hermes, second dev machine) — W3 D1 and D2 done.
+> Last session: 2026-11-15 (Hermes, second dev machine) — **W4 D1–D3 done; week 4 is a third
+> finished.**
 >
-> - **Committed:** W2 D5+D6 as `a531452` (owner), **W3 D1** as `9dc1630`, **W3 D2** as
->   `9b7ac19`.
-> - **W3 D1 — the staff app.** `/me`, `/me/shifts`, `/me/time-off` for every member; the PWA
->   (manifest, icons, precached shell, no `/api` caching — installability errors `[]`, offline
->   shell paints); every route `lazy()` (entry chunk 339 → 130 kB gzip); `EmployeeLayout` with
->   bottom tabs, day-grouped cards and a Vaul drawer. `/o/:orgId` redirects by role.
-> - **W3 D2 — attendance.** `0008_time_entries` adds the punches and
->   `organizations.geofence_policy` (`flag` default, `reject` optional), plus the
->   `shifts (org_id, id, location_id)` unique the composite FK needs. `POST /clock-in`
->   (idempotent by `Idempotency-Key` → `client_event_id`, unique per org; one open punch per
->   employee as a partial unique index), `POST /clock-out`, `GET /me/time-entries`. The fence is
->   `distance ≤ radius + min(accuracy, 100 m)` computed server-side in
->   `packages/domain/src/attendance/geofence.ts` (13 unit tests: haversine, widening, the
->   100 m ceiling, skew).
-> - **Checks:** 219 unit + 204 integration + 2 E2E, lint, typecheck, build green. Verified in
->   Chrome at 390×844 (D1) and over HTTP against the real stack (D2 routes answer 401 unauth).
->   20 attendance integration tests cover: in/out of the fence, flag vs reject, the accuracy
->   edge, device skew, the two-simultaneous-punches race (201 + 409), key retries
->   (`created: false`), closing a punch twice, a punch claiming someone else's shift, and a
->   location from another org.
-> - **W3 D3 — the clock card.** On "My shifts": the branch, the shift if there is one, and a
->   single button. A position is requested **on tap**, never on load — a prompt on load gets
->   refused and the browser remembers the refusal. Every failure becomes a sentence with a next
->   step: permission blocked, an insecure page (a phone on plain `http`), a timeout, no fix. A
->   fix worse than ±100 m is confirmed before sending ("Clock in anyway?"), and a punch the
->   server flagged says so on the card. The key for `Idempotency-Key` survives retries, and the
->   elapsed timer is keyed by punch id so a stale tick cannot label a new one.
-> - **Checks (D3):** in Chrome at 390×844 with the device placed by CDP — inside the fence gave
->   "On the clock · just now · since 14:45"; 2 km away was recorded with "outside the branch
->   radius"; ±400 m asked first, then recorded "low-accuracy position"; revoked permission gave
->   "Location is blocked for this site…". axe 0 violations in both card states. Three Playwright
->   tests (real Chromium, permission granted, device placed) cover the same paths in CI.
-> - **Fixed during D3, worth remembering:** the two-simultaneous-punches test was returning
->   500, not 409. A unique violation aborts the request transaction, so the recovery read failed
->   with 25P02. Punches now take a per-employee advisory lock before the checks, and the catch is
->   a bare 409 that touches nothing. Regression tests cover the concurrent double clock-in and
->   two simultaneous retries of the *same* Idempotency-Key.
-> - **W3 D4 — matching, lateness and the manager view.** A punch is matched to the employee’s
->   shift whose start is nearest (within ±2 h of the shift) by a pure function in
->   `packages/domain/src/attendance/match.ts`; the app still sends the shift it is showing, so
->   matching only runs for a widget or a manual punch. Early/late comes from the organisation’s
->   grace (`organizations.attendance_grace_minutes`, default 5, migration `0009`) and is**derived
->   on every read**, never stored — so correcting a punch in D5 cannot leave a stale flag.
->   `GET /attendance?locationId&from&to` (owner/manager, location-scoped) returns the punches
->   with employee names, the rostered shift, and per-person worked-vs-rostered totals; the
->   disabled "Timesheets" nav item is now a real page at `/o/:orgId/timesheets`.
-> - **Checks (D4):** 9 new integration tests (match by nearest start, lateness beyond the grace,
->   the org’s own grace, early, unscheduled, the employee’s own list, and the manager feed incl.
->   totals and a manager scoped to another branch). In Chrome: a punch 35 minutes after its
->   shift start reads "rostered 14:51–23:30 / 15:31 – … / 35 min late", totals show
->   worked vs rostered; axe 0 violations at 1440 and 390 px, no horizontal overflow.
-> - **W3 D5 — corrections that stand up.** A manager fixes a punch from the Timesheets page.
->   Times are typed in the location’s own wall clock (like a shift) and the server converts them,
->   so nobody does zone arithmetic in a browser: `toInstant(day, time, zone)`. A clock-out
->   earlier than the clock-in is read as **the next morning** (a night shift), not as a negative
->   span, and anything longer than sixteen hours is refused as a typo. The reason is required and
->   lands in the same `audit_events` row as the before/after, so `GET /time-entries/:id` can show
->   a manager exactly what changed, when and by whom. Nothing is deleted: a forgotten clock-out
->   is reopened (`clockOutTime: null`), which is a 409 if that person already has another open
->   punch.
-> - **Checks (D5):** 8 integration tests (before/after with the reason, lateness recomputed after
->   a correction, history appended not replaced, overnight, reopen + conflict, zero-length and
->   23-hour refusals, the required reason, employee 403 and out-of-scope manager 404). In Chrome:
->   corrected 15:31 → 14:55–19:30 from the sheet, the row reads "edited" with no late badge, the
->   history shows "15:31–… → 14:55–19:30", and both invalid-input messages appear; axe 0 with
->   the sheet open.
-> - **W3 D6 — a demo in one command, and what to do about a flag.** `pnpm db:seed` builds
->   Sunrise Clinic: two branches at real Mumbai coordinates, four logins, three staff with rates
->   and availability, a **published** week and Monday’s punches — one on time, one 22 minutes
->   late, one 334 m outside the fence with a ±380 m fix. It is a fixture, inserted directly
->   inside one transaction with the org context set (the org id is minted first, because RLS
->   only accepts rows for the org the transaction points at — the same dance `OrgsService`
->   does). Re-running it deletes the demo org first, so it is idempotent.
-> - **The buffer went to the review queue.** A count is not actionable, so `GET /attendance/flags`
->   returns the punches themselves with the distance and the accuracy as badges (`334 m away`,
->   `±380 m`). `POST /time-entries/:id/review` records `accepted` or `disputed`; a dispute needs a
->   note, because the employee will read it. The punch keeps its times and its flags — the verdict
->   is a separate fact, shown beside them. `reviewed_at IS NULL` is the queue’s only filter,
->   covered by a partial index (`0010`). "Export CSV" writes the week and its totals with
->   RFC-4180 quoting and a BOM, so Excel reads it as UTF-8.
-> - **Checks (D6):** 5 integration tests (queue lists only unreviewed flagged punches, a clean
->   punch never appears, a dispute needs a note, a second review is a 409, the verdict shows on
->   the entry but is not an edit, employee 403 and out-of-scope manager 404), 4 unit tests for the
->   CSV writer, and the seed verified end to end through the API and in Chrome. The queue was
->   driven in Chrome: one accepted, one disputed with a note, both badges on their rows, queue
->   then empty; axe 0 at 1440 and 390 px.
-> - **A forgotten clock-out cannot inflate the week.** The seed’s first run showed Rohan at
->   77 h worked: an open punch counts elapsed time, and elapsed time on a Monday punch read on a
->   Thursday is three days. The row still shows the live elapsed time (that is the truth of "on
->   the clock"), but `totalsOf` counts an **open** punch at most its rostered length, and an open
->   punch with no rostered shift counts nothing until a manager says what it was. Deciding what a
->   runaway punch means is the manager's job; the timesheet's job is not to invent overtime.
->   Covered by an integration test (two days open, 8-hour shift → 480 minutes in the totals).
-> - **W4 D1 — the relay, and the only cross-tenant read in the system.** `apps/worker` is a plain
->   Node process: it ticks every 2 s and, in one transaction, sets a transaction-local flag
->   (`app.outbox_relay`), claims up to 50 pending events with `for update skip locked`, puts each
->   on the `notifications` queue with **the outbox row id as the job id**, and only then marks them
->   published. That order is the design: a failed enqueue rolls back (the event is late, not lost),
->   a crash between insert and commit re-claims the row and BullMQ drops the duplicate, and marking
->   first would trade both for a "published" row with nothing behind it. Widening RLS needed two
->   policies on `outbox` alone (ADR 017); every job after that runs under one org's context.
-> - **Checks (D1):** 7 integration tests against real Postgres — claim and publish, nothing left on
->   the next tick, oldest-first with a batch limit, rollback when the queue refuses, the same job id
->   after a rollback, three relays racing over three rows with no duplicates, and tenant isolation
->   without the flag. End to end on the dev database: 20 pending events became 20 jobs with matching
->   ids and 20 published rows, and restarting the worker queued 0 more.
-> - **W4 D2 — who gets told, and on which channel.** A notification is one person's message:
->   the body is personal ("Hi Asha, your week at … is published"), so `notifications` carries the
->   employee and `(outbox_id, employee_id)` is unique — replaying an event cannot double-send.
->   Only the **affected** employees are messaged, taken from the publication diff, because telling
->   the whole rota every week is how people learn to ignore notifications. Routing is a pure
->   function: their own preference if it has an address and the tenant allows it, else email (the
->   login, so it always exists), with email and push as the ladder and never a silent WhatsApp —
->   silence is not consent to a channel the clinic pays for per message.
-> - **W4 D3 — the first channel that actually sends.** `dispatchDelivery` reads the row, counts
->   the attempt *before* calling the provider (a process that dies mid-send still leaves
->   evidence), records `sent`/`failed`/`skipped` with the reason, and throws only to ask the
->   queue for backoff. It never sends twice: a second job for a sent delivery is a no-op. Email
->   is SMTP, so Mailpit locally and any relay in production run the same code — verified live: a
->   published change produced a delivery `sent` in one attempt and exactly one message in
->   Mailpit.
-> - **W4 D3 (continued) — the invite email, and the first message to a person who is not staff.**
->   `POST /invites` writes `invite.created` to the outbox **in the same transaction** as the invite
->   row, so an invite cannot exist without an email on its way. The recipient is an *address*:
->   `notifications.employee_id` had to become nullable and gain `recipient_email`, with a CHECK
->   that one of them is always set — and a plain unique index on `(outbox_id, recipient_email)`
->   for replay protection. Plain, not partial: Postgres treats NULLs as distinct, so staff rows
->   never collide, and `ON CONFLICT` cannot infer a partial index (it failed with `42P10` until
->   this changed). The code still comes back in the API response — a manager standing next to the
->   person may want to read it out — but the email is the normal path.
-> - **Verified live:** invited `new.manager@sunriseclinic.test`, and Mailpit holds "You are
->   invited to Sunrise Clinic on Shiftora" with the link `/invite/<orgId>.<code>`; the delivery
->   row went to `sent`. D3's own done-when ("invite arrives in Mailpit with a working link") is
->   now met.
-> - **Still open in D3 (deliberately not claimed):** Web Push (VAPID keys, a `push_subscriptions`
->   table, the subscribe endpoint and the staff-app button) and password reset / email
->   verification — both need one-time-token tables and endpoints that do not exist yet.
-> - **Next:** finish D3 (push + auth emails), then W4 D4 — WhatsApp and SMS adapters behind the
->   same dispatch contract, with per-provider rate limits, a dead-letter queue and fallback down
->   the routing ladder when a channel fails permanently.
-> - **Open question for the owner:** nothing blocks D3. The org-level `geofence_policy` is only
->   settable in SQL today — the UI for it belongs with org settings (W3 D5 or W7), and the
->   `reject` mode will need a manager override path eventually.
-> - **CI fix after W3 D2:** the Playwright job failed with `ECONNREFUSED :4000` because the
->   config waited only on Vite while the API was still compiling. It now declares one
->   `webServer` per app (API readiness = `/health/live`) and the e2e job runs `pnpm build`
->   before the tests. Reproduced and fixed locally with `CI=1 pnpm test:e2e` against a stopped
->   stack: 2 passed in 14.7 s.
-> - **Watch out for:** `TestUser.call` now takes `headers` (that is how `Idempotency-Key` is
->   tested). `react-hooks/purity` rejects `Date.now()` in render (carry the moment out of the
->   `queryFn`). A `<div>` inside `<dl>` may only wrap `dt`/`dd` (axe). `vite preview` has no
->   `/api` proxy.
+> - **W4 D1 — the worker and the relay.** `apps/worker` (`@shiftora/worker`, BullMQ) claims
+>   pending outbox rows with `for update skip locked` inside a transaction that sets
+>   `app.outbox_relay` (migration `0011` adds the two `outbox`-only policies, ADR 017),
+>   enqueues them (job id = outbox id), then marks them published. `pnpm dev` runs it beside the
+>   API and web. Verified live: 20 pending → 20 published, 20 jobs waiting, 0 failed, and a
+>   sampled job's `outbox_id` matched a published row.
+> - **W4 D2 — the fan-out.** `notifications` + `deliveries` (`0012`, RLS); one personalised
+>   message per affected employee, not the whole rota; templates in
+>   `packages/domain/notifications`; routing by the person's own preference with email as the
+>   ladder's floor and **never** a silent WhatsApp. Verified live: one publish → one delivery row
+>   per person, correct addresses and statuses.
+> - **W4 D3 — email, account mail and Web Push.** SMTP (nodemailer → Mailpit), a `deliveries`
+>   queue, `dispatchDelivery` (attempt counted before the call, reason recorded, throws to ask
+>   for backoff, never sends twice) and the **invite email** (`0013`; `invite.created` written in
+>   the same transaction as the invite). Then the two halves that were missing:
+>   **one-time tokens** (`0014`, hashed, single-use, platform table) with
+>   `POST /auth/verify-email`, `POST /auth/password/forgot` (always 202) and
+>   `POST /auth/password/reset` (revokes every live session, burns the link), plus three web
+>   pages (`/verify-email`, `/forgot-password`, `/reset-password`); and **Web Push**
+>   (`0015` `push_subscriptions`, `web-push` + VAPID, a `push` branch in dispatch that fans out
+>   to every device and prunes 404/410, `public/push-handler.js` imported into the generated
+>   service worker, and a per-device toggle on the staff profile that explains *why* it cannot
+>   work when it cannot).
+> - **Verified live, not just in tests:** invite, verification and reset emails all arrived in
+>   Mailpit with working links; the verification link answered 204 and then 400 on replay; the
+>   reset changed the password (old 401 / new 200) and refused the used link; a real Chrome
+>   subscription was stored, **FCM accepted our VAPID push (HTTP 201 with a message id)**, and
+>   the toggle flipped to "on" in the built app.
+> - **Checks:** 271 unit + 265 integration (db 53, api 187, worker 25) + 5 E2E, 16 migrations,
+>   72 endpoints, lint and typecheck clean. Tree clean at the commit that follows this note.
+> - **Next — W4 D4:** WhatsApp and SMS adapters behind the same `dispatchDelivery` contract,
+>   `message_usage` for the per-org quota, a dead-letter queue with a replay button, and fallback
+>   down the routing ladder when a channel fails permanently. **Provider decision still open**
+>   (Meta Cloud API / Twilio sandbox / fake adapter first); the fake transport is worth building
+>   either way.
+> - **Watch out for:** `psql` as `app_user` returns an empty set for tenant tables without
+>   `app.org_id` (connect as `postgres` to inspect). The service worker only exists in a build —
+>   test push with `vite preview`, never `dev`. `notifications.outbox_id` is `NOT NULL`, so any
+>   fixture needs an outbox row first. `.env.example` ships VAPID keys **empty** on purpose:
+>   generate your own pair, or leave them blank and push is simply off.
 
 ## 3. Product
 
@@ -412,6 +302,12 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **`Idempotency-Key` *is* the punch's `client_event_id`**, unique per org: a retry after a dead connection returns the row it created (`created: false`) instead of a duplicate or a 409. One open punch per employee is a partial unique index, not a service check | 2026-11-12 |
 | — | **`/me` is its own surface, not a filtered `/employees`**: three self-service reads (profile, my shifts, my time off) that any member may call, returning `profile: null` / empty lists when the login is not linked to a staff record. Employees could not read anything about themselves before this | 2026-11-12 |
 | — | **The PWA precaches the shell and nothing else** — no runtime caching of `/api`, because a stale rota shown to staff as if it were current is worse than an error; offline clock-in will be an explicit IndexedDB queue (W3 D6), not a cached GET | 2026-11-12 |
+| — | **Account mail is platform mail** (ADR 018): `outbox.org_id` is nullable and the worker sends verify/reset emails straight through the mailer instead of creating `notifications`/`deliveries` rows — a person who cannot log in belongs to no tenant, and inventing a "system org" would special-case every tenant table | 2026-11-15 |
+| — | One-time tokens are **hashed and single-use**, redeemed by a conditional `UPDATE … WHERE used_at IS NULL`, so two clicks on one link cannot both succeed; issuing a new link retires the previous one | 2026-11-15 |
+| — | `POST /auth/password/forgot` answers **202 with an empty body** whether or not the address exists — the alternative is an endpoint that answers "who works here?" | 2026-11-15 |
+| — | Push subscriptions are **per device, upserted on the endpoint**: a browser that changes hands moves its row rather than leaving messages going to the last person | 2026-11-15 |
+| — | Push is one **delivery row per channel** and many devices: sent if at least one device took it, "no device has notifications on" is a *skip* (a retry would spin forever), and a 404/410 from the push service deletes the subscription | 2026-11-15 |
+| — | The push toggle says **why** it cannot work (no service worker in dev, no VAPID keys, permission blocked) instead of failing at the click | 2026-11-15 |
 | — | **Realtime is a refetch hint, not data** (ADR 016): Socket.IO over the API's own server, one room per organisation, payload names the schedule; clients refetch over HTTP, so a dropped event costs freshness and never correctness. Redis adapter only when `REDIS_URL` is set | 2026-11-12 |
 | — | A **drag changes the date and/or the assignee only** — never the times (they live in the sheet). Dropping on the open-shifts row unassigns; dropping on a person assigns | 2026-11-12 |
 | — | Moves are **optimistic**: the chip lands at once, the previous list is restored on any error, and a stale `version` shows "Someone else changed this shift" then refetches the week | 2026-11-12 |
@@ -682,7 +578,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0008)
+### 10.1 Implemented (migrations 0000–0015)
 
 | Migration | Contents |
 |---|---|
@@ -694,6 +590,13 @@ Fastify
 | `0005_scheduling` | `schedule_status` enum; `shift_templates`, `schedules`; same-org FKs (job role FK `ON DELETE SET NULL (job_role_id)`, hand-edited); Monday, break and time CHECKs; RLS |
 | `0008_time_entries` | `attendance_method` enum; `time_entries` (both coordinates and the server's `in_distance_m`, `client_event_id` unique per org, one open punch per employee as a partial unique index, flags, `edited`); `geofence_policy` enum + `organizations.geofence_policy`; `shifts (org_id, id, location_id)` unique (FK target, hand-added); RLS |
 | `0007_publications` | `outbox` (topic `entity.past_tense`, jsonb payload, `published_at` null = pending, partial index); `schedule_publications` (what each publish sent, affected employee ids); `schedules.published_version` + CHECK `published_version <= version`; RLS on both new tables |
+| `0009_attendance_grace` | `organizations.attendance_grace_minutes` (integer, default 5, CHECK 0–60); hand-written — drizzle-kit wanted to re-create two shift constraints |
+| `0010_punch_flags` | partial index on unreviewed flagged punches, so the review queue stays a range scan |
+| `0011_outbox_relay` | two `outbox`-only policies keyed on `current_setting('app.outbox_relay')` (SELECT + UPDATE), so the relay can cross tenants and nothing else can |
+| `0012_notifications` | `notifications` + `deliveries` (RLS, one row per person per event, unique per channel); `notifications` reachable by email or by staff row |
+| `0013_invite_email` | `notifications.employee_id` nullable + `recipient_email` + CHECK one is set + unique `(outbox_id, recipient_email)` (plain index: `ON CONFLICT` cannot infer a partial one) |
+| `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
+| `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
 ```
@@ -728,8 +631,20 @@ time_entries   (id, org_id, employee_id, location_id, shift_id?, clock_in_at, cl
                 client_event_id)   RLS, unique (org_id, client_event_id),
                                    one open per (org_id, employee_id) ← partial unique index,
                                    FK (org_id, shift_id, location_id) → shifts, SET NULL (shift_id)
-outbox         (id, org_id, topic (entity.past_tense, CHECK ^[a-z_]+\.[a-z_]+$), payload jsonb,
-                created_at, published_at?)          RLS, partial index on pending rows
+outbox         (id, org_id? null = platform event, topic (entity.past_tense,
+                CHECK ^[a-z_]+\.[a-z_]+$), payload jsonb, created_at, published_at?)
+                RLS, partial index on pending rows; relay policy (0011) + platform insert (0014)
+notifications  (id, org_id, outbox_id, employee_id?, recipient_email?, kind, subject, body,
+                payload jsonb, created_at)      RLS, one row per person per event,
+                CHECK (employee_id is not null or recipient_email is not null),
+                unique (outbox_id, employee_id), (outbox_id, recipient_email)
+deliveries     (id, org_id, notification_id, channel email|whatsapp|sms|push, address?,
+                status queued|sent|delivered|failed|skipped, attempts, last_error, sent_at,
+                created_at)                    RLS, unique (notification_id, channel)
+one_time_tokens (id, user_id, purpose verify_email|reset_password, token_hash unique,
+                expires_at, used_at?, created_at)      platform table, no RLS, hash only
+push_subscriptions (id, org_id, employee_id, endpoint unique, p256dh, auth, created_at)
+                                        RLS, FK (org_id, employee_id) → employees
 schedule_publications (id, org_id, schedule_id, version, shifts jsonb (what was sent),
                 affected_employee_ids uuid[], published_by?, published_at)
                                             RLS, unique (schedule_id, version)
@@ -775,6 +690,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `POST /auth/login` | public, rate-limited | anyone |
 | `POST /auth/refresh` | refresh cookie, rate-limited | rotates the cookie |
 | `POST /auth/logout` | refresh cookie | 204, idempotent |
+| `POST /auth/verify-email` | public, rate-limited | the token from the email → 204; 400 `auth.invalid_token` when unknown, expired or already used |
+| `POST /auth/password/forgot` | public, rate-limited | anyone → always 202, whether or not the address exists |
+| `POST /auth/password/reset` | public, rate-limited | the token + a new password → 204; ends every live session for that person |
 | `GET /auth/me` | token | the caller |
 | `POST /orgs` | token | create org; caller becomes owner |
 | `GET /orgs` | token | my orgs with my role |
@@ -813,6 +731,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /me` | token + org | any member; own staff profile + roles + locations, `profile: null` when not linked |
 | `GET /me/shifts?from=&to=` | token + org | any member; own shifts in a local-date range, with location and role names |
 | `GET /me/time-off` | token + org | any member; own time off, empty when not linked |
+| `GET /push/public-key` | public | the VAPID public key, `null` when Web Push is not configured |
+| `POST /me/push-subscriptions` | token + org | any member with a staff profile; upsert by endpoint → 201 `{ subscribed: true }` |
+| `DELETE /me/push-subscriptions` | token + org | any member; 204, removes only the caller's own row |
 | `POST /clock-in` | token + org + `Idempotency-Key` | any member with a staff profile; geofence checked server-side → 201 `{ entry, created }`, 422 when the org rejects out-of-fence punches, 409 if a punch is already open |
 | `POST /clock-out` | token + org | any member with a staff profile; closes the open punch → 200, 409 when nothing is open |
 | `GET /me/time-entries` | token + org | any member; own punches in a local-date range, with location name and wall clock |
@@ -940,7 +861,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 |---|---|---|---|
 | D1 | ✅ | `apps/worker` (plain Node, not a second Nest app) with BullMQ; the relay claims pending outbox rows in one transaction (`set_config` flag → `FOR UPDATE SKIP LOCKED` → enqueue → mark published), job id = outbox row id; `pnpm dev` runs it beside the API and web | Outbox rows become jobs exactly once: 20 pending rows became 20 jobs with matching ids and all 20 marked published, and a worker restart queued 0 more. 7 integration tests (claim, order/batch, rollback on enqueue failure, same job id after a rollback, three relays racing, tenant isolation) |
 | D2 | ✅ | `notifications` + `deliveries` (migration `0012`, RLS, one row per person per notification per channel), the `schedule.published` fan-out in the worker (one personalised message per affected employee, not the whole rota), templates in `packages/domain/notifications` (plain text, WhatsApp- and SMS-safe), and channel routing: their preference, else email, with email/push as the safety net and never a silent WhatsApp | One notification → one delivery per channel: verified live (2 messages → 2 WhatsApp deliveries queued, addresses and statuses correct); 4 integration + 17 domain unit tests |
-| D3 | ◑ | **Done:** SMTP email adapter (nodemailer → Mailpit on :1025), a second BullMQ queue for sends, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), and the **invite email**: `invites/${id}` writes `invite.created` to the outbox in the same transaction, the worker renders it and emails the invited address (a notification can now be addressed to an email, not only a staff row). **Remaining:** Web Push (VAPID + subscriptions) and password reset / email verification (one-time-token tables + endpoints) | Invite arrives in Mailpit with a working link — verified live (`You are invited to Sunrise Clinic on Shiftora` → `new.manager@…`, link `/invite/<org>.<code>`); 7 integration tests across send and invite |
+| D3 | ✅ | **Email:** SMTP adapter (nodemailer → Mailpit :1025), a `deliveries` queue, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), the **invite email** (`invite.created` written in the same transaction as the invite). **Account mail:** `one_time_tokens` (`0014`, hash + expiry + `used_at`, platform table with no RLS), `POST /auth/verify-email`, `POST /auth/password/forgot` (always 202 — never reveals who exists), `POST /auth/password/reset` (new password, every live session revoked, link burned), signup mints a verification link, and `renderVerifyEmail`/`renderResetPassword` in `packages/domain/notifications`; platform events ride the outbox with `org_id IS NULL` (ADR 018). **Web Push:** `push_subscriptions` (`0015`, endpoint unique, same-org FK, RLS), `GET /push/public-key`, `POST`/`DELETE /me/push-subscriptions`, a `push` branch in `dispatchDelivery` (one delivery row per channel, many devices, gone subscriptions pruned on 404/410), `web-push` with VAPID loaded only when both keys exist, `public/push-handler.js` (push + notificationclick) imported into the generated service worker, and a per-device toggle on the staff profile | Email: invite and both account mails arrived in Mailpit with working links; verification 204 then 400 on replay; reset changed the password (old 401, new 200) and refused the used link. Push: a real Chrome subscription stored, FCM accepted the VAPID push (`201`, message id returned), the toggle flipped to "on". Tests: 6 account + 6 push (API), 7 push (worker), 5 templates (domain) — commit `5c5a244` |
 | D4 | ☐ | WhatsApp (Meta Cloud API, approved utility templates) + SMS adapters; per-provider rate limits; retries with backoff + jitter; DLQ; quota counter with fallback to push/email | Failure injection → retry → DLQ, test green |
 | D5 | ☐ | Delivery-status webhooks (signature-verified); repeatable jobs: shift reminders, missed clock-in detection; move throttler storage to Redis | Reminder sent 2 h before a shift |
 | D6 | ☐ | End-to-end: publish → employees get WhatsApp/email; failure-injection tests | Publish in UI → message in Mailpit/WhatsApp sandbox |
