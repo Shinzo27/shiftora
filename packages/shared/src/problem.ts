@@ -60,6 +60,12 @@ export const errorCodes = {
   shiftRequestExpired: 'shift_request.expired',
   /** Approving would break a rule nobody can overrule (location, job role, overlap). */
   shiftRequestNotEligible: 'shift_request.not_eligible',
+  /** The claim lost the race: someone else's update landed first. */
+  shiftAlreadyTaken: 'shift.already_taken',
+  /** A write that must be safe to retry arrived without its key. */
+  idempotencyKeyRequired: 'idempotency.key_required',
+  /** The same key was used for a different body: not a retry, a mistake. */
+  idempotencyKeyReuse: 'idempotency.key_reuse',
   /** Approving would break a rule a manager may overrule: say so with acknowledgeWarnings. */
   shiftRequestNeedsAcknowledgement: 'shift_request.needs_acknowledgement',
   /** Only an open shift (nobody on it) can be offered or picked up. */

@@ -117,6 +117,7 @@ describe('every tenant table is protected', () => {
       'employee_job_roles',
       'employee_locations',
       'employees',
+      'idempotency_keys',
       'invites',
       'job_roles',
       'locations',

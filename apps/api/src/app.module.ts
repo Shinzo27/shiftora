@@ -6,6 +6,7 @@ import { HealthModule } from './health/health.module.js';
 import { AttendanceModule } from './modules/attendance/attendance.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
+import { IdempotencyModule } from './modules/idempotency/idempotency.module.js';
 import { InvitesModule } from './modules/invites/invites.module.js';
 import { JobRolesModule } from './modules/job-roles/job-roles.module.js';
 import { LocationsModule } from './modules/locations/locations.module.js';
@@ -25,6 +26,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
     TenancyModule, // global TenancyInterceptor: which org, what role, one transaction
     OrgsModule,
     PushModule,
+    IdempotencyModule,
     InvitesModule,
     LocationsModule,
     JobRolesModule,

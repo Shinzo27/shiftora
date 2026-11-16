@@ -115,6 +115,32 @@ export function renderRequestOutcome(
 }
 
 /**
+ * To a manager whose rota changed without them doing anything (W5 D4): someone took a shift that
+ * was open. Short on purpose — it is a notification that a task is done, not a task.
+ */
+export function renderShiftClaimed(context: {
+  managerName: string;
+  employeeName: string;
+  shift: RequestShiftLine;
+  appUrl?: string;
+}): RenderedMessage {
+  const { managerName, employeeName, shift, appUrl } = context;
+  return {
+    subject: `${employeeName} took the open shift · ${dayLabel(shift.date)} ${shift.startTime}–${shift.endTime}`,
+    body: [
+      `Hi ${first(managerName)},`,
+      '',
+      `${employeeName} took the open shift:`,
+      '',
+      line(shift),
+      '',
+      'The rota is up to date, and the published week has been adjusted.',
+      ...(appUrl ? ['', `See the week: ${appUrl}`] : []),
+    ].join('\n'),
+  };
+}
+
+/**
  * To someone who could take an open shift (W5 D3). Says plainly that it is first come, first
  * served, so nobody reads it as an assignment.
  */

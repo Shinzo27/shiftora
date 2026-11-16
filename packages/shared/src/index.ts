@@ -1,5 +1,6 @@
 export * from './attendance.js';
 export * from './auth.js';
+export * from './claims.js';
 export * from './employees.js';
 export * from './locations.js';
 export * from './me.js';

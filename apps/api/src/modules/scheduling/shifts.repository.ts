@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, inArray, isNotNull, lt, ne, schema, sql } from '@shiftora/db';
+import { and, asc, eq, gt, inArray, isNotNull, isNull, lt, ne, schema, sql } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -102,6 +102,38 @@ export class ShiftsRepository {
       .where(and(eq(shifts.orgId, this.context.orgId), eq(shifts.id, id)))
       .returning();
     return row!;
+  }
+
+  /**
+   * Gives the shift to `employeeId` **only if it is still open at the version we read**. This is
+   * the whole race: two claims both pass the eligibility check, both run this statement, and the
+   * second updates zero rows because the first bumped the version. No lock, no queue — the
+   * database is the arbiter.
+   */
+  async claim(
+    id: string,
+    employeeId: string,
+    expectedVersion: number,
+  ): Promise<ShiftRecord | null> {
+    const [row] = await this.context.tx
+      .update(shifts)
+      .set({
+        employeeId,
+        status: 'assigned',
+        version: sql`${shifts.version} + 1`,
+        offeredAt: null,
+      })
+      .where(
+        and(
+          eq(shifts.orgId, this.context.orgId),
+          eq(shifts.id, id),
+          eq(shifts.status, 'open'),
+          isNull(shifts.employeeId),
+          eq(shifts.version, expectedVersion),
+        ),
+      )
+      .returning();
+    return row ?? null;
   }
 
   async markOffered(id: string, at: Date): Promise<void> {

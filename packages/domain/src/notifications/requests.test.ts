@@ -5,6 +5,7 @@ import {
   renderRequestForManager,
   renderRequestOutcome,
   renderSwapAsked,
+  renderShiftClaimed,
 } from './requests.js';
 
 const base = {
@@ -86,5 +87,29 @@ describe('open shift offers', () => {
     expect(message.subject).toBe('Open shift you can take · Mon 30 Nov 09:00–17:00');
     expect(message.body).toContain('Mon 30 Nov · 09:00–17:00 · Andheri · Nurse');
     expect(message.body).toContain('The first person to take it gets it.');
+  });
+});
+
+describe('renderShiftClaimed', () => {
+  it('names the person and the shift, and says the published week has been adjusted', () => {
+    const message = renderShiftClaimed({
+      managerName: 'Priya Nair',
+      employeeName: 'Asha Mehta',
+      shift: {
+        date: '2027-03-02',
+        startTime: '09:00',
+        endTime: '17:00',
+        locationName: 'Bandra',
+      },
+      appUrl: 'https://app.shiftora.test/o/1/schedule',
+    });
+
+    expect(message.subject).toContain('Asha Mehta took the open shift');
+    expect(message.body).toContain('Hi Priya,');
+    expect(message.body).toContain('Asha Mehta took the open shift:');
+    expect(message.body).toContain('Bandra');
+    expect(message.body).toContain('published week has been adjusted');
+    // Short: this is news that a task is done, not a task.
+    expect(message.body.split('\n').length).toBeLessThan(12);
   });
 });

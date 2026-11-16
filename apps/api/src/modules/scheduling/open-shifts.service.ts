@@ -1,10 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { canTakeOpenShift, toLocal, type Assessment, type Clock } from '@shiftora/domain';
+import {
+  canTakeOpenShift,
+  paidMinutes,
+  toLocal,
+  type Assessment,
+  type Clock,
+} from '@shiftora/domain';
 import {
   errorCodes,
   type EligibleCandidate,
   type OfferResult,
   type OpenShift,
+  type Shift,
   type ShiftCandidates,
 } from '@shiftora/shared';
 
@@ -143,6 +150,123 @@ export class OpenShiftsService {
     };
   }
 
+  /**
+   * Takes an offered shift (W5 D4). The rule is first valid claim wins, and the database decides:
+   * the row is updated only if it is still open **at the version we read**, so of two nurses who
+   * tap at the same moment exactly one gets a shift and the other is told, plainly, that it has
+   * gone. Everything else here is the same check `mine()` uses, so a claim cannot be a way around
+   * eligibility.
+   */
+  async claim(member: OrgMember, shiftId: string): Promise<{ shift: Shift }> {
+    const me = await this.employees.findByUserId(member.userId);
+    if (!me || me.status === 'archived') {
+      throw new AppException(
+        409,
+        errorCodes.shiftRequestNotEligible,
+        'This account has no staff profile at this location.',
+      );
+    }
+
+    const { shift, location } = await this.openShiftForClaim(shiftId);
+    const assessment = (await this.shiftsService.assessMany([me.id], shift)).get(me.id);
+    if (!assessment || !canTakeOpenShift(assessment)) {
+      throw new AppException(
+        409,
+        errorCodes.shiftRequestNotEligible,
+        reasonsOf(assessment ?? { blocking: [], advisories: [] }).join(' ') ||
+          'You cannot take this shift.',
+      );
+    }
+
+    const updated = await this.shifts.claim(shift.id, me.id, shift.version);
+    if (!updated) {
+      throw new AppException(409, errorCodes.shiftAlreadyTaken, 'Someone else took this shift.');
+    }
+
+    await this.audit.record({
+      action: 'shift.claimed',
+      entity: 'shift',
+      entityId: shift.id,
+      before: { employeeId: null, status: 'open', version: shift.version },
+      after: { employeeId: me.id, status: 'assigned', version: updated.version },
+    });
+    // The rota everyone was told about has changed: keep the publication honest so the reminders
+    // that follow name the right person.
+    await this.schedules.recordToldChange(shift.scheduleId);
+    await this.outbox.record('shift.claimed', {
+      shiftId: shift.id,
+      employeeId: me.id,
+      locationId: shift.locationId,
+      startsAt: shift.startsAt.toISOString(),
+    });
+
+    const schedule = await this.schedules.findById(shift.scheduleId);
+    if (schedule) {
+      this.realtime.scheduleChanged({
+        orgId: this.context.orgId,
+        scheduleId: schedule.id,
+        locationId: shift.locationId,
+        weekStart: schedule.weekStart,
+        kind: 'shifts',
+      });
+    }
+
+    return { shift: this.present(updated, location.timezone) };
+  }
+
+  /** An open shift that was offered and has not started; 404 outside scope, 409 otherwise. */
+  private async openShiftForClaim(
+    id: string,
+  ): Promise<{ shift: ShiftRecord; location: LocationRecord }> {
+    const { shift, location } = await this.shiftInScope(id);
+    if (shift.employeeId !== null || shift.status === 'assigned') {
+      throw new AppException(409, errorCodes.shiftAlreadyTaken, 'Someone else took this shift.');
+    }
+    if (shift.status !== 'open') {
+      throw new AppException(409, errorCodes.shiftNotOpen, 'This shift is not open any more.');
+    }
+    if (shift.offeredAt === null) {
+      throw new AppException(
+        409,
+        errorCodes.shiftNotOpen,
+        'This shift has not been offered, so it cannot be taken.',
+      );
+    }
+    if (shift.startsAt.getTime() <= this.clock.now().getTime()) {
+      throw new AppException(
+        409,
+        errorCodes.shiftRequestExpired,
+        'This shift has already started.',
+      );
+    }
+    return { shift, location };
+  }
+
+  /** The row as the API shows a shift: instants in UTC, the rest in the location clock. */
+  private present(row: ShiftRecord, timezone: string): Shift {
+    const start = toLocal(row.startsAt, timezone);
+    const end = toLocal(row.endsAt, timezone);
+    return {
+      id: row.id,
+      scheduleId: row.scheduleId,
+      locationId: row.locationId,
+      jobRoleId: row.jobRoleId,
+      employeeId: row.employeeId,
+      startsAt: row.startsAt.toISOString(),
+      endsAt: row.endsAt.toISOString(),
+      date: start.date,
+      startTime: start.time,
+      endTime: end.time,
+      breakMinutes: row.breakMinutes,
+      paidMinutes: paidMinutes(row),
+      status: row.status,
+      version: row.version,
+      notes: row.notes,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+    };
+  }
+
   /** The offered open shifts the caller could take right now, soonest first. */
   async mine(member: OrgMember): Promise<OpenShift[]> {
     const me = await this.employees.findByUserId(member.userId);
@@ -196,6 +320,22 @@ export class OpenShiftsService {
     id: string,
     { writable = false } = {},
   ): Promise<{ shift: ShiftRecord; location: LocationRecord }> {
+    const found = await this.shiftInScope(id, { writable });
+    if (found.shift.status !== 'open' || found.shift.employeeId !== null) {
+      throw new AppException(
+        409,
+        errorCodes.shiftNotOpen,
+        'Only an open shift (nobody on it) can be offered.',
+      );
+    }
+    return found;
+  }
+
+  /** The shift and its location, if the caller may see that location at all. No status opinion. */
+  private async shiftInScope(
+    id: string,
+    { writable = false } = {},
+  ): Promise<{ shift: ShiftRecord; location: LocationRecord }> {
     const shift = await this.shifts.findById(id);
     if (!shift) throw shiftNotFound();
     let location: LocationRecord;
@@ -208,13 +348,6 @@ export class OpenShiftsService {
       throw error;
     }
     if (writable) this.access.assertWritable(location);
-    if (shift.status !== 'open' || shift.employeeId !== null) {
-      throw new AppException(
-        409,
-        errorCodes.shiftNotOpen,
-        'Only an open shift (nobody on it) can be offered.',
-      );
-    }
     return { shift, location };
   }
 }
