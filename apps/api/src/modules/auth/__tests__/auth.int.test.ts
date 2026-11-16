@@ -46,10 +46,13 @@ afterAll(async () => {
   await database?.stop();
 });
 
-/** A fake browser with its own IP (so rate limits don't leak between tests). */
-function client() {
+/**
+ * A fake browser with its own IP (so rate limits don't leak between tests), or a given one to
+ * model several people behind the same office connection.
+ */
+function client(ip?: string) {
   ipCounter += 1;
-  const remoteAddress = `10.0.0.${ipCounter}`;
+  const remoteAddress = ip ?? `10.0.0.${ipCounter}`;
 
   async function request(
     method: 'GET' | 'POST',
@@ -284,5 +287,47 @@ describe('default protection', () => {
 
     expect(res.statusCode).toBe(404);
     expect(res.json()).toMatchObject({ code: 'not_found' });
+  });
+});
+
+describe('refresh rate limit: per login, not per IP', () => {
+  it('a whole office behind one IP can refresh at once', async () => {
+    // Twelve people, each signed up from home (signup stays limited per IP)...
+    const people = await Promise.all(Array.from({ length: 12 }, () => signedUp()));
+    // ...then all reload the app at work, behind the clinic's single public IP.
+    const office = '203.0.113.7';
+    const statuses: number[] = [];
+    for (const person of people) {
+      const { res } = await client(office).post('/auth/refresh', { cookie: person.cookie });
+      statuses.push(res.statusCode);
+    }
+
+    expect(statuses).toEqual(Array(12).fill(200));
+  });
+
+  it('one login is still limited, even when every request comes from a new IP', async () => {
+    let { cookie } = await signedUp();
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      const { res, refreshCookie } = await client().post('/auth/refresh', { cookie });
+      statuses.push(res.statusCode);
+      if (refreshCookie?.value) cookie = refreshCookie.value; // follow the rotation
+    }
+
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(200));
+    expect(statuses[10]).toBe(429);
+  });
+
+  it('requests without a known session are limited per IP, junk cookies included', async () => {
+    const browser = client();
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i += 1) {
+      // A fresh random "token" each time must not buy a fresh budget.
+      const { res } = await browser.post('/auth/refresh', { cookie: `junk-${i}` });
+      statuses.push(res.statusCode);
+    }
+
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(401));
+    expect(statuses[10]).toBe(429);
   });
 });

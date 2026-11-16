@@ -159,6 +159,32 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 > stay in the failed set as the before-picture. 272 unit + 269 integration, lint, typecheck and
 > build clean.
 
+> **2026-11-16 — pulled onto the first dev machine (Claude Code) and brought up from the
+> handoff alone.** Existing database migrated 0005 → 0015 in place; VAPID keys generated into
+> `.env`; `pnpm dev` runs API + web + worker; `pnpm db:seed` works. 272 unit + 269 integration
+> green as reported. Two fixes, both found only on a different day/machine:
+> - **E2E seed used a fixed week (`2026-11-09`)** while the board opens on the current week, so
+>   "a manager adds a shift…" failed the Monday after it was written. `e2e/seed.ts` now seeds
+>   `startOfWeek(toLocal(now, zone).date)`. 5/5 E2E pass.
+> - **Week board header covered the first employee row.** The day headers were `sticky top-14`
+>   inside the `overflow-x-auto` wrapper, which is the scroll container `sticky` measures from,
+>   so they sat 56 px down on top of row one. Now `top-0` (verified in Chrome). A header that
+>   stays put while the *page* scrolls needs a vertical scroll container: follow-up in §18.
+> - Playwright's browser build moved (1234 → 1248): on a machine with an older one, run
+>   `pnpm --filter @shiftora/web exec playwright install chromium` once.
+>
+> **Same day — refresh rate limit per login (owner's decision).** `/auth/refresh` used the
+> per-IP limit, and the app refreshes on every full page load, so a clinic's staff behind one
+> internet connection would log each other out after ten reloads a minute (reproduced locally:
+> a 429 on refresh bounced the demo owner to the login page). `RefreshThrottlerGuard` now keys
+> the limit by the session family, falling back to the IP for a missing or unknown cookie. Three
+> new integration tests: twelve people behind one IP all refresh (200 ×12); one login across
+> eleven IPs is capped (429 on the 11th); junk cookies from one IP are still capped. Mutation
+> check: keying unknown cookies by their value turns the junk-cookie test red. 272 unit +
+> 272 integration (api 190) + 5 E2E green. One `pnpm test:int` run had a single API test *file*
+> fail with no failing test while the db/worker suites and the dev stack ran in parallel; three
+> reruns were clean and the log of that run didn't name the file — watch for it.
+
 ## 3. Product
 
 ### 3.1 Problem
@@ -280,6 +306,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Prices exclusive of GST; Free plan = 1 location | 2026-11-03 |
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
+| — | **`/auth/refresh` is rate-limited per login, not per IP** (`RefreshThrottlerGuard`: tracker = the refresh token's session family; a missing or unknown cookie falls back to the IP). The web app refreshes on every page load, so a per-IP limit logged out staff sharing one office connection; per login, each person has their own 10/min and one login (even a stolen token used from many IPs) is still capped. Costs one indexed lookup per refresh | 2026-11-16 |
 | — | UUIDv7 primary keys generated in the app (Postgres 16 has no `uuidv7()`) | 2026-11-05 |
 | — | Invites moved from Day 3 to Day 4 (they need orgs) | 2026-11-05 |
 | — | Location scope rule: owners see every location; anyone else is limited to their `membership_locations` rows, or sees every location if they have none. Hidden locations answer 404 | 2026-11-06 |
@@ -461,6 +488,8 @@ pnpm dev                        # http://localhost:4000/api/v1/health/ready → 
 pnpm lint && pnpm typecheck && pnpm test && pnpm test:int   # all green = machine is ready
 ```
 
+E2E needs Playwright's Chromium once: `pnpm --filter @shiftora/web exec playwright install chromium`.
+
 Ports 5433 (Postgres) and 4000 (API) were chosen because 5432/3000 were busy on the first
 machine; change them in `.env` and `infra/docker-compose.yml` if your machine differs.
 
@@ -546,7 +575,8 @@ Web app / Employee PWA / Kiosk ──HTTPS + WebSocket──▶ API (NestJS/Fast
 ```
 Fastify
  → JwtAuthGuard (global)        verify Bearer token → request.user (or 401); @Public() skips
- → ThrottlerGuard (some routes) 10/min/IP on signup, login, refresh
+ → ThrottlerGuard (some routes) 10/min/IP on signup, login, password routes;
+   RefreshThrottlerGuard 10/min per login (session family) on refresh, per IP if no known cookie
  → TenancyInterceptor (global)  read X-Org-Id (unless @WithoutOrg) → BEGIN
                                 set_config('app.user_id'/'app.org_id', …, true)
                                 load membership → 403 if none; check @Roles → 403
@@ -1002,6 +1032,8 @@ invoice format sign-off with a CA (values are config, not code).
 | ~~Browser E2E tests (Playwright)~~ Done: `pnpm test:e2e` builds a clinic through the API, then drives login → board → add shift → publish; extend to clock-in in W3 | ✅ W2 D6 |
 | Domain time helpers use `Temporal`; check browser support (Safari) before the web calls them, else add `temporal-polyfill` (ask first) | W2 D3 |
 | ~~Shift warnings are computed on write only~~ Done: `GET /schedules/:id/conflicts` feeds the board's badges | ✅ W2 D4 |
+| ~~Auth throttle on `/auth/refresh` was per IP, so staff behind one office connection logged each other out~~ Done: refresh is limited per login (session family); no/unknown cookie still per IP | ✅ 2026-11-16 |
+| Week board header is sticky only within its own (horizontal) scroll box; make it stick while the page scrolls (vertical scroll container with a max height) | W5+ |
 
 ---
 

@@ -88,4 +88,17 @@ export class SessionsRepository {
       .set({ revokedAt: now })
       .where(and(eq(sessions.tokenHash, tokenHash), isNull(sessions.revokedAt)));
   }
+
+  /**
+   * The login (family) a refresh token belongs to, revoked or not, or null if we never issued
+   * it. Used to rate-limit refreshes per login instead of per IP (see RefreshThrottlerGuard).
+   */
+  async familyOf(tokenHash: string): Promise<string | null> {
+    const [row] = await this.database.db
+      .select({ familyId: sessions.familyId })
+      .from(sessions)
+      .where(eq(sessions.tokenHash, tokenHash))
+      .limit(1);
+    return row?.familyId ?? null;
+  }
 }

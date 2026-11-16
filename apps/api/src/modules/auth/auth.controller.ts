@@ -26,6 +26,7 @@ import type { AuthenticatedUser } from './authenticated-user.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Public } from './public.decorator.js';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './refresh-cookie.js';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard.js';
 
 function requestMeta(request: FastifyRequest): RequestMeta {
   return { userAgent: request.headers['user-agent'] ?? null, ip: request.ip };
@@ -98,8 +99,9 @@ export class AuthController {
     return this.withCookie(reply, await this.auth.login(body, requestMeta(request)));
   }
 
+  /** Limited per login, not per IP: see RefreshThrottlerGuard. */
   @Public()
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(RefreshThrottlerGuard)
   @Post('refresh')
   @HttpCode(200)
   async refresh(

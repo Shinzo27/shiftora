@@ -1,4 +1,5 @@
 import { expect, type APIRequestContext, type Page } from '@playwright/test';
+import { startOfWeek, toLocal } from '@shiftora/domain';
 
 /**
  * Seeding for the browser tests: a clinic built through the public API — the same calls a real
@@ -67,7 +68,9 @@ export async function seedClinic(
 
   const schedule = await request.post(`${API}/schedules`, {
     headers,
-    data: { locationId, weekStart: '2026-11-09' },
+    // The board opens on the current week, so seed that one. A fixed date went stale the
+    // Monday after it was written and left the board empty.
+    data: { locationId, weekStart: startOfWeek(toLocal(new Date(), LOCATION.timezone).date) },
   });
   expect(schedule.ok(), await schedule.text()).toBeTruthy();
   const { id: scheduleId } = (await schedule.json()) as { id: string };

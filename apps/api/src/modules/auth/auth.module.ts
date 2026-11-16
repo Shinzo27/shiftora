@@ -8,6 +8,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { PasswordHasher } from './password-hasher.js';
+import { RefreshThrottlerGuard } from './refresh-throttler.guard.js';
 import { SessionsRepository } from './sessions.repository.js';
 import { OneTimeTokensRepository } from './one-time-tokens.repository.js';
 import { TokenService } from './token.service.js';
@@ -17,8 +18,9 @@ import { UsersRepository } from './users.repository.js';
   imports: [
     DatabaseModule,
     OutboxModule,
-    // Applied with @UseGuards(ThrottlerGuard) on signup/login/refresh only: 10 per minute
-    // per IP per route. In memory for now; moves to Redis in week 4 (multiple API instances).
+    // 10 per minute per route. Signup/login/password routes count per IP (ThrottlerGuard);
+    // refresh counts per login (RefreshThrottlerGuard), so staff sharing an office IP don't
+    // log each other out. In memory for now; moves to Redis with multiple API instances.
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
   ],
   controllers: [AuthController],
@@ -26,6 +28,7 @@ import { UsersRepository } from './users.repository.js';
     AuthService,
     UsersRepository,
     SessionsRepository,
+    RefreshThrottlerGuard,
     OneTimeTokensRepository,
     PasswordHasher,
     TokenService,

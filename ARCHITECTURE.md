@@ -690,7 +690,7 @@ GET  /audit?entity=shift&entityId=
 
 - RBAC roles: `owner`, `manager` (optionally scoped to locations), `employee`, `kiosk`.
   Enforced by Nest guards; RLS is the second line of defence.
-- Rate limiting per IP on signup/login/refresh (10/min/route, in-memory today) and later on clock-in; Redis-backed from week 4. Behind a proxy, enable Fastify `trustProxy` so `request.ip` is the client, not the load balancer.
+- Rate limiting on signup/login/password routes per IP, and on refresh **per login** (session family; per IP only when the cookie is missing or unknown) so staff behind one office connection don't log each other out (10/min/route, in-memory today) and later on clock-in; Redis-backed from week 4. Behind a proxy, enable Fastify `trustProxy` so `request.ip` is the client, not the load balancer.
 - Provider webhooks verified by signature; secrets in env/secret manager; QR secrets encrypted at rest.
 - PII minimisation: location only at clock events; selfies opt-in with retention; data export
   and deletion per employee.

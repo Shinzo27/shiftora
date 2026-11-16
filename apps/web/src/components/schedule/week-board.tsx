@@ -158,7 +158,10 @@ export function WeekBoard({
               <tr>
                 <th
                   scope="col"
-                  className="sticky top-14 left-0 z-30 w-48 border-r border-b bg-card px-3 py-2 text-left align-bottom"
+                  // top-0, not the app header's height: the overflow-x wrapper above is the
+                  // scroll container `sticky` measures from, so top-14 pushed the header row
+                  // 56 px down inside it, on top of the first employee.
+                  className="sticky top-0 left-0 z-30 w-48 border-r border-b bg-card px-3 py-2 text-left align-bottom"
                 >
                   <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
                     Team
@@ -171,7 +174,7 @@ export function WeekBoard({
                       key={date}
                       scope="col"
                       className={cn(
-                        'sticky top-14 z-20 min-w-[7.5rem] border-r border-b bg-card px-2 py-2 text-left font-normal last:border-r-0',
+                        'sticky top-0 z-20 min-w-[7.5rem] border-r border-b bg-card px-2 py-2 text-left font-normal last:border-r-0',
                         isToday && 'bg-primary/5',
                       )}
                       aria-current={isToday ? 'date' : undefined}
