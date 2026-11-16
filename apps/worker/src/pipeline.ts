@@ -105,9 +105,9 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
       ALERTS_QUEUE,
       async () => {
         const result = await scanShiftAlerts(db);
-        if (result.reminders + result.missed > 0) {
+        if (result.reminders + result.missed + result.expired > 0) {
           log.info(
-            `alerts: ${result.reminders} reminder(s), ${result.missed} missed clock-in(s) raised`,
+            `alerts: ${result.reminders} reminder(s), ${result.missed} missed clock-in(s) raised, ${result.expired} request(s) expired`,
           );
         }
         return result;

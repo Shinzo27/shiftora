@@ -68,6 +68,42 @@ export class ShiftsRepository {
     return row ?? null;
   }
 
+  async findByIds(ids: string[]): Promise<ShiftRecord[]> {
+    if (ids.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(shifts)
+      .where(and(eq(shifts.orgId, this.context.orgId), inArray(shifts.id, ids)));
+  }
+
+  /**
+   * Locks these shifts for the rest of the transaction, **in id order**: two approvals touching
+   * the same pair of shifts lock them in the same order, so they queue instead of deadlocking.
+   */
+  async lockForUpdate(ids: string[]): Promise<ShiftRecord[]> {
+    if (ids.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(shifts)
+      .where(and(eq(shifts.orgId, this.context.orgId), inArray(shifts.id, ids)))
+      .orderBy(asc(shifts.id))
+      .for('update');
+  }
+
+  /** Gives the shift to someone (assigned) or to nobody (open). Caller holds the row lock. */
+  async reassign(id: string, employeeId: string | null): Promise<ShiftRecord> {
+    const [row] = await this.context.tx
+      .update(shifts)
+      .set({
+        employeeId,
+        status: employeeId ? 'assigned' : 'open',
+        version: sql`${shifts.version} + 1`,
+      })
+      .where(and(eq(shifts.orgId, this.context.orgId), eq(shifts.id, id)))
+      .returning();
+    return row!;
+  }
+
   async remove(id: string): Promise<void> {
     await this.context.tx
       .delete(shifts)

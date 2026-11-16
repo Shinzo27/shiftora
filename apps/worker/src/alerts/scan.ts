@@ -9,6 +9,8 @@ export interface ScanResult {
   /** Alerts raised this scan — each one an outbox event. */
   reminders: number;
   missed: number;
+  /** Swap/drop requests closed because their shift started before anyone decided (W5 D2). */
+  expired: number;
 }
 
 /**
@@ -30,13 +32,14 @@ export interface ScanResult {
  */
 export async function scanShiftAlerts(db: Database, now: Date = new Date()): Promise<ScanResult> {
   const orgs = await listOrgs(db);
-  const result: ScanResult = { orgs: orgs.length, reminders: 0, missed: 0 };
+  const result: ScanResult = { orgs: orgs.length, reminders: 0, missed: 0, expired: 0 };
 
   for (const org of orgs) {
     await db.transaction(async (tx) => {
       await setOrg(tx, org.id);
       result.reminders += await raiseReminders(tx, org.id, now);
       result.missed += await raiseMissedClockIns(tx, org.id, org.graceMinutes, now);
+      result.expired += await expireStartedRequests(tx, org.id, now);
     });
   }
   return result;
@@ -154,4 +157,25 @@ async function raise(
     .insert(schema.outbox)
     .values(alerted.map(({ shiftId }) => ({ orgId, topic, payload: { shiftId } })));
   return alerted.length;
+}
+
+/**
+ * A swap or drop nobody decided before the shift started is moot: it is closed as `expired` (no
+ * decider), so it leaves the inbox and frees the shift for a new request. The API refuses to act
+ * on such a request too; this makes the stored state say so.
+ */
+async function expireStartedRequests(tx: Tx, orgId: string, now: Date): Promise<number> {
+  const expired = await tx.execute<{ id: string }>(sql`
+    update shift_requests r
+    set status = 'expired', decided_at = ${now.toISOString()}, updated_at = now()
+    where r.org_id = ${orgId}
+      and r.status in ('pending_colleague', 'pending_manager')
+      and exists (
+        select 1 from shifts s
+        where s.org_id = r.org_id
+          and s.id in (r.shift_id, r.target_shift_id)
+          and s.starts_at <= ${now.toISOString()}
+      )
+    returning r.id`);
+  return expired.rows.length;
 }

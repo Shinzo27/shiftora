@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
+  assessAssignment,
   dayOfWeek,
   paidMinutes,
+  type Assessment,
   shiftTimes,
   toLocal,
   validateShift,
@@ -392,6 +394,79 @@ export class ShiftsService {
       if (warnings.length > 0) conflicts.push({ shiftId: row.id, warnings });
     }
     return { scheduleId: schedule.id, conflicts };
+  }
+
+  /**
+   * Could each of these people take this shift? The pure `assessAssignment` per person, fed by a
+   * handful of batched queries (people, their locations and roles, availability, time off, their
+   * other shifts around this one). Used to approve swaps and drops and to offer open shifts.
+   *
+   * `ignoreShiftIds`: shifts that will not be theirs after the change (the one given away in a
+   * swap), so they do not count against overlap, hours or rest.
+   */
+  async assessMany(
+    employeeIds: string[],
+    shift: ShiftRecord,
+    ignoreShiftIds: string[] = [],
+  ): Promise<Map<string, Assessment>> {
+    if (employeeIds.length === 0) return new Map();
+    const schedule = await this.findSchedule(shift.scheduleId);
+    const [location] = await this.locations.findByIds([shift.locationId]);
+    if (!location) throw shiftNotFound();
+
+    const week = weekBounds(schedule.weekStart, location.timezone);
+    const window = {
+      start: new Date(Math.min(week.start.getTime(), shift.startsAt.getTime() - REST_WINDOW_MS)),
+      end: new Date(Math.max(week.end.getTime(), shift.endsAt.getTime() + REST_WINDOW_MS)),
+    };
+    const [people, relations, availability, timeOff, others] = await Promise.all([
+      this.employees.findMany(employeeIds),
+      this.employees.relationsFor(employeeIds),
+      this.availability.slotsFor(employeeIds),
+      this.availability.timeOffFor(employeeIds, window.start, window.end),
+      this.shifts.forEmployees(employeeIds, window.start, window.end),
+    ]);
+
+    const start = toLocal(shift.startsAt, location.timezone);
+    const end = toLocal(shift.endsAt, location.timezone);
+    const ignore = new Set([shift.id, ...ignoreShiftIds]);
+    const result = new Map<string, Assessment>();
+    for (const employeeId of employeeIds) {
+      const person = people.get(employeeId);
+      if (!person) continue;
+      const warnings = validateShift({
+        candidate: {
+          startsAt: shift.startsAt,
+          endsAt: shift.endsAt,
+          breakMinutes: shift.breakMinutes,
+          weekday: dayOfWeek(start.date),
+          startTime: start.time,
+          endTime: end.time,
+        },
+        timezone: location.timezone,
+        week,
+        availability: availability.get(employeeId) ?? [],
+        timeOff: timeOff.get(employeeId) ?? [],
+        otherShifts: others.filter(
+          (other) => other.employeeId === employeeId && !ignore.has(other.id),
+        ),
+        maxWeeklyMinutes: person.maxWeeklyMinutes,
+        minRestMinutes: person.minRestMinutes,
+      });
+      result.set(
+        employeeId,
+        assessAssignment({
+          employee: {
+            status: person.status,
+            locationIds: relations.locationIds.get(employeeId) ?? [],
+            jobRoleIds: relations.jobRoleIds.get(employeeId) ?? [],
+          },
+          shift: { locationId: shift.locationId, jobRoleId: shift.jobRoleId },
+          warnings,
+        }),
+      );
+    }
+    return result;
   }
 
   async remove(id: string): Promise<void> {

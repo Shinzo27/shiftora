@@ -134,6 +134,20 @@ export class EmployeesService {
     return new Map(rows.map((row) => [row.id, row]));
   }
 
+  /**
+   * Each person's locations and job roles, in two queries: what eligibility needs (W5). No
+   * scope filter, like `findMany`: the caller already holds rows that reference these people.
+   */
+  async relationsFor(
+    ids: string[],
+  ): Promise<{ locationIds: Map<string, string[]>; jobRoleIds: Map<string, string[]> }> {
+    const [locationIds, jobRoleIds] = await Promise.all([
+      this.employees.locationIds(ids),
+      this.employees.jobRoleIds(ids),
+    ]);
+    return { locationIds, jobRoleIds };
+  }
+
   async get(id: string): Promise<Employee> {
     const [employee] = await this.withRelations([await this.findAccessible(id)]);
     return employee!;

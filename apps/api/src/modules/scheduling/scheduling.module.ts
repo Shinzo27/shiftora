@@ -11,6 +11,9 @@ import { PublicationsRepository } from './publications.repository.js';
 import { SchedulesRepository } from './schedules.repository.js';
 import { SchedulesService } from './schedules.service.js';
 import { SchedulingController } from './scheduling.controller.js';
+import { ShiftRequestsController } from './shift-requests.controller.js';
+import { ShiftRequestsRepository } from './shift-requests.repository.js';
+import { ShiftRequestsService } from './shift-requests.service.js';
 import { ShiftTemplatesRepository } from './shift-templates.repository.js';
 import { ShiftTemplatesService } from './shift-templates.service.js';
 import { ShiftsController } from './shifts.controller.js';
@@ -31,7 +34,7 @@ import { ShiftsService } from './shifts.service.js';
     OutboxModule,
     RealtimeModule,
   ],
-  controllers: [SchedulingController, ShiftsController],
+  controllers: [SchedulingController, ShiftsController, ShiftRequestsController],
   providers: [
     ShiftTemplatesService,
     SchedulesService,
@@ -40,6 +43,8 @@ import { ShiftsService } from './shifts.service.js';
     SchedulesRepository,
     ShiftsRepository,
     PublicationsRepository,
+    ShiftRequestsService,
+    ShiftRequestsRepository,
   ],
   // Attendance checks that a punch's shift belongs to the caller at that location.
   exports: [ShiftsService],

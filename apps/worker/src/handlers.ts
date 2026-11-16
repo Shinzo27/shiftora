@@ -8,6 +8,7 @@ import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
 import { applyDeliveryReports } from './notifications/reports.js';
+import { handleShiftRequestEvent } from './notifications/shift-requests.js';
 import { sendAccountMail } from './platform-mail.js';
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
@@ -100,6 +101,24 @@ export async function handleNotificationJob(
         job.topic === 'shift.reminder'
           ? await handleShiftReminder(db, event, alertDeps)
           : await handleMissedClockIn(db, event, alertDeps);
+      await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
+      if (result.notifications > 0) {
+        console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
+      }
+      return result;
+    }
+    // Swaps and drops (W5 D2): the colleague, the managers, or the people the decision affects.
+    case 'shift_request.created':
+    case 'shift_request.accepted':
+    case 'shift_request.declined':
+    case 'shift_request.approved':
+    case 'shift_request.rejected':
+    case 'shift_request.cancelled': {
+      const result = await handleShiftRequestEvent(
+        db,
+        { id: job.outboxId, orgId: job.orgId, topic: job.topic, payload: job.payload },
+        { usable: deps.usable, appUrl: deps.appUrl },
+      );
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
         console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);

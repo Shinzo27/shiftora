@@ -426,8 +426,18 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   same transaction.
 - The client sends an `Idempotency-Key`; the first response is stored in `idempotency_keys`,
   so a retried request returns the same result instead of a confusing error.
-- Swap approval locks both shifts with `SELECT … FOR UPDATE` (ordered by id to avoid
-  deadlocks), re-validates and swaps assignees.
+- **Swaps and drops (implemented, W5 D1–D2).** `shift_requests` + a pure state machine
+  (`packages/domain/requests`): swap = `pending_colleague` → `pending_manager` → `approved`, drop
+  = `pending_manager` → `approved`; a manager always decides. Approval (`ShiftRequestsService`)
+  locks both shifts with `SELECT … FOR UPDATE` **ordered by id** (two approvals of overlapping
+  pairs queue instead of deadlocking), checks they still belong to the same people and have not
+  started, re-validates the new assignees with `assessMany` → `assessAssignment` (blocking:
+  archived, location, job role, overlap; advisories need `acknowledgeWarnings`), then reassigns —
+  an exchange frees the first shift before filling the second, so the exclusion constraint never
+  sees one person on both. The change is recorded as told (schedule version + a patched
+  publication), audited per shift, and announced through the outbox; the request's own status
+  moves with a conditional update (`where status = <seen>`), so two deciders produce one
+  decision.
 - Test: N concurrent claims via `Promise.all` against a real Postgres → exactly one winner.
 
 ### 7.5 Attendance and anti-fraud (geofence in W3 D2, matching in W3 D4, corrections in W3 D5)

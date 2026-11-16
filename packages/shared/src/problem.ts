@@ -49,6 +49,21 @@ export const errorCodes = {
   timeEntryNotFound: 'time_entry.not_found',
   deliveryNotFound: 'delivery.not_found',
   deliveryNotDeadLettered: 'delivery.not_dead_lettered',
+  shiftRequestNotFound: 'shift_request.not_found',
+  /** This action does not apply to the request now (already decided, or not yours to take). */
+  shiftRequestInvalidTransition: 'shift_request.invalid_transition',
+  /** The shift (or the one given in return) already has a request waiting. */
+  shiftRequestAlreadyOpen: 'shift_request.already_open',
+  /** Only shifts staff were told about (in the latest publication) can be swapped or dropped. */
+  shiftRequestNotPublished: 'shift_request.not_published',
+  /** The shift has started: it is too late to swap or drop it. */
+  shiftRequestExpired: 'shift_request.expired',
+  /** Approving would break a rule nobody can overrule (location, job role, overlap). */
+  shiftRequestNotEligible: 'shift_request.not_eligible',
+  /** Approving would break a rule a manager may overrule: say so with acknowledgeWarnings. */
+  shiftRequestNeedsAcknowledgement: 'shift_request.needs_acknowledgement',
+  /** The caller has no staff profile in this organisation, so has no shifts to request about. */
+  staffProfileRequired: 'employee.profile_required',
   /** A provider webhook whose signature does not match the shared secret. */
   webhookBadSignature: 'webhook.bad_signature',
   /** The provider's webhook is not configured here (no secret), so nothing is accepted. */

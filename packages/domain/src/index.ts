@@ -6,6 +6,7 @@ export * from './notifications/routing.js';
 export * from './notifications/delivery.js';
 export * from './notifications/alerts.js';
 export * from './notifications/provider-status.js';
+export * from './notifications/requests.js';
 
 export { matchShift, workedMinutes } from './attendance/match.js';
 export type { Coordinates, GeofenceFlag, GeofenceResult } from './attendance/geofence.js';

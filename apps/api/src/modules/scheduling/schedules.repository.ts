@@ -58,6 +58,24 @@ export class SchedulesRepository {
   }
 
   /**
+   * A change staff were told about on its own (an approved swap or drop): bump the version, and
+   * if the week had no other unpublished edits, move `published_version` with it so the board
+   * does not show "unpublished changes" for something everyone already knows.
+   */
+  async recordToldChange(id: string): Promise<ScheduleRecord> {
+    const [row] = await this.context.tx
+      .update(schedules)
+      .set({
+        version: sql`${schedules.version} + 1`,
+        publishedVersion: sql`case when ${schedules.publishedVersion} = ${schedules.version}
+          then ${schedules.version} + 1 else ${schedules.publishedVersion} end`,
+      })
+      .where(and(eq(schedules.orgId, this.context.orgId), eq(schedules.id, id)))
+      .returning();
+    return row!;
+  }
+
+  /**
    * Publishes: status, the moment, who did it, and both versions moving to the same number
    * (nothing outstanding). All SET expressions read the old row, so `version + 1` twice is
    * one increment, read as "the version this publication sent".
