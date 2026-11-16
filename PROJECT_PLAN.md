@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-16 (Week 4 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-16 (Week 5, Day 1 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,12 +89,13 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W5 D1 | `shift_requests` (`0018`, RLS, one open request per shift on either side, swap ⇔ colleague, open ⇔ undecided) and the swap/drop/pickup state machine as pure functions; `assessAssignment` (blocking vs advisory) shared by approvals and open shifts | ✅ Done | see `git log` |
 | W4 D6 | End to end: one `startPipeline` wiring for production and tests; an outbox → relay → fan-out → provider → report → fallback test on real Postgres + Redis with failure injection; a Playwright test that publishes in the browser and finds the email in Mailpit and the WhatsApp "Read"; the owner's Recent messages list (`GET /messages/recent`); a report that beats the send is retried, not lost | ✅ Done | see `git log` |
 | W4 D5 | Signed WhatsApp delivery-report webhook (`X-Hub-Signature-256`) → `delivery.reported` → delivered/read/late-failure fallback; shift reminders (2 h before) and missed clock-ins (after the grace; employee + managers) from one BullMQ job scheduler, exactly once per shift (`shift_alerts`, `0017`); rate limits in Redis shared by every API instance | ✅ Done | see `git log` |
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 18 migrations, 629 automated tests (307 unit, 322 integration against real
+Numbers today: 19 migrations, 658 automated tests (328 unit, 330 integration against real
 Postgres and Redis) plus 6 Playwright end-to-end tests, 78 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
@@ -387,6 +388,8 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | **WhatsApp/SMS: a fake provider first, Meta next** (owner's choice). The whole delivery pipeline (quota, retries, dead letters, fallback, replay) is built and tested against `FakeMessageSender`, which can fail permanently, transiently or with a 429 on demand; the Meta Cloud API adapter replaces it behind `MessageSender`. Provider errors are classified by the adapter (`SendError.kind`): permanent → fall back now, transient → retry with jittered exponential backoff (5 s → 30 min cap), 429 → pause the queue without spending an attempt. After the last attempt the delivery is **dead-lettered in the database** (`dead_lettered_at`) and falls back to the next free rung; paid channels are never a fallback. The quota (1,000 WhatsApp + 200 SMS per active location per Indian calendar month, until billing) is reserved with one conditional upsert before sending and released if the provider refuses. The dead-letter page and Replay are owner-only; Replay goes through the outbox like every other side effect | 2026-11-16 |
+| — | **A manager always approves a swap** (owner's decision): the colleague accepting moves it to `pending_manager`, never to `approved`. A drop goes straight to a manager; a pickup (open shift) is decided by the race-safe claim (D4), so it is recorded already approved. Any open request can be withdrawn by its requester, rejected by a manager or expire when the shift starts | 2026-11-16 |
+| — | **Eligibility has two tiers** (`assessAssignment`): archived, not at the location, missing the job role or overlapping are **blocking**; time off, availability, weekly hours and rest are **advisories** a manager may overrule when approving (with an explicit acknowledgement). Open shifts are offered only to people with nothing but availability advisories | 2026-11-16 |
 | — | **The worker's wiring is one function** (`startPipeline`): production and the end-to-end test start the same relay, consumers and scheduler, so a test of the pipeline is a test of what runs. A delivery report for a message id not stored yet fails its job and is retried (BullMQ backoff), because a fast provider can beat our own write | 2026-11-16 |
 | — | **Delivery reports are verified in the API, applied in the worker** (ADR 019): the webhook checks Meta's HMAC over the raw bytes, keeps no phone number, writes one platform `delivery.reported` event and answers 200; the worker finds the delivery by provider message id (`app.provider_report`, `SELECT` on `deliveries`, one query) and applies a monotonic, idempotent rule. A failure reported after acceptance is a permanent failure: quota released (not billed), fallback down the ladder | 2026-11-16 |
 | — | **Reminders and missed clock-ins are raised by a scan, sent by the normal pipeline**: a BullMQ job scheduler runs `scanShiftAlerts` every minute; `shift_alerts` (one row per shift and kind) makes each alert exactly once; only shifts in the latest publication *with the same person* count (staff are never reminded of a draft). Assumptions, owner may revise: reminder 2 h before; missed = after the org's grace, within 4 h of the start, no punch from 2 h before the start; employee via their ladder + owners and the location's managers by email | 2026-11-16 |
@@ -716,7 +719,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0017)
+### 10.1 Implemented (migrations 0000–0018)
 
 | Migration | Contents |
 |---|---|
@@ -736,6 +739,7 @@ Fastify
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
+| `0018_shift_requests` | `shift_requests` (type swap\|drop\|pickup, status, shift, requester, colleague, optional shift in return, note, responded/decided times, decider, decision note; partial unique indexes: one open request per shift and per shift-in-return; CHECKs: swap ⇔ colleague, not self, open ⇔ undecided; same-org FKs; RLS) |
 | `0017_delivery_reports_and_shift_alerts` | `deliveries.provider_message_id` (unique per channel), `delivered_at`, `read_at`; `shift_alerts` (org, shift, `reminder`\|`missed_clock_in`; same-org FK, cascade; RLS); `SELECT` switches `app.alert_scan` on `organizations` and `app.provider_report` on `deliveries` (ADR 019) |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
@@ -806,7 +810,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 | W2 | ~~`shift_templates`, `schedules`~~ (0005), ~~`shifts`~~ (0006), ~~`outbox`, `schedule_publications`~~ (0007) |
 | W3 | ~~`time_entries`~~ (0008) |
 | W4 | ~~`notifications`, `deliveries`~~ (0012, 0013), ~~`message_usage`~~ (0016), ~~`shift_alerts`~~ (0017) |
-| W5 | `shift_requests` (swap/drop/pickup), `idempotency_keys` |
+| W5 | ~~`shift_requests`~~ (0018), `idempotency_keys` |
 | W6 | `pay_rules` (versioned JSON), `pay_periods`, `timesheet_lines` |
 | W7 | `coverage_requirements`; `audit_events` partitioned by month |
 | W8 | `subscriptions`, `billing_profiles`, `invoices`, `invoice_lines`, `invoice_counters`, `coupons`, `coupon_redemptions`, `platform_admins` |
@@ -1019,8 +1023,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ⏭ | `shift_requests` and its state machine (swap/drop/pickup) as a pure function | State machine unit tests |
-| D2 | ☐ | Swap/drop APIs; colleague accepts; manager approves; re-validate on approval; lock both shifts in a stable order | Approve re-checks overlap/hours |
+| D1 | ✅ | `shift_requests` and its state machine (swap/drop/pickup) as a pure function. **Done 2026-11-16:** `packages/domain/requests/shift-request.ts` (`transition`, `availableActions`, `initialStatus`), `scheduling/eligibility.ts` (`assessAssignment`, `canTakeOpenShift`, `needsAcknowledgement`), migration `0018` | 21 unit tests (an exhaustive state × action × actor sweep: approval only from `pending_manager` by a manager; decided requests refuse everything) + 8 database tests |
+| D2 | ⏭ | Swap/drop APIs; colleague accepts; manager approves; re-validate on approval; lock both shifts in a stable order | Approve re-checks overlap/hours |
 | D3 | ☐ | Open shifts: post, eligibility query (job role, location, hours, rest), notify eligible staff | Only eligible staff are notified |
 | D4 | ☐ | Race-safe claim (conditional UPDATE + version) + `idempotency_keys` | N parallel claims → exactly one winner; retried request returns the same answer |
 | D5 | ☐ | Employee UI for requests and open shifts; manager inbox | Full swap in the browser |

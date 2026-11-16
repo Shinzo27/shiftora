@@ -130,6 +130,7 @@ describe('every tenant table is protected', () => {
       'schedule_publications',
       'schedules',
       'shift_alerts',
+      'shift_requests',
       'shift_templates',
       'shifts',
       'time_entries',

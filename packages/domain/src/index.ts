@@ -67,3 +67,15 @@ export {
   weekBounds,
   weekDates,
 } from './time/zoned.js';
+export * from './requests/shift-request.js';
+export type {
+  Assessment,
+  Blocker,
+  BlockingReason,
+  EligibilityInput,
+} from './scheduling/eligibility.js';
+export {
+  assessAssignment,
+  canTakeOpenShift,
+  needsAcknowledgement,
+} from './scheduling/eligibility.js';
