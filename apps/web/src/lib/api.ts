@@ -10,24 +10,27 @@ import type {
   CreateOrgRequest,
   CreateScheduleRequest,
   CreateShiftRequest,
+  DeadLetter,
   Employee,
   JobRole,
   Location,
   LoginRequest,
   Me,
+  MessageUsage,
   MyShifts,
   MyTimeEntries,
   OrgSummary,
   Page,
   PublishPreview,
   PublishResult,
+  ReplayResult,
   Schedule,
   ScheduleConflicts,
   Shift,
   ShiftWriteResult,
   SignupRequest,
-  TimeOff,
   TimeEntryWithEdits,
+  TimeOff,
   UpdateEmployeeRequest,
   UpdateLocationRequest,
   UpdateShiftRequest,
@@ -207,4 +210,12 @@ export const meApi = {
   shifts: (orgId: string, from: string, to: string) =>
     api.get<MyShifts>(`/me/shifts?from=${from}&to=${to}`, { orgId }),
   timeOff: (orgId: string) => api.get<TimeOff[]>('/me/time-off', { orgId }),
+};
+
+/** Owner-only: messages the queue gave up on, replaying them, and the paid-message quota. */
+export const messagesApi = {
+  deadLetters: (orgId: string) => api.get<DeadLetter[]>('/messages/dead-letters', { orgId }),
+  replay: (orgId: string, id: string) =>
+    api.post<ReplayResult>(`/messages/dead-letters/${id}/replay`, { orgId }),
+  usage: (orgId: string) => api.get<MessageUsage>('/messages/usage', { orgId }),
 };

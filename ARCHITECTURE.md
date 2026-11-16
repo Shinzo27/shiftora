@@ -565,9 +565,21 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
 - **Retries** are job options (`attempts: 5`, exponential backoff from 5 s), not queue logic:
   a provider having a bad minute should not lose "you are working tomorrow". Failures stay in the
   failed set — the dead-letter list until D4 gives it a reason and a replay button.
-- Retries: exponential backoff with jitter (e.g. 5 attempts over ~30 min); permanent errors
-  (invalid number, opted-out) skip retries; exhausted jobs go to a DLQ queue visible on an
-  admin page with "replay".
+- **Retries, dead letters and fallback (W4 D4, implemented).** Adapters throw `SendError` with a
+  `kind`: `permanent` (invalid number, opted out) → recorded and fallen back at once;
+  `transient` → retried on the delivery worker's own backoff (`retryDelayMs`: exponential from
+  5 s, ±50% jitter, capped at 30 min); `rate_limited` (429) → the queue pauses for the provider's
+  delay via `Worker.RateLimitError`, which does not spend an attempt. On the last attempt a
+  transient failure is **dead-lettered in the database** (`deliveries.dead_lettered_at`), not in a
+  second queue, and the message falls back to the next free rung (`createFallback` →
+  `nextFallback`; paid channels never). The owner sees dead letters on the Messages page and
+  replays one through the outbox (`delivery.replay`); the replay number is part of the job id.
+- **Quota (implemented).** Before a paid send the worker reserves one message with a conditional
+  upsert on `message_usage` (`… do update … where sent_count < limit returning`); no row back
+  means no quota, and the delivery is skipped with the reason and falls back to email/push. A
+  refused send gives the reservation back. Until billing, every active location counts as paid.
+- **Providers:** `WHATSAPP_PROVIDER`/`SMS_PROVIDER` = `none` (channel out of routing) or `fake`
+  (logs the masked number, fails on demand with `FAKE_PROVIDER_FAILURE`); Meta is next.
 - Job ids derived from `notification_id + channel` → enqueue is idempotent.
 - Fallback: if WhatsApp fails permanently, fall back to SMS/email per org setting.
 - WhatsApp specifics (Meta Cloud API): business-initiated messages use pre-approved

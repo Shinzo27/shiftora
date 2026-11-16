@@ -36,7 +36,7 @@ export interface DeliveryJobData {
 export function deliveriesQueue(connection: ConnectionOptions): Queue<DeliveryJobData> {
   return new Queue<DeliveryJobData>(DELIVERIES_QUEUE, {
     connection,
-    defaultJobOptions: jobOptions(),
+    defaultJobOptions: deliveryJobOptions(),
   });
 }
 
@@ -57,7 +57,17 @@ export function jobOptions(): JobsOptions {
     attempts: 5,
     backoff: { type: 'exponential', delay: 5_000 },
     removeOnComplete: { age: 24 * 60 * 60, count: 5_000 },
-    // Keep failures: they are the DLQ until D4 adds a real one with a reason.
+    // Kept for inspection; the dead-letter list itself is `deliveries.dead_lettered_at`.
     removeOnFail: { age: 7 * 24 * 60 * 60 },
   };
+}
+
+/**
+ * Sends: the same five attempts, but on the delivery worker's own backoff (exponential with
+ * jitter, `retryDelayMs`), so a provider outage is not answered by every message at once.
+ * After the last attempt the delivery is dead-lettered in the database, where the owner sees it
+ * and can replay it — the job itself completes.
+ */
+export function deliveryJobOptions(): JobsOptions {
+  return { ...jobOptions(), backoff: { type: 'custom' } };
 }

@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-12 (Week 2, Day 4 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-16 (Week 4, Day 4 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,16 +89,40 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 16 migrations, 541 automated tests (272 unit, 269 integration against real
-Postgres) plus 5 Playwright end-to-end tests, 72 API endpoints, a React web app on shadcn/ui
+Numbers today: 17 migrations, 572 automated tests (285 unit, 287 integration against real
+Postgres and Redis) plus 5 Playwright end-to-end tests, 75 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-16 (first dev machine, Claude Code) — W4 D4 done with a fake provider.**
+> - **What exists:** `FakeMessageSender` (WhatsApp and SMS, `WHATSAPP_PROVIDER=fake`,
+>   `FAKE_PROVIDER_FAILURE=none|transient|permanent|rate_limited`), `SendError` kinds, the
+>   jittered backoff (`retryDelayMs`), dead letters + fallback (`createFallback`, `nextFallback`),
+>   the race-safe quota (`reserveMessage`/`releaseMessage`, `0016`), `delivery.replay` handled by
+>   the worker, and the owner's **Messages** page (usage meters, dead letters, Replay) on
+>   `GET /messages/dead-letters`, `POST /messages/dead-letters/:id/replay`, `GET /messages/usage`.
+> - **Verified live:** publishing in the demo clinic with `FAKE_PROVIDER_FAILURE=transient` →
+>   both WhatsApp messages tried 5 times, dead-lettered, and emailed instead (both in Mailpit);
+>   the Messages page listed them with masked numbers and "Email: sent"; after switching the
+>   fake to healthy, Replay sent Asha's WhatsApp (status `sent`, `replays 1`, quota 1).
+>   Lighthouse accessibility 100. Real BullMQ path covered by a Redis Testcontainer test
+>   (retry ×2 then sent; 5 attempts → dead → email → replay → sent). Mutation checks: removing the
+>   quota's limit clause and never flagging the final attempt both turn tests red.
+> - **Also fixed:** the manager shell's `SidebarInset` had no `min-w-0`, so a wide table made the
+>   whole page scroll sideways at tablet widths.
+> - **Checks:** 285 unit + 287 integration (db 53, worker 37, api 197) + 5 E2E, lint, typecheck,
+>   build, format clean.
+> - **Next — W4 D5:** delivery-status webhooks (signature-verified), repeatable jobs (shift
+>   reminders, missed clock-in), throttler storage to Redis. The Meta adapter can land with the
+>   webhook work. Local `.env` now has `WHATSAPP_PROVIDER=fake`; set `FAKE_PROVIDER_FAILURE` to
+>   watch the failure path.
 
 > Last session: 2026-11-15 (Hermes, second dev machine) — **W4 D1–D3 done; week 4 is a third
 > finished.**
@@ -306,6 +330,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Prices exclusive of GST; Free plan = 1 location | 2026-11-03 |
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
+| — | **WhatsApp/SMS: a fake provider first, Meta next** (owner's choice). The whole delivery pipeline (quota, retries, dead letters, fallback, replay) is built and tested against `FakeMessageSender`, which can fail permanently, transiently or with a 429 on demand; the Meta Cloud API adapter replaces it behind `MessageSender`. Provider errors are classified by the adapter (`SendError.kind`): permanent → fall back now, transient → retry with jittered exponential backoff (5 s → 30 min cap), 429 → pause the queue without spending an attempt. After the last attempt the delivery is **dead-lettered in the database** (`dead_lettered_at`) and falls back to the next free rung; paid channels are never a fallback. The quota (1,000 WhatsApp + 200 SMS per active location per Indian calendar month, until billing) is reserved with one conditional upsert before sending and released if the provider refuses. The dead-letter page and Replay are owner-only; Replay goes through the outbox like every other side effect | 2026-11-16 |
 | — | **`/auth/refresh` is rate-limited per login, not per IP** (`RefreshThrottlerGuard`: tracker = the refresh token's session family; a missing or unknown cookie falls back to the IP). The web app refreshes on every page load, so a per-IP limit logged out staff sharing one office connection; per login, each person has their own 10/min and one login (even a stolen token used from many IPs) is still capped. Costs one indexed lookup per refresh | 2026-11-16 |
 | — | UUIDv7 primary keys generated in the app (Postgres 16 has no `uuidv7()`) | 2026-11-05 |
 | — | Invites moved from Day 3 to Day 4 (they need orgs) | 2026-11-05 |
@@ -626,7 +651,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0015)
+### 10.1 Implemented (migrations 0000–0016)
 
 | Migration | Contents |
 |---|---|
@@ -645,6 +670,7 @@ Fastify
 | `0013_invite_email` | `notifications.employee_id` nullable + `recipient_email` + CHECK one is set + unique `(outbox_id, recipient_email)` (plain index: `ON CONFLICT` cannot infer a partial one) |
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
+| `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
 
 ```
@@ -779,6 +805,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /me` | token + org | any member; own staff profile + roles + locations, `profile: null` when not linked |
 | `GET /me/shifts?from=&to=` | token + org | any member; own shifts in a local-date range, with location and role names |
 | `GET /me/time-off` | token + org | any member; own time off, empty when not linked |
+| `GET /messages/dead-letters` | token + org | owner; deliveries that failed every retry, masked address, where the message went instead |
+| `POST /messages/dead-letters/:id/replay` | token + org | owner; resets the row and writes `delivery.replay` to the outbox (409 unless dead-lettered) |
+| `GET /messages/usage` | token + org | owner; this month's WhatsApp/SMS against the quota |
 | `GET /push/public-key` | public | the VAPID public key, `null` when Web Push is not configured |
 | `POST /me/push-subscriptions` | token + org | any member with a staff profile; upsert by endpoint → 201 `{ subscribed: true }` |
 | `DELETE /me/push-subscriptions` | token + org | any member; 204, removes only the caller's own row |
@@ -794,7 +823,8 @@ Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_
 `invite.already_member`, `conflict.name_taken`, `location.not_found`, `location.read_only`,
 `location.owner_unrestricted`, `department.not_found`, `job_role.not_found`, `conflict.duplicate`,
 `employee.not_found`, `employee.archived`, `time_off.not_found`, `shift_template.not_found`,
-`schedule.not_found`, `shift.not_found`, `shift.overlap`, `shift.version_conflict`.
+`schedule.not_found`, `shift.not_found`, `shift.overlap`, `shift.version_conflict`,
+`delivery.not_found`, `delivery.not_dead_lettered`.
 
 ### 11.2 Conventions
 
@@ -911,8 +941,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D1 | ✅ | `apps/worker` (plain Node, not a second Nest app) with BullMQ; the relay claims pending outbox rows in one transaction (`set_config` flag → `FOR UPDATE SKIP LOCKED` → enqueue → mark published), job id = outbox row id; `pnpm dev` runs it beside the API and web | Outbox rows become jobs exactly once: 20 pending rows became 20 jobs with matching ids and all 20 marked published, and a worker restart queued 0 more. 7 integration tests (claim, order/batch, rollback on enqueue failure, same job id after a rollback, three relays racing, tenant isolation) |
 | D2 | ✅ | `notifications` + `deliveries` (migration `0012`, RLS, one row per person per notification per channel), the `schedule.published` fan-out in the worker (one personalised message per affected employee, not the whole rota), templates in `packages/domain/notifications` (plain text, WhatsApp- and SMS-safe), and channel routing: their preference, else email, with email/push as the safety net and never a silent WhatsApp | One notification → one delivery per channel: verified live (2 messages → 2 WhatsApp deliveries queued, addresses and statuses correct); 4 integration + 17 domain unit tests |
 | D3 | ✅ | **Email:** SMTP adapter (nodemailer → Mailpit :1025), a `deliveries` queue, `dispatchDelivery` (attempts counted before the call, status + reason recorded, throws to trigger backoff, never sends twice), the **invite email** (`invite.created` written in the same transaction as the invite). **Account mail:** `one_time_tokens` (`0014`, hash + expiry + `used_at`, platform table with no RLS), `POST /auth/verify-email`, `POST /auth/password/forgot` (always 202 — never reveals who exists), `POST /auth/password/reset` (new password, every live session revoked, link burned), signup mints a verification link, and `renderVerifyEmail`/`renderResetPassword` in `packages/domain/notifications`; platform events ride the outbox with `org_id IS NULL` (ADR 018). **Web Push:** `push_subscriptions` (`0015`, endpoint unique, same-org FK, RLS), `GET /push/public-key`, `POST`/`DELETE /me/push-subscriptions`, a `push` branch in `dispatchDelivery` (one delivery row per channel, many devices, gone subscriptions pruned on 404/410), `web-push` with VAPID loaded only when both keys exist, `public/push-handler.js` (push + notificationclick) imported into the generated service worker, and a per-device toggle on the staff profile | Email: invite and both account mails arrived in Mailpit with working links; verification 204 then 400 on replay; reset changed the password (old 401, new 200) and refused the used link. Push: a real Chrome subscription stored, FCM accepted the VAPID push (`201`, message id returned), the toggle flipped to "on". Tests: 6 account + 6 push (API), 7 push (worker), 5 templates (domain) — commit `5c5a244` |
-| D4 | ⏳ ⏭ | **Landed early as a hotfix (2026-11-15):** the routing ladder — `sendableChannels` gates the policy given to `routeChannels`, a channel with no sender is `skipped` instead of retried, push reads real device counts, and a `MessageSender` contract (same shape as `Mailer`) exists for the providers. **Still to do:** WhatsApp (Meta Cloud API, approved utility templates) + SMS senders behind that contract; per-provider rate limits; retries with backoff + jitter; DLQ; `message_usage` quota with fallback to push/email | Failure injection → retry → DLQ, test green |
-| D5 | ☐ | Delivery-status webhooks (signature-verified); repeatable jobs: shift reminders, missed clock-in detection; move throttler storage to Redis | Reminder sent 2 h before a shift |
+| D4 | ✅ | **Done 2026-11-16 with a fake provider** (`WHATSAPP_PROVIDER`/`SMS_PROVIDER=fake`, `FAKE_PROVIDER_FAILURE` to inject outages): permanent/transient/429 errors, jittered backoff, dead letters with fallback, the `message_usage` quota and the owner's Messages page with Replay. The Meta adapter plugs into the same `MessageSender` later. **Landed early as a hotfix (2026-11-15):** the routing ladder — `sendableChannels` gates the policy given to `routeChannels`, a channel with no sender is `skipped` instead of retried, push reads real device counts, and a `MessageSender` contract (same shape as `Mailer`) exists for the providers. **Still to do:** WhatsApp (Meta Cloud API, approved utility templates) + SMS senders behind that contract; per-provider rate limits; retries with backoff + jitter; DLQ; `message_usage` quota with fallback to push/email | Failure injection → retry → DLQ, test green |
+| D5 | ⏭ | Delivery-status webhooks (signature-verified); repeatable jobs: shift reminders, missed clock-in detection; move throttler storage to Redis | Reminder sent 2 h before a shift |
 | D6 | ☐ | End-to-end: publish → employees get WhatsApp/email; failure-injection tests | Publish in UI → message in Mailpit/WhatsApp sandbox |
 
 ### Week 5: Shift swaps and open-shift marketplace (concurrency)
@@ -1032,6 +1062,10 @@ invoice format sign-off with a CA (values are config, not code).
 | ~~Browser E2E tests (Playwright)~~ Done: `pnpm test:e2e` builds a clinic through the API, then drives login → board → add shift → publish; extend to clock-in in W3 | ✅ W2 D6 |
 | Domain time helpers use `Temporal`; check browser support (Safari) before the web calls them, else add `temporal-polyfill` (ask first) | W2 D3 |
 | ~~Shift warnings are computed on write only~~ Done: `GET /schedules/:id/conflicts` feeds the board's badges | ✅ W2 D4 |
+| Meta WhatsApp Cloud API adapter behind `MessageSender` (approved utility templates, `X-Hub-Signature-256` webhook in D5); pick and add the real SMS provider | W4 D5–D6 / before pilots |
+| Messages page: the usage meter refetches right after Replay, before the worker has sent, so it lags one refresh; poll briefly or update from the realtime channel | Any time |
+| Replaying a dead letter whose fallback email was already sent sends the message twice (by design: the owner asked); say so in the confirm, or offer "replay" only when there was no fallback | W8 polish |
+| Plan entitlements: today every active location counts as paid and Free orgs can use WhatsApp; `EntitlementService` decides from the subscription | W8 D2 |
 | ~~Auth throttle on `/auth/refresh` was per IP, so staff behind one office connection logged each other out~~ Done: refresh is limited per login (session family); no/unknown cookie still per IP | ✅ 2026-11-16 |
 | Week board header is sticky only within its own (horizontal) scroll box; make it stick while the page scrolls (vertical scroll container with a max height) | W5+ |
 

@@ -3,6 +3,7 @@ export * from './notifications/templates.js';
 export * from './notifications/invite.js';
 export * from './notifications/account.js';
 export * from './notifications/routing.js';
+export * from './notifications/delivery.js';
 
 export { matchShift, workedMinutes } from './attendance/match.js';
 export type { Coordinates, GeofenceFlag, GeofenceResult } from './attendance/geofence.js';

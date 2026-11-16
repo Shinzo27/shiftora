@@ -6,6 +6,7 @@ export * from './job-roles.js';
 export * from './locations.js';
 export * from './membership-locations.js';
 export * from './memberships.js';
+export * from './message-usage.js';
 export * from './notifications.js';
 export * from './one-time-tokens.js';
 export * from './organizations.js';

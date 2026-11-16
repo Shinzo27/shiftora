@@ -90,6 +90,13 @@ export const deliveries = pgTable(
     /** Why it is where it is — a provider error, or the reason a channel was skipped. */
     lastError: text(),
     sentAt: timestamptz(),
+    /**
+     * Set when the queue gave up (every retry failed): the dead-letter list is
+     * `dead_lettered_at IS NOT NULL`, and a replay clears it.
+     */
+    deadLetteredAt: timestamptz(),
+    /** How many times an owner replayed it; part of the replay's job id, so each is a new job. */
+    replays: integer().notNull().default(0),
     createdAt: timestamptz().notNull().defaultNow(),
   },
   (t) => [
@@ -102,6 +109,10 @@ export const deliveries = pgTable(
     // One row per person per channel per notification: the fan-out cannot duplicate itself.
     uniqueIndex('deliveries_notification_channel_unique').on(t.notificationId, t.channel),
     index('deliveries_status_idx').on(t.orgId, t.status),
+    // The dead-letter page reads only these rows; the index stays as small as the problem.
+    index('deliveries_dead_letter_idx')
+      .on(t.orgId, t.deadLetteredAt)
+      .where(sql`dead_lettered_at is not null`),
   ],
 );
 

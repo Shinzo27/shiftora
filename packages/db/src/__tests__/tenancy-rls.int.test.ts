@@ -122,6 +122,7 @@ describe('every tenant table is protected', () => {
       'locations',
       'membership_locations',
       'memberships',
+      'message_usage',
       'notifications',
       'organizations',
       'outbox',

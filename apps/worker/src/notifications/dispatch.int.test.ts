@@ -236,9 +236,16 @@ describe('dispatchDelivery', () => {
 
     // A missing provider is permanent: retrying cannot conjure one. Five failed attempts would
     // also hide "nobody was told about this week" behind a queue that looks like it is trying.
-    expect(outcome).toEqual({ status: 'skipped', reason: 'No whatsapp sender is configured' });
+    expect(outcome).toMatchObject({
+      status: 'skipped',
+      reason: 'No whatsapp sender is configured',
+    });
     expect(await statusOf(deliveryId)).toBe('skipped');
     expect(await reasonOf(deliveryId)).toBe('No whatsapp sender is configured');
+    // …and the person still hears about their week: the next rung (email) is queued (W4 D4).
+    const fallbackId = (outcome as { fallbackDeliveryId: string | null }).fallbackDeliveryId;
+    expect(fallbackId).toBeTruthy();
+    expect(await statusOf(fallbackId!)).toBe('queued');
   });
 
   it('sends through the WhatsApp sender once one is configured', async () => {

@@ -28,6 +28,15 @@ const envSchema = z.object({
   VAPID_PUBLIC_KEY: z.string().optional(),
   VAPID_PRIVATE_KEY: z.string().optional(),
   VAPID_SUBJECT: z.string().default('mailto:admin@shiftora.local'),
+  /**
+   * WhatsApp and SMS providers. `fake` logs instead of sending, so the whole pipeline (quota,
+   * retries, dead letters, fallback) runs locally; `none` takes the channel out of routing.
+   * Meta's adapter becomes a third value.
+   */
+  WHATSAPP_PROVIDER: z.enum(['none', 'fake']).default('none'),
+  SMS_PROVIDER: z.enum(['none', 'fake']).default('none'),
+  /** Failure injection for the fake providers: every send fails this way. */
+  FAKE_PROVIDER_FAILURE: z.enum(['none', 'transient', 'permanent', 'rate_limited']).default('none'),
   /** What staff see in the From line. */
   MAIL_FROM: z.string().min(3).default('Shiftora <no-reply@shiftora.local>'),
 });

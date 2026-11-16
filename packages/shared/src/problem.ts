@@ -47,6 +47,8 @@ export const errorCodes = {
   attendanceNotLinked: 'attendance.not_linked',
   /** A punch that does not exist (or is not in the caller's scope). */
   timeEntryNotFound: 'time_entry.not_found',
+  deliveryNotFound: 'delivery.not_found',
+  deliveryNotDeadLettered: 'delivery.not_dead_lettered',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

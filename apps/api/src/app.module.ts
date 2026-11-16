@@ -9,6 +9,7 @@ import { EmployeesModule } from './modules/employees/employees.module.js';
 import { InvitesModule } from './modules/invites/invites.module.js';
 import { JobRolesModule } from './modules/job-roles/job-roles.module.js';
 import { LocationsModule } from './modules/locations/locations.module.js';
+import { MessagesModule } from './modules/messages/messages.module.js';
 import { OrgsModule } from './modules/orgs/orgs.module.js';
 import { PushModule } from './modules/push/push.module.js';
 import { RealtimeModule } from './modules/realtime/realtime.module.js';
@@ -28,6 +29,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     JobRolesModule,
     EmployeesModule,
     SchedulingModule,
+    MessagesModule,
     AttendanceModule, // clock-in/out: geofenced, idempotent
     RealtimeModule, // sockets: a change on one screen reaches the others
     HealthModule,

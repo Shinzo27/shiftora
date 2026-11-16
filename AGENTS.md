@@ -267,6 +267,16 @@ Do this before writing any code, whatever tool or model you are:
   in CI. The specs seed their own clinic through the API (the API must be on :4000, Postgres on
   5433); `@types/node` is a dev dependency of `apps/web` **only** so the specs and
   `playwright.config.ts` typecheck.
+- **Never stop dev servers with `pkill -f` or `pgrep -f` on a pattern that appears in your own
+  command line**: the shell running the command matches too and kills itself (exit 144). Find
+  PIDs by port (`ss -ltnp | grep :4000`) or with a bracketed pattern (`ps -eo pid,args | grep
+  '[w]orker/dist/main.js'`), then `kill` those.
+- **WhatsApp/SMS run on a fake provider locally** (`WHATSAPP_PROVIDER=fake`,
+  `FAKE_PROVIDER_FAILURE=transient|permanent|rate_limited` to inject failures). The worker reads
+  env at start, so restart `pnpm dev` after changing it. A real retry cycle takes about
+  1–2 minutes (5 s, 10 s, 20 s, 40 s ±50%); the Redis integration test uses a 10 ms backoff.
+- **A dispatch result can carry `fallbackDeliveryId`**; the delivery worker queues it. Tests that
+  assert a skip or failure exactly should use `toMatchObject`, since a fallback id is now added.
 - `pnpm-workspace.yaml` blocks package versions younger than 7 days; if an install fails on
   that, use the previous version or wait, don't remove the setting.
 

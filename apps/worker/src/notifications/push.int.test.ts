@@ -242,7 +242,8 @@ describe('sending a push', () => {
     // No VAPID keys is permanent: a retry cannot add them, so the job completes and the row says
     // why. (The fan-out no longer offers push in this state either — this covers rows queued
     // while push was configured and the keys were removed afterwards.)
-    expect(outcome).toEqual({ status: 'skipped', reason: 'Web Push is not configured' });
+    // Since W4 D4 a skip like this also moves down the ladder (`fallbackDeliveryId`).
+    expect(outcome).toMatchObject({ status: 'skipped', reason: 'Web Push is not configured' });
     const [row] = await asOrg((tx) =>
       tx
         .select()

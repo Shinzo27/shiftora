@@ -5,6 +5,7 @@ import {
   Clock,
   IndianRupee,
   MapPin,
+  MessagesSquare,
   Plus,
   Users,
   type LucideIcon,
@@ -107,7 +108,9 @@ function OrgShell({ orgId }: { orgId: string }) {
     >
       <SidebarProvider>
         <AppSidebar />
-        <SidebarInset>
+        {/* min-w-0: as a flex item it would otherwise grow to its widest child (a table), and
+            the whole page would scroll sideways instead of the table scrolling in its box. */}
+        <SidebarInset className="min-w-0">
           <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <SidebarTrigger className="-ml-1" />
             <Separator
@@ -136,6 +139,7 @@ interface NavItem {
   /** Shown but disabled until the feature ships. */
   soon?: boolean;
   managersOnly?: boolean;
+  ownerOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -143,6 +147,7 @@ const navItems: NavItem[] = [
   { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
   { label: 'Locations', to: 'locations', icon: MapPin },
   { label: 'Timesheets', to: 'timesheets', icon: Clock, managersOnly: true },
+  { label: 'Messages', to: 'messages', icon: MessagesSquare, ownerOnly: true },
   { label: 'Payroll', to: 'payroll', icon: IndianRupee, soon: true },
 ];
 
@@ -163,6 +168,7 @@ function AppSidebar() {
           <SidebarMenu>
             {navItems
               .filter((item) => canManage || !item.managersOnly)
+              .filter((item) => role === 'owner' || !item.ownerOnly)
               .map((item) => (
                 <SidebarMenuItem key={item.to}>
                   {item.soon ? (

@@ -113,6 +113,13 @@
       "when": 1794507783278,
       "tag": "0015_push_subscriptions",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1794812505437,
+      "tag": "0016_message_quota_and_dead_letters",
+      "breakpoints": true
     }
   ]
 }

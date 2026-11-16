@@ -3,6 +3,7 @@ export * from './auth.js';
 export * from './employees.js';
 export * from './locations.js';
 export * from './me.js';
+export * from './messages.js';
 export * from './orgs.js';
 export * from './problem.js';
 export * from './push.js';

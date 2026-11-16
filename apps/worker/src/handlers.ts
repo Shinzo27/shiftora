@@ -97,6 +97,20 @@ export async function handleNotificationJob(
         deliveryIds: [],
       };
     }
+    // An owner replayed a dead letter (POST /deliveries/:id/replay). The API reset the row and
+    // wrote this event in the same transaction; queueing is the worker's job. The replay number
+    // is part of the job id, so each replay is a new job and a re-relayed event is not.
+    case 'delivery.replay': {
+      const payload = (job.payload ?? {}) as { deliveryId?: string; replays?: number };
+      if (!payload.deliveryId) return { notifications: 0, deliveries: 0, deliveryIds: [] };
+      await deps.deliveries.add(
+        'delivery',
+        { deliveryId: payload.deliveryId, orgId: job.orgId },
+        { jobId: `${payload.deliveryId}-replay-${payload.replays ?? 0}` },
+      );
+      console.info(`notifications: replaying delivery ${payload.deliveryId}`);
+      return { notifications: 0, deliveries: 1, deliveryIds: [] };
+    }
     default:
       console.warn(`notifications: no handler for topic '${job.topic}' (job ${job.outboxId})`);
       return { notifications: 0, deliveries: 0, deliveryIds: [] };

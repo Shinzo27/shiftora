@@ -4,13 +4,14 @@ import { Worker, type Queue } from 'bullmq';
 import { parseWorkerEnv } from './env.js';
 import { handleNotificationJob } from './handlers.js';
 import { createMailer } from './mailer.js';
-import { dispatchDelivery, sendableChannels, type Adapters } from './notifications/dispatch.js';
+import { createDeliveryWorker } from './delivery-worker.js';
+import { sendableChannels, type Adapters, type MessageSender } from './notifications/dispatch.js';
+import { FakeMessageSender } from './notifications/fake-sender.js';
 import { createWebPushSender } from './notifications/push.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
 import {
   connectionOptions,
   createRedis,
-  DELIVERIES_QUEUE,
   deliveriesQueue,
   NOTIFICATIONS_QUEUE,
   notificationsQueue,
@@ -50,11 +51,18 @@ async function main(): Promise<void> {
       : null;
   if (!push) console.warn('worker: Web Push is not configured (no VAPID keys) — push is skipped');
 
-  // A sender is what makes a channel real. WhatsApp and SMS have none until their providers land
-  // (W4 D4), so `sendableChannels` reports them as unusable and routing quietly moves a person who
-  // chose WhatsApp down the ladder to email. Queueing a message nobody can send is not honesty,
-  // it is silence with extra steps.
-  const adapters: Adapters = { mailer, push, whatsapp: null, sms: null };
+  // A sender is what makes a channel real. With `none`, `sendableChannels` reports the channel as
+  // unusable and routing quietly moves a person who chose WhatsApp down the ladder to email.
+  // `fake` logs instead of sending, so quota, retries and dead letters run end to end locally;
+  // the Meta adapter is the next value of WHATSAPP_PROVIDER.
+  const fake = (channel: 'whatsapp' | 'sms'): MessageSender =>
+    new FakeMessageSender(channel, env.FAKE_PROVIDER_FAILURE, (line) => console.info(line));
+  const adapters: Adapters = {
+    mailer,
+    push,
+    whatsapp: env.WHATSAPP_PROVIDER === 'fake' ? fake('whatsapp') : null,
+    sms: env.SMS_PROVIDER === 'fake' ? fake('sms') : null,
+  };
   const usable = sendableChannels(adapters);
   const missing = (['whatsapp', 'sms'] as const).filter((channel) => !usable[channel]);
   if (missing.length > 0) {
@@ -88,16 +96,13 @@ async function main(): Promise<void> {
     { connection: options, concurrency: env.WORKER_CONCURRENCY },
   );
 
-  const sender = new Worker<DeliveryJobData>(
-    DELIVERIES_QUEUE,
-    async (job) => {
-      const result = await dispatchDelivery(connection.db, adapters, job.data);
-      // Throwing is the retry signal: BullMQ backs off, and the delivery row keeps the reason.
-      if (result.status === 'retry') throw new Error(result.reason);
-      return result;
-    },
-    { connection: options, concurrency: env.WORKER_CONCURRENCY },
-  );
+  const sender = createDeliveryWorker({
+    db: connection.db,
+    adapters,
+    queue: deliveryQueue,
+    connection: options,
+    concurrency: env.WORKER_CONCURRENCY,
+  });
 
   sender.on('failed', (job, error) => {
     console.error(`deliveries: job ${job?.id ?? '?'} failed`, error.message);
