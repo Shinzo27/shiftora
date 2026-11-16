@@ -1,5 +1,6 @@
 import type {
   Attendance,
+  ClaimOpenShiftResult,
   AuthResponse,
   AuthUser,
   ClockInRequest,
@@ -11,6 +12,7 @@ import type {
   CreateScheduleRequest,
   CreateShiftRequest,
   DeadLetter,
+  DecideShiftRequest,
   Employee,
   JobRole,
   Location,
@@ -19,6 +21,8 @@ import type {
   MessageUsage,
   MyShifts,
   MyTimeEntries,
+  NewShiftRequest,
+  OpenShift,
   OrgSummary,
   Page,
   PublishPreview,
@@ -28,6 +32,8 @@ import type {
   Schedule,
   ScheduleConflicts,
   Shift,
+  ShiftCandidates,
+  ShiftRequestView,
   ShiftWriteResult,
   SignupRequest,
   TimeEntryWithEdits,
@@ -211,6 +217,42 @@ export const meApi = {
   shifts: (orgId: string, from: string, to: string) =>
     api.get<MyShifts>(`/me/shifts?from=${from}&to=${to}`, { orgId }),
   timeOff: (orgId: string) => api.get<TimeOff[]>('/me/time-off', { orgId }),
+};
+
+/**
+ * Open shifts and swap/drop requests (W5). A claim carries its own `Idempotency-Key`: the phone
+ * in a corridor is where requests get retried, and the server answers a retry with the first
+ * answer instead of a second shift.
+ */
+export const openShiftsApi = {
+  mine: (orgId: string) => api.get<OpenShift[]>('/me/open-shifts', { orgId }),
+  claim: (orgId: string, id: string, idempotencyKey: string) =>
+    api.post<ClaimOpenShiftResult>(`/me/open-shifts/${id}/claim`, {
+      orgId,
+      headers: { 'idempotency-key': idempotencyKey },
+    }),
+  candidates: (orgId: string, shiftId: string) =>
+    api.get<ShiftCandidates>(`/shifts/${shiftId}/candidates`, { orgId }),
+};
+
+export const shiftRequestsApi = {
+  /** Mine, in both directions: what I asked for, and what is waiting on my answer. */
+  mine: (orgId: string) => api.get<ShiftRequestView[]>('/me/shift-requests', { orgId }),
+  create: (orgId: string, body: NewShiftRequest) =>
+    api.post<ShiftRequestView>('/me/shift-requests', { orgId, body }),
+  accept: (orgId: string, id: string) =>
+    api.post<ShiftRequestView>(`/me/shift-requests/${id}/accept`, { orgId }),
+  decline: (orgId: string, id: string, note?: string) =>
+    api.post<ShiftRequestView>(`/me/shift-requests/${id}/decline`, { orgId, body: { note } }),
+  cancel: (orgId: string, id: string) =>
+    api.post<ShiftRequestView>(`/me/shift-requests/${id}/cancel`, { orgId }),
+  /** A manager's inbox: the queue waiting on a decision. */
+  inbox: (orgId: string, scope: 'open' | 'all' = 'open') =>
+    api.get<ShiftRequestView[]>(`/shift-requests?scope=${scope}`, { orgId }),
+  approve: (orgId: string, id: string, body: DecideShiftRequest = {}) =>
+    api.post<ShiftRequestView>(`/shift-requests/${id}/approve`, { orgId, body }),
+  reject: (orgId: string, id: string, body: DecideShiftRequest = {}) =>
+    api.post<ShiftRequestView>(`/shift-requests/${id}/reject`, { orgId, body }),
 };
 
 /** Owner-only: messages the queue gave up on, replaying them, and the paid-message quota. */

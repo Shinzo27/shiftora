@@ -5,6 +5,7 @@ import {
   Clock,
   IndianRupee,
   MapPin,
+  ArrowLeftRight,
   MessagesSquare,
   Plus,
   Users,
@@ -147,6 +148,7 @@ const navItems: NavItem[] = [
   { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
   { label: 'Locations', to: 'locations', icon: MapPin },
   { label: 'Timesheets', to: 'timesheets', icon: Clock, managersOnly: true },
+  { label: 'Requests', to: 'requests', icon: ArrowLeftRight, managersOnly: true },
   { label: 'Messages', to: 'messages', icon: MessagesSquare, ownerOnly: true },
   { label: 'Payroll', to: 'payroll', icon: IndianRupee, soon: true },
 ];

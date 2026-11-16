@@ -5,6 +5,13 @@ import { CalendarDays, Clock, Info, MapPin, Moon } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { ClockCard } from '@/components/clock/clock-card';
+import {
+  AskAboutShiftDialog,
+  type RequestKind,
+} from '@/components/requests/ask-about-shift-dialog';
+import { MyRequestsSection } from '@/components/requests/my-requests-section';
+import { OpenShiftsSection } from '@/components/requests/open-shifts-section';
+import { Button } from '@/components/ui/button';
 import { DefinitionRow } from '@/components/definition-row';
 import { ErrorState } from '@/components/page';
 import {
@@ -17,7 +24,7 @@ import {
   DrawerTitle,
 } from '@/components/ui/drawer';
 import { Skeleton } from '@/components/ui/skeleton';
-import { api, meApi } from '@/lib/api';
+import { api, meApi, openShiftsApi, shiftRequestsApi } from '@/lib/api';
 import { useOrg } from '@/lib/org-context';
 import { connectRealtime } from '@/lib/realtime';
 import { cn } from '@/lib/utils';
@@ -51,16 +58,30 @@ export function MyShiftsPage() {
     enabled: linked,
   });
 
+  const openShifts = useQuery({
+    queryKey: ['me-open-shifts', orgId],
+    queryFn: () => openShiftsApi.mine(orgId),
+    enabled: linked,
+  });
+  const requests = useQuery({
+    queryKey: ['me-requests', orgId],
+    queryFn: () => shiftRequestsApi.mine(orgId),
+    enabled: linked,
+  });
+
   // Someone else's write could be one of my shifts: refetch, and let the cache decide.
   useEffect(() => {
     const token = api.token;
     if (!token) return;
     return connectRealtime(token, () => {
       void queryClient.invalidateQueries({ queryKey: ['me-shifts', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['me-open-shifts', orgId] });
+      void queryClient.invalidateQueries({ queryKey: ['me-requests', orgId] });
     });
   }, [orgId, queryClient]);
 
   const [selected, setSelected] = useState<MyShift | null>(null);
+  const [asking, setAsking] = useState<{ shift: MyShift; kind: RequestKind } | null>(null);
   const items = useMemo(() => shifts.data?.items ?? [], [shifts.data]);
 
   const groups = useMemo(() => {
@@ -120,6 +141,14 @@ export function MyShiftsPage() {
           profile={profile}
         />
       </div>
+
+      {openShifts.data && openShifts.data.length > 0 ? (
+        <OpenShiftsSection orgId={orgId} shifts={openShifts.data} />
+      ) : null}
+
+      {requests.data && requests.data.length > 0 ? (
+        <MyRequestsSection orgId={orgId} requests={requests.data} />
+      ) : null}
 
       {shifts.isPending ? (
         <div className="space-y-3" aria-busy="true">
@@ -193,7 +222,20 @@ export function MyShiftsPage() {
         </div>
       )}
 
-      <ShiftDrawer shift={selected} onClose={() => setSelected(null)} today={today} />
+      <ShiftDrawer
+        shift={selected}
+        onClose={() => setSelected(null)}
+        today={today}
+        onAsk={(kind) => {
+          if (selected) setAsking({ shift: selected, kind });
+        }}
+      />
+      <AskAboutShiftDialog
+        orgId={orgId}
+        shift={asking?.shift ?? null}
+        kind={asking?.kind ?? null}
+        onClose={() => setAsking(null)}
+      />
     </>
   );
 }
@@ -202,10 +244,12 @@ function ShiftDrawer({
   shift,
   onClose,
   today,
+  onAsk,
 }: {
   shift: MyShift | null;
   onClose: () => void;
   today: LocalDate;
+  onAsk: (kind: RequestKind) => void;
 }) {
   const overnight = shift ? shift.endTime <= shift.startTime : false;
   return (
@@ -249,9 +293,16 @@ function ShiftDrawer({
                   </div>
                 ) : null}
               </dl>
-              <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                Clocking in from here arrives with attendance — your location is checked when you
-                do.
+              <div className="mt-4 grid gap-2">
+                <Button variant="outline" onClick={() => onAsk('swap')}>
+                  Ask a colleague to take it
+                </Button>
+                <Button variant="outline" onClick={() => onAsk('drop')}>
+                  I cannot work this shift
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Nothing changes until your colleague and a manager agree.
               </p>
             </DrawerBody>
           </>
