@@ -49,6 +49,10 @@ export const errorCodes = {
   timeEntryNotFound: 'time_entry.not_found',
   deliveryNotFound: 'delivery.not_found',
   deliveryNotDeadLettered: 'delivery.not_dead_lettered',
+  /** A provider webhook whose signature does not match the shared secret. */
+  webhookBadSignature: 'webhook.bad_signature',
+  /** The provider's webhook is not configured here (no secret), so nothing is accepted. */
+  webhookNotConfigured: 'webhook.not_configured',
 } as const;
 
 export type ErrorCode = (typeof errorCodes)[keyof typeof errorCodes] | (string & {});

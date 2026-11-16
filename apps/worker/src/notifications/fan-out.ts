@@ -2,15 +2,13 @@ import { and, eq, inArray, schema, sql, type Database, type Transaction } from '
 import {
   renderSchedulePublished,
   startOfWeek,
-  routeChannels,
-  addressFor,
   toLocal,
-  type Channel,
   type ChannelPolicy,
   type ShiftLine,
 } from '@shiftora/domain';
 
 import type { OutboxEvent } from '../outbox-relay.js';
+import { notifyEmployee, pushSubscriptionCounts } from './notify.js';
 
 export interface FanOutResult {
   /** Notifications created; 0 means this event was already handled. */
@@ -143,72 +141,23 @@ export async function fanOutSchedulePublished(
         },
       });
 
-      const [notification] = await tx
-        .insert(schema.notifications)
-        .values({
-          orgId: event.orgId,
-          outboxId: event.id,
-          employeeId: person.id,
-          kind: 'schedule.published',
-          subject: message.subject,
-          body: message.body,
-          payload: { weekStart: weekStart, shifts: lines.length, version: payload.version },
-        })
-        // A replayed event: this person already has their message.
-        .onConflictDoNothing({
-          target: [schema.notifications.outboxId, schema.notifications.employeeId],
-        })
-        .returning({ id: schema.notifications.id });
-
-      if (!notification) continue;
+      const result = await notifyEmployee(tx, {
+        orgId: event.orgId,
+        outboxId: event.id,
+        employee: person,
+        pushDevices: pushDevices.get(person.id) ?? 0,
+        kind: 'schedule.published',
+        message,
+        payload: { weekStart: weekStart, shifts: lines.length, version: payload.version },
+        usable,
+      });
+      // A replayed event: this person already has their message.
+      if (!result) continue;
       notifications += 1;
-
-      const recipient = {
-        preferredChannel: person.notifyChannel,
-        email: person.email,
-        phone: person.phone,
-        pushSubscriptions: pushDevices.get(person.id) ?? 0,
-      };
-      const chain = routeChannels(recipient, usable);
-
-      if (chain.length === 0) {
-        // Nowhere to send: record the decision instead of pretending it was sent.
-        const [skipped] = await tx
-          .insert(schema.deliveries)
-          .values({
-            orgId: event.orgId,
-            notificationId: notification.id,
-            channel: 'email',
-            address: null,
-            status: 'skipped',
-            lastError: 'No email address or phone number on file',
-          })
-          .returning({ id: schema.deliveries.id });
-        if (skipped) deliveryIds.push(skipped.id);
+      if (result.deliveryId) {
+        deliveryIds.push(result.deliveryId);
         deliveries += 1;
-        continue;
       }
-
-      // The first rung is queued now. The rest of the chain is the fallback ladder for D4, which
-      // needs the next channel recorded on the row so a permanent provider failure can move down
-      // without recomputing who was reachable at publish time.
-      const channel: Channel = chain[0]!;
-      const [created] = await tx
-        .insert(schema.deliveries)
-        .values({
-          orgId: event.orgId,
-          notificationId: notification.id,
-          channel,
-          address: addressFor(recipient, channel),
-          status: 'queued',
-        })
-        .onConflictDoNothing({
-          target: [schema.deliveries.notificationId, schema.deliveries.channel],
-        })
-        .returning({ id: schema.deliveries.id });
-      if (!created) continue;
-      deliveryIds.push(created.id);
-      deliveries += 1;
     }
 
     return { notifications, deliveries, deliveryIds };
@@ -229,23 +178,4 @@ async function roleNamesById(tx: Transaction): Promise<Map<string, string>> {
     .select({ id: schema.jobRoles.id, name: schema.jobRoles.name })
     .from(schema.jobRoles);
   return new Map(rows.map((row) => [row.id, row.name]));
-}
-
-/** How many browsers each of these people has subscribed, in one query rather than one each. */
-async function pushSubscriptionCounts(
-  tx: Transaction,
-  employeeIds: string[],
-): Promise<Map<string, number>> {
-  if (employeeIds.length === 0) return new Map();
-
-  const rows = await tx
-    .select({
-      employeeId: schema.pushSubscriptions.employeeId,
-      devices: sql<number>`count(*)::int`,
-    })
-    .from(schema.pushSubscriptions)
-    .where(inArray(schema.pushSubscriptions.employeeId, employeeIds))
-    .groupBy(schema.pushSubscriptions.employeeId);
-
-  return new Map(rows.map((row) => [row.employeeId, Number(row.devices)]));
 }

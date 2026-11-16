@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule, type ThrottlerStorage } from '@nestjs/throttler';
+
+import { RATE_LIMIT_STORAGE, RateLimitModule } from '../../common/rate-limit/rate-limit.module.js';
 
 import { DatabaseModule } from '../../database/database.module.js';
 import { OutboxModule } from '../outbox/outbox.module.js';
@@ -20,8 +22,16 @@ import { UsersRepository } from './users.repository.js';
     OutboxModule,
     // 10 per minute per route. Signup/login/password routes count per IP (ThrottlerGuard);
     // refresh counts per login (RefreshThrottlerGuard), so staff sharing an office IP don't
-    // log each other out. In memory for now; moves to Redis with multiple API instances.
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 10 }]),
+    // log each other out. Counted in Redis when REDIS_URL is set, so every API instance
+    // enforces the same limit; in memory otherwise.
+    ThrottlerModule.forRootAsync({
+      imports: [RateLimitModule],
+      inject: [RATE_LIMIT_STORAGE],
+      useFactory: (storage: ThrottlerStorage) => ({
+        throttlers: [{ ttl: 60_000, limit: 10 }],
+        storage,
+      }),
+    }),
   ],
   controllers: [AuthController],
   providers: [

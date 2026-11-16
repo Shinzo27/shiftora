@@ -35,7 +35,11 @@ export type DispatchResult =
  * interchangeable. A failure should be a `SendError` saying whether a retry can help.
  */
 export interface MessageSender {
-  send(message: { to: string; subject: string; body: string }): Promise<unknown>;
+  /**
+   * Resolves when the provider has **accepted** the message. `messageId` is the provider's id for
+   * it, which its delivery reports (webhooks) use later.
+   */
+  send(message: { to: string; subject: string; body: string }): Promise<{ messageId?: string }>;
 }
 
 /** What each channel needs. Push needs no address: it goes to the person's subscribed devices. */
@@ -159,8 +163,11 @@ async function dispatchPaid(
   }
 
   try {
-    await sender.send({ to: address, subject: found.subject, body: found.body });
-    await finish(db, job, { status: 'sent' });
+    const accepted = await sender.send({ to: address, subject: found.subject, body: found.body });
+    await finish(db, job, {
+      status: 'sent',
+      ...(accepted.messageId ? { providerMessageId: accepted.messageId } : {}),
+    });
     return { status: 'sent' };
   } catch (error) {
     await releaseMessage(db, job.orgId, channel, reservation.month);
@@ -299,6 +306,7 @@ async function finish(
     status: 'sent' | 'failed' | 'skipped';
     lastError?: string;
     deadLetteredAt?: Date;
+    providerMessageId?: string;
   },
 ): Promise<void> {
   await db.transaction(async (tx) => {
@@ -306,9 +314,14 @@ async function finish(
     await tx
       .update(schema.deliveries)
       .set({
-        status: outcome.status,
+        // A fast provider's "delivered" report can land before this write: never step back.
+        status:
+          outcome.status === 'sent'
+            ? sql`case when ${schema.deliveries.status} = 'delivered' then 'delivered'::delivery_status else 'sent'::delivery_status end`
+            : outcome.status,
         lastError: outcome.lastError ?? null,
         ...(outcome.status === 'sent' ? { sentAt: new Date() } : {}),
+        ...(outcome.providerMessageId ? { providerMessageId: outcome.providerMessageId } : {}),
         ...(outcome.deadLetteredAt ? { deadLetteredAt: outcome.deadLetteredAt } : {}),
       })
       .where(eq(schema.deliveries.id, job.deliveryId));

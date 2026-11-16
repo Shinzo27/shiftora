@@ -4,6 +4,9 @@ import { Redis } from 'ioredis';
 /** The queue the relay fills and the notification worker drains. */
 export const NOTIFICATIONS_QUEUE = 'notifications';
 export const DELIVERIES_QUEUE = 'deliveries';
+/** One repeatable job: the shift-reminder / missed clock-in scan. */
+export const ALERTS_QUEUE = 'alerts';
+export const ALERT_SCAN_SCHEDULER = 'shift-alerts';
 
 export interface NotificationJob {
   /** The outbox row this job came from — also the job id, which is what makes it idempotent. */
@@ -37,6 +40,22 @@ export function deliveriesQueue(connection: ConnectionOptions): Queue<DeliveryJo
   return new Queue<DeliveryJobData>(DELIVERIES_QUEUE, {
     connection,
     defaultJobOptions: deliveryJobOptions(),
+  });
+}
+
+/**
+ * The alert scan's queue. A BullMQ job scheduler adds one `scan` job per interval, and only one,
+ * however many worker processes are running: the schedule lives in Redis, not in a timer.
+ */
+export function alertsQueue(connection: ConnectionOptions): Queue {
+  return new Queue(ALERTS_QUEUE, {
+    connection,
+    defaultJobOptions: {
+      // A failed scan is not retried: the next one a minute later covers the same window.
+      attempts: 1,
+      removeOnComplete: { count: 100 },
+      removeOnFail: { age: 24 * 60 * 60 },
+    },
   });
 }
 

@@ -1,15 +1,20 @@
 import { createDatabaseConnection } from '@shiftora/db';
 import { Worker, type Queue } from 'bullmq';
 
+import { scanShiftAlerts } from './alerts/scan.js';
 import { parseWorkerEnv } from './env.js';
 import { handleNotificationJob } from './handlers.js';
 import { createMailer } from './mailer.js';
 import { createDeliveryWorker } from './delivery-worker.js';
 import { sendableChannels, type Adapters, type MessageSender } from './notifications/dispatch.js';
 import { FakeMessageSender } from './notifications/fake-sender.js';
+import { createFakeWebhookReporter } from './notifications/fake-webhook.js';
 import { createWebPushSender } from './notifications/push.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
 import {
+  ALERT_SCAN_SCHEDULER,
+  ALERTS_QUEUE,
+  alertsQueue,
   connectionOptions,
   createRedis,
   deliveriesQueue,
@@ -55,8 +60,24 @@ async function main(): Promise<void> {
   // unusable and routing quietly moves a person who chose WhatsApp down the ladder to email.
   // `fake` logs instead of sending, so quota, retries and dead letters run end to end locally;
   // the Meta adapter is the next value of WHATSAPP_PROVIDER.
+  // With a report URL and the app secret, the fake WhatsApp provider also posts signed delivery
+  // reports to the API's webhook, as Meta does, so "delivered", "read" and a late failure all
+  // run end to end. SMS reports come with a real SMS provider.
+  const reporter =
+    env.FAKE_PROVIDER_REPORT_URL && env.WHATSAPP_APP_SECRET
+      ? createFakeWebhookReporter({
+          url: env.FAKE_PROVIDER_REPORT_URL,
+          secret: env.WHATSAPP_APP_SECRET,
+          log: (line) => console.warn(line),
+        })
+      : null;
   const fake = (channel: 'whatsapp' | 'sms'): MessageSender =>
-    new FakeMessageSender(channel, env.FAKE_PROVIDER_FAILURE, (line) => console.info(line));
+    new FakeMessageSender(
+      channel,
+      env.FAKE_PROVIDER_FAILURE,
+      (line) => console.info(line),
+      channel === 'whatsapp' ? reporter : null,
+    );
   const adapters: Adapters = {
     mailer,
     push,
@@ -104,6 +125,32 @@ async function main(): Promise<void> {
     concurrency: env.WORKER_CONCURRENCY,
   });
 
+  // Shift reminders and missed clock-ins: one repeatable scan job, scheduled in Redis so that
+  // several worker processes still run it once per interval. Upserting on every boot keeps the
+  // interval in step with ALERT_SCAN_INTERVAL_MS.
+  const alerts = alertsQueue(options);
+  await alerts.upsertJobScheduler(
+    ALERT_SCAN_SCHEDULER,
+    { every: env.ALERT_SCAN_INTERVAL_MS },
+    { name: 'scan' },
+  );
+  const scanner = new Worker(
+    ALERTS_QUEUE,
+    async () => {
+      const result = await scanShiftAlerts(connection.db);
+      if (result.reminders + result.missed > 0) {
+        console.info(
+          `alerts: ${result.reminders} reminder(s), ${result.missed} missed clock-in(s) raised`,
+        );
+      }
+      return result;
+    },
+    { connection: options, concurrency: 1 },
+  );
+  scanner.on('failed', (_job, error) => {
+    console.error('alerts: scan failed', error.message);
+  });
+
   sender.on('failed', (job, error) => {
     console.error(`deliveries: job ${job?.id ?? '?'} failed`, error.message);
   });
@@ -142,6 +189,8 @@ async function main(): Promise<void> {
     console.info(`worker: ${signal}, closing`);
     await worker.close();
     await sender.close();
+    await scanner.close();
+    await alerts.close();
     await queue.close();
     await deliveryQueue.close();
     mailer.close();

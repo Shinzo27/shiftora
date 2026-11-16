@@ -18,3 +18,4 @@ export * from './users.js';
 export * from './publications.js';
 export * from './scheduling.js';
 export * from './shifts.js';
+export * from './shift-alerts.js';

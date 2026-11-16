@@ -277,6 +277,18 @@ Do this before writing any code, whatever tool or model you are:
   1–2 minutes (5 s, 10 s, 20 s, 40 s ±50%); the Redis integration test uses a 10 ms backoff.
 - **A dispatch result can carry `fallbackDeliveryId`**; the delivery worker queues it. Tests that
   assert a skip or failure exactly should use `toMatchObject`, since a fallback id is now added.
+- **Delivery reports need the app secret on both sides.** The fake WhatsApp provider posts signed
+  Meta webhooks to `FAKE_PROVIDER_REPORT_URL` only when `WHATSAPP_APP_SECRET` is set, and the API
+  verifies with the same variable (one `.env` serves both). `FAKE_PROVIDER_FAILURE=undeliverable`
+  = accepted, then reported failed → fallback to email a couple of seconds later.
+- **Webhook signatures are over the raw bytes.** Both bootstraps (`main.ts`, `test-app.ts`) pass
+  `rawBody: true`; `request.rawBody` is what `verifyMetaSignature` hashes. Re-serialising the
+  parsed body would not match what Meta signed.
+- **Reminders and missed clock-ins come from one repeatable job** (`alerts` queue, job scheduler
+  `shift-alerts`, every `ALERT_SCAN_INTERVAL_MS`). Only shifts in the schedule's latest
+  publication count: to see a reminder locally, publish a week with a shift starting within 2 h.
+- **`startTestApp({ env, database })`**: extra env (a webhook secret, a `REDIS_URL`) and a shared
+  database for a second API instance. Close the sharing apps before the one that owns it.
 - `pnpm-workspace.yaml` blocks package versions younger than 7 days; if an install fails on
   that, use the previous version or wait, don't remove the setting.
 
@@ -290,6 +302,12 @@ Do this before writing any code, whatever tool or model you are:
   sender-less channel anyway is `skipped` with a reason; `retry` is only for a provider failure a
   second attempt could fix.
 
+- **A cross-tenant read is a switch, a `SELECT` policy on one table, and one query** (ADR 017,
+  019): `app.outbox_relay` (outbox), `app.alert_scan` (organizations), `app.provider_report`
+  (deliveries). Everything after the lookup runs under the found org's context. Don't add a
+  fourth without an ADR.
+- **A provider webhook never does tenant work in the request.** Verify the signature, write a
+  platform outbox event, return 200; the worker finds and updates the delivery.
 - **A platform event is an outbox row with `org_id IS NULL`** (`0014` + ADR 018). Insert it with
   `OutboxService.recordPlatform()`, which runs on its own connection: auth routes have no request
   transaction to join. Never open a tenant path for account mail.

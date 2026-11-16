@@ -1,10 +1,13 @@
 import type { Database } from '@shiftora/db';
 import type { ChannelPolicy } from '@shiftora/domain';
+import { deliveryReportedEvent } from '@shiftora/shared';
 import type { Queue } from 'bullmq';
 
+import { handleMissedClockIn, handleShiftReminder } from './alerts/handlers.js';
 import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
+import { applyDeliveryReports } from './notifications/reports.js';
 import { sendAccountMail } from './platform-mail.js';
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
@@ -87,6 +90,44 @@ export async function handleNotificationJob(
       }
       return result;
     }
+    // Raised by the minute-by-minute scan (alerts/scan.ts); the messages are written here, like
+    // any other event's, so they get the same routing, quota, retries and fallback.
+    case 'shift.reminder':
+    case 'attendance.missed': {
+      const event = { id: job.outboxId, orgId: job.orgId, topic: job.topic, payload: job.payload };
+      const alertDeps = { usable: deps.usable, appUrl: deps.appUrl };
+      const result =
+        job.topic === 'shift.reminder'
+          ? await handleShiftReminder(db, event, alertDeps)
+          : await handleMissedClockIn(db, event, alertDeps);
+      await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
+      if (result.notifications > 0) {
+        console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
+      }
+      return result;
+    }
+    // A provider's delivery reports, verified by the API's webhook and written as a platform
+    // event (no org: the report only names the provider's message id). A late failure falls
+    // back down the ladder, and that fallback is queued here.
+    case 'delivery.reported': {
+      const parsed = deliveryReportedEvent.safeParse(job.payload);
+      if (!parsed.success) {
+        console.warn(`notifications: malformed delivery.reported (job ${job.outboxId})`);
+        return { notifications: 0, deliveries: 0, deliveryIds: [] };
+      }
+      const outcome = await applyDeliveryReports(db, parsed.data, deps.usable);
+      for (const fallback of outcome.fallbacks) {
+        await queueDeliveries(deps.deliveries, fallback.orgId, [fallback.deliveryId]);
+      }
+      console.info(
+        `notifications: ${parsed.data.channel} reports → ${outcome.applied} applied, ${outcome.ignored} ignored, ${outcome.unknown} unknown`,
+      );
+      return {
+        notifications: 0,
+        deliveries: outcome.fallbacks.length,
+        deliveryIds: outcome.fallbacks.map((fallback) => fallback.deliveryId),
+      };
+    }
     // Platform mail: no tenant, so no notification rows — the handler sends it directly.
     case 'auth.verify_email':
     case 'auth.reset_password': {
@@ -114,5 +155,16 @@ export async function handleNotificationJob(
     default:
       console.warn(`notifications: no handler for topic '${job.topic}' (job ${job.outboxId})`);
       return { notifications: 0, deliveries: 0, deliveryIds: [] };
+  }
+}
+
+/** One send job per delivery; the delivery id is the job id, so a replayed event adds nothing. */
+async function queueDeliveries(
+  queue: Queue<DeliveryJobData>,
+  orgId: string,
+  deliveryIds: string[],
+): Promise<void> {
+  for (const deliveryId of deliveryIds) {
+    await queue.add('delivery', { deliveryId, orgId }, { jobId: deliveryId });
   }
 }

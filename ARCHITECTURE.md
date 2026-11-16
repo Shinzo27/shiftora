@@ -35,7 +35,7 @@
 | Mobile | **PWA** (vite-plugin-pwa / Workbox), IndexedDB for offline queue | No app-store friction; WhatsApp link opens straight into it |
 | Dates | Native `Temporal` (Node 26) in `packages/domain/time` | IANA zone math and DST handling with no dependency; plain values in and out |
 | Auth | JWT access (15 min, `jose`, HS256) + rotating refresh tokens with reuse detection (httpOnly cookie, stored as SHA-256), argon2id (`@node-rs/argon2`) | Standard, explainable |
-| Rate limiting | `@nestjs/throttler` (in-memory now, Redis store in week 4) | Throttled requests go through Nest's exception filter, so 429s use the same error format |
+| Rate limiting | `@nestjs/throttler` with our own Redis storage (`RedisThrottlerStorage`, one Lua script per hit) when `REDIS_URL` is set, so every API instance shares one limit; in memory without Redis or while it is down | Throttled requests go through Nest's exception filter, so 429s use the same error format |
 | Email | Resend or AWS SES | Cheap, good deliverability |
 | WhatsApp / SMS | **Meta WhatsApp Cloud API** (direct, decided); SMS via Twilio/MSG91 | WhatsApp-first positioning; no BSP markup |
 | Billing | **Razorpay Subscriptions** (INR) behind a `BillingProvider` interface; own GST invoice PDFs (pdfkit or react-pdf) | INR, UPI AutoPay; coupons and GST invoices stay under our control |
@@ -508,7 +508,7 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   records `received_at`; large gaps or device-time skew raise flags. Conflicts (e.g. a
   manager already created a manual entry) keep both and flag for review rather than overwrite.
 
-### 7.7 Notifications pipeline (relay, fan-out, email and push — W4 D1–D3)
+### 7.7 Notifications pipeline (relay, fan-out, email, push, providers, reports, reminders — W4)
 ```
 domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKED)──▶ BullMQ `notifications`
    ▶ fan-out job: who is affected, what to say, which channel each person allows
@@ -582,13 +582,35 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   (logs the masked number, fails on demand with `FAKE_PROVIDER_FAILURE`); Meta is next.
 - Job ids derived from `notification_id + channel` → enqueue is idempotent.
 - Fallback: if WhatsApp fails permanently, fall back to SMS/email per org setting.
-- WhatsApp specifics (Meta Cloud API): business-initiated messages use pre-approved
-  **utility templates** (schedule published, shift reminder, swap update, open shift);
-  free-form text only inside the 24 h customer-service window. Delivery/read statuses arrive
-  via the Meta webhook (verified with `X-Hub-Signature-256`) and update `deliveries`.
-  Per-org monthly WhatsApp quota is checked before enqueueing; Free plan never routes to WhatsApp.
-- Cron (BullMQ repeatable jobs, single-run guaranteed by job id): shift reminders every
-  5 min, missed-clock-in detection, nightly credential-expiry scan, monthly audit partition creation.
+- WhatsApp specifics (Meta Cloud API, adapter still to come): business-initiated messages use
+  pre-approved **utility templates** (schedule published, shift reminder, swap update, open
+  shift); free-form text only inside the 24 h customer-service window. Free plan never routes to
+  WhatsApp (W8 entitlements).
+- **Delivery reports (W4 D5, implemented).** A sender returns the provider's message id, stored on
+  `deliveries.provider_message_id` (unique per channel). Meta posts statuses to
+  `POST /webhooks/whatsapp`; the API checks `X-Hub-Signature-256` (HMAC-SHA256 of the **raw** body
+  with `WHATSAPP_APP_SECRET`, constant-time), drops the recipient's number, and writes one
+  `delivery.reported` platform event — no tenant work in the request, a fast 200 for Meta. The
+  worker finds each delivery by message id (the `app.provider_report` switch, ADR 019) and applies
+  `applyProviderReport`: forward only (`sent` → `delivered`, `read_at`), duplicates and stale
+  reports change nothing, and a **late failure** (accepted, then undeliverable) fails the row,
+  gives the quota back and falls back down the ladder like a permanent send error. The worker's
+  own "sent" write never overwrites a `delivered` that beat it. Locally the fake WhatsApp provider
+  posts the same signed webhooks (`FAKE_PROVIDER_REPORT_URL`; `FAKE_PROVIDER_FAILURE=undeliverable`
+  for the late failure). `GET /webhooks/whatsapp` answers Meta's registration handshake.
+- **Shift reminders and missed clock-ins (W4 D5, implemented).** One BullMQ **job scheduler**
+  (`upsertJobScheduler`, every `ALERT_SCAN_INTERVAL_MS`, default 60 s) on the `alerts` queue —
+  scheduled in Redis, so several workers still run one scan per interval. `scanShiftAlerts` lists
+  orgs (`app.alert_scan`, ADR 019), then per org finds published shifts (in the schedule's
+  **latest publication with the same person**) that start in the next 2 h (`reminderWindow`) or
+  started more than the org's grace ago, within 4 h, with no punch from 2 h before the start
+  (`missedClockInWindow`). For each it inserts `shift_alerts (org, shift, kind)` `ON CONFLICT DO
+  NOTHING` and writes an outbox event (`shift.reminder` / `attendance.missed`) only for the rows
+  created — exactly once per shift and kind, however many scans race. The handlers re-read the
+  shift (cancelled, reassigned, started, or punched since → nothing) and use the same
+  `notifyEmployee` ladder as a publish; a missed clock-in also emails the owners and the managers
+  whose scope includes the location.
+- Still planned for the scheduler: nightly credential-expiry scan, monthly audit partition creation.
 
 ### 7.8 Pay rules engine
 - Rules are versioned JSON validated by a Zod schema, e.g.:
@@ -756,3 +778,6 @@ GET  /audit?entity=shift&entityId=
 | 014 | Org selected per request with `X-Org-Id`; role loaded from the DB each request (not token claims) | Accepted (2026-11-05) |
 | 015 | Shift overlap blocks (DB exclusion constraint + 409); availability, time off, weekly hours and min rest are returned as warnings | Accepted (2026-11-06) |
 | 016 | Realtime over Socket.IO on the API's own server, one room per org, auth = the access token + RLS membership read, Redis adapter only when configured; events are refetch hints, not data | Accepted (2026-11-12) |
+| 017 | The outbox relay reads across tenants through a transaction-local switch (`app.outbox_relay`) and two policies on `outbox` only; no BYPASSRLS role | Accepted (W4 D1) |
+| 018 | Account mail (verification, reset) is a platform outbox event with `org_id IS NULL`, sent directly by the worker | Accepted (W4 D3) |
+| 019 | The alert scan (`app.alert_scan` on `organizations`) and delivery reports (`app.provider_report` on `deliveries`) get the same kind of switch: `SELECT`-only, one query wide; the webhook only writes a platform event | Accepted (2026-11-16) |

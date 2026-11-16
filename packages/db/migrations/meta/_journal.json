@@ -120,6 +120,13 @@
       "when": 1794812505437,
       "tag": "0016_message_quota_and_dead_letters",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1794826551389,
+      "tag": "0017_delivery_reports_and_shift_alerts",
+      "breakpoints": true
     }
   ]
 }

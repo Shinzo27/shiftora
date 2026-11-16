@@ -21,7 +21,8 @@ normal requests still see their own tenant's rows and nothing else; the flag wid
 the one transaction that claims pending events, and `set_config(..., true)` makes it vanish at
 commit or rollback, so a pooled connection never carries it into a request.
 
-It is the **only** table with a switch like this. Everything downstream — resolving recipients,
+It is the **only** table with a switch like this. *(Update, W4 D5: ADR 019 adds two more of the
+same shape, `SELECT`-only — `organizations` for the alert scan, `deliveries` for delivery reports.)* Everything downstream — resolving recipients,
 loading an employee, writing a delivery — runs with a normal org context taken from the event,
 so the widening is one query wide and one process wide.
 

@@ -46,3 +46,23 @@ export const messageUsage = z.object({
   channels: z.array(channelUsage),
 });
 export type MessageUsage = z.output<typeof messageUsage>;
+
+/**
+ * One provider delivery report, normalised (W4 D5). The API turns a verified webhook into a
+ * `delivery.reported` platform event carrying a list of these; the worker applies them. Never the
+ * phone number: the message id is all the worker needs to find the delivery.
+ */
+export const providerReport = z.object({
+  messageId: z.string().min(1).max(256),
+  status: z.enum(['sent', 'delivered', 'read', 'failed']),
+  at: z.iso.datetime(),
+  /** The provider's reason for a failure, e.g. "Message undeliverable (131026)". */
+  error: z.string().max(500).optional(),
+});
+export type ProviderReport = z.output<typeof providerReport>;
+
+export const deliveryReportedEvent = z.object({
+  channel: z.enum(['whatsapp', 'sms']),
+  reports: z.array(providerReport).min(1),
+});
+export type DeliveryReportedEvent = z.output<typeof deliveryReportedEvent>;

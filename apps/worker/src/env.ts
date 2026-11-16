@@ -35,8 +35,22 @@ const envSchema = z.object({
    */
   WHATSAPP_PROVIDER: z.enum(['none', 'fake']).default('none'),
   SMS_PROVIDER: z.enum(['none', 'fake']).default('none'),
-  /** Failure injection for the fake providers: every send fails this way. */
-  FAKE_PROVIDER_FAILURE: z.enum(['none', 'transient', 'permanent', 'rate_limited']).default('none'),
+  /**
+   * Failure injection for the fake providers: every send fails this way. `undeliverable` is
+   * accepted first and reported failed a moment later (needs the report URL below).
+   */
+  FAKE_PROVIDER_FAILURE: z
+    .enum(['none', 'transient', 'permanent', 'rate_limited', 'undeliverable'])
+    .default('none'),
+  /**
+   * Where the fake WhatsApp provider posts its delivery reports, signed like Meta's: the API's
+   * webhook (http://localhost:4000/api/v1/webhooks/whatsapp). Unset, no reports are sent.
+   */
+  FAKE_PROVIDER_REPORT_URL: z.url().optional(),
+  /** Meta's app secret: signs (fake) and verifies (API) `X-Hub-Signature-256`. */
+  WHATSAPP_APP_SECRET: z.string().min(16).optional(),
+  /** How often the shift-reminder / missed clock-in scan runs. */
+  ALERT_SCAN_INTERVAL_MS: z.coerce.number().int().min(10_000).max(600_000).default(60_000),
   /** What staff see in the From line. */
   MAIL_FROM: z.string().min(3).default('Shiftora <no-reply@shiftora.local>'),
 });

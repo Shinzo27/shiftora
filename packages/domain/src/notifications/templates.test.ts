@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   dayLabel,
   renderMissedClockIn,
+  renderMissedClockInForManager,
   renderSchedulePublished,
   renderShiftReminder,
   weekRange,
@@ -101,6 +102,24 @@ describe('renderMissedClockIn', () => {
     });
     expect(message.subject).toBe('Did you clock in today? · Tue 10 Nov 09:00');
     expect(message.body).toContain('no clock-in has come through');
+  });
+
+  it('gives the manager who, where and since when, and says the person was told', () => {
+    const message = renderMissedClockInForManager({
+      managerName: 'Priya Shah',
+      employeeName: 'Meera Iyer',
+      orgName: 'Sunrise Clinic',
+      locationName: 'Bandra',
+      date: '2026-11-10',
+      startTime: '09:00',
+      appUrl: 'http://localhost:5173/o/x/timesheets',
+    });
+    expect(message.subject).toBe('Meera Iyer has not clocked in · Bandra 09:00');
+    expect(message.body).toContain(
+      "Hi Priya, Meera Iyer's shift at Bandra started at 09:00 on Tue 10 Nov",
+    );
+    expect(message.body).toContain('Meera has been reminded too.');
+    expect(message.body).toContain('Timesheets: http://localhost:5173/o/x/timesheets');
   });
 });
 

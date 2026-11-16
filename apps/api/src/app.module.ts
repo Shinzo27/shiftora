@@ -15,6 +15,7 @@ import { PushModule } from './modules/push/push.module.js';
 import { RealtimeModule } from './modules/realtime/realtime.module.js';
 import { SchedulingModule } from './modules/scheduling/scheduling.module.js';
 import { TenancyModule } from './modules/tenancy/tenancy.module.js';
+import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { TenancyModule } from './modules/tenancy/tenancy.module.js';
     EmployeesModule,
     SchedulingModule,
     MessagesModule,
+    WebhooksModule, // provider delivery reports, signature-verified
     AttendanceModule, // clock-in/out: geofenced, idempotent
     RealtimeModule, // sockets: a change on one screen reaches the others
     HealthModule,

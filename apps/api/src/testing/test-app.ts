@@ -19,6 +19,8 @@ import { configureApp } from '../configure-app.js';
  */
 export interface TestApp {
   app: NestFastifyApplication;
+  /** The throwaway Postgres, so a second app can share it (`startTestApp({ database })`). */
+  database: TestDatabase;
   /** Direct database access as app_user, for checking what a request wrote. */
   queryAs<T>(
     context: { userId: string; orgId: string },
@@ -27,20 +29,31 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function startTestApp(): Promise<TestApp> {
-  const database: TestDatabase = await startTestDatabase();
+export interface TestAppOptions {
+  /** Extra environment, e.g. a webhook secret or a REDIS_URL. */
+  env?: Record<string, string>;
+  /** Share a database with another test app (two API instances), instead of starting one. */
+  database?: TestDatabase;
+}
+
+export async function startTestApp(options: TestAppOptions = {}): Promise<TestApp> {
+  const ownsDatabase = !options.database;
+  const database: TestDatabase = options.database ?? (await startTestDatabase());
   const config = new AppConfig(
     parseEnv({
       NODE_ENV: 'test',
       DATABASE_URL: database.urlFor('app_user'),
       JWT_ACCESS_SECRET: 'test-secret-that-is-at-least-32-characters',
+      ...options.env,
     }),
   );
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
     .overrideProvider(AppConfig)
     .useValue(config)
     .compile();
-  const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
+    rawBody: true,
+  });
   await configureApp(app, config);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
@@ -49,6 +62,7 @@ export async function startTestApp(): Promise<TestApp> {
 
   return {
     app,
+    database,
     queryAs: (context, fn) =>
       direct.db.transaction(async (tx) => {
         await setTenantContext(tx, context);
@@ -57,7 +71,7 @@ export async function startTestApp(): Promise<TestApp> {
     close: async () => {
       await direct.close();
       await app.close();
-      await database.stop();
+      if (ownsDatabase) await database.stop();
     },
   };
 }

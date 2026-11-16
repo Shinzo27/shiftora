@@ -16,6 +16,9 @@ export class AppConfig {
   readonly vapidPublicKey: string | null;
   /** Cookies get the Secure flag only in production, so local http works. */
   readonly secureCookies: boolean;
+  /** Null: the WhatsApp webhook is off (404). */
+  readonly whatsappAppSecret: string | null;
+  readonly whatsappVerifyToken: string | null;
 
   constructor(env: Env) {
     this.nodeEnv = env.NODE_ENV;
@@ -29,5 +32,7 @@ export class AppConfig {
     this.redisUrl = env.REDIS_URL ?? null;
     this.vapidPublicKey = env.VAPID_PUBLIC_KEY ?? null;
     this.secureCookies = env.NODE_ENV === 'production';
+    this.whatsappAppSecret = env.WHATSAPP_APP_SECRET ?? null;
+    this.whatsappVerifyToken = env.WHATSAPP_VERIFY_TOKEN ?? null;
   }
 }

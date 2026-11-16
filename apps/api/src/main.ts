@@ -11,7 +11,10 @@ import { configureApp } from './configure-app.js';
 
 loadEnvFile();
 
-const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+// rawBody: provider webhooks are verified against the exact bytes that were signed.
+const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+  rawBody: true,
+});
 // Socket.IO rides on the same HTTP server; without this a Fastify app has no ws adapter.
 app.useWebSocketAdapter(new IoAdapter(app));
 const config = app.get(AppConfig);

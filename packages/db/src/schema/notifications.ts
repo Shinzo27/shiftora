@@ -91,6 +91,14 @@ export const deliveries = pgTable(
     lastError: text(),
     sentAt: timestamptz(),
     /**
+     * The provider's id for the message (Meta's `wamid…`). Delivery reports (webhooks) name the
+     * message by it, so it is how a report finds its row.
+     */
+    providerMessageId: text(),
+    /** When the provider says it reached the phone, and when it was read (WhatsApp only). */
+    deliveredAt: timestamptz(),
+    readAt: timestamptz(),
+    /**
      * Set when the queue gave up (every retry failed): the dead-letter list is
      * `dead_lettered_at IS NOT NULL`, and a replay clears it.
      */
@@ -109,6 +117,10 @@ export const deliveries = pgTable(
     // One row per person per channel per notification: the fan-out cannot duplicate itself.
     uniqueIndex('deliveries_notification_channel_unique').on(t.notificationId, t.channel),
     index('deliveries_status_idx').on(t.orgId, t.status),
+    // A delivery report names one message; two rows with the same provider id would be ambiguous.
+    uniqueIndex('deliveries_provider_message_unique')
+      .on(t.channel, t.providerMessageId)
+      .where(sql`provider_message_id is not null`),
     // The dead-letter page reads only these rows; the index stays as small as the problem.
     index('deliveries_dead_letter_idx')
       .on(t.orgId, t.deadLetteredAt)

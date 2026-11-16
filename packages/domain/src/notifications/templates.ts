@@ -133,6 +133,30 @@ export function renderMissedClockIn(context: MissedClockInContext): RenderedMess
   };
 }
 
+export interface MissedClockInManagerContext extends MissedClockInContext {
+  managerName: string;
+  appUrl?: string;
+}
+
+/**
+ * The manager's copy of the same alert: who, where and since when — enough to decide whether to
+ * call the person or find cover, without opening the app first.
+ */
+export function renderMissedClockInForManager(
+  context: MissedClockInManagerContext,
+): RenderedMessage {
+  const { managerName, employeeName, locationName, date, startTime, appUrl } = context;
+  return {
+    subject: `${employeeName} has not clocked in · ${locationName} ${startTime}`,
+    body: [
+      `Hi ${firstName(managerName)}, ${employeeName}'s shift at ${locationName} started at ${startTime} on ${dayLabel(date)} and no clock-in has come through.`,
+      '',
+      `${firstName(employeeName)} has been reminded too.`,
+      ...(appUrl ? ['', `Timesheets: ${appUrl}`] : []),
+    ].join('\n'),
+  };
+}
+
 /** "9–15 Nov" — the range a person reads, not two dates. */
 export function weekRange(weekStart: LocalDate): string {
   const end = addDays(weekStart, 6);
