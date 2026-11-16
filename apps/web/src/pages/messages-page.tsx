@@ -1,6 +1,19 @@
-import type { DeadLetter, MessageUsage } from '@shiftora/shared';
+import type { DeadLetter, MessageUsage, RecentMessage } from '@shiftora/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle2, Mail, MessageCircle, RotateCw, Smartphone } from 'lucide-react';
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  CheckCircle2,
+  Clock,
+  Inbox,
+  Mail,
+  MessageCircle,
+  MinusCircle,
+  RotateCw,
+  Smartphone,
+  XCircle,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 import { ErrorState, PageHeader } from '@/components/page';
@@ -52,15 +65,27 @@ const when = new Intl.DateTimeFormat('en-IN', {
 export function MessagesPage() {
   const { orgId, role } = useOrg();
   const isOwner = role === 'owner';
+  const recent = useQuery({
+    queryKey: ['messages', 'recent', orgId],
+    queryFn: () => messagesApi.recent(orgId),
+    enabled: isOwner,
+    // While something is on its way (just published, just replayed), watch it arrive.
+    refetchInterval: (query) => (inFlight(query.state.data) ? POLL_MS : false),
+  });
+  // Usage and dead letters change as those messages land, so they follow the same beat — which
+  // is also what keeps the meter from lagging a refresh behind a Replay.
+  const following = inFlight(recent.data) ? POLL_MS : false;
   const usage = useQuery({
     queryKey: ['messages', 'usage', orgId],
     queryFn: () => messagesApi.usage(orgId),
     enabled: isOwner,
+    refetchInterval: following,
   });
   const deadLetters = useQuery({
     queryKey: ['messages', 'dead-letters', orgId],
     queryFn: () => messagesApi.deadLetters(orgId),
     enabled: isOwner,
+    refetchInterval: following,
   });
 
   if (!isOwner) {
@@ -99,6 +124,37 @@ export function MessagesPage() {
         )}
       </section>
 
+      <section aria-labelledby="recent-heading" className="space-y-3">
+        <div className="space-y-1">
+          <h2 id="recent-heading" className="text-lg font-semibold tracking-tight">
+            Recent messages
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            The last 50, and how far each got. WhatsApp reports when a message is delivered and
+            read.
+          </p>
+        </div>
+        {recent.isError ? (
+          <ErrorState error={recent.error} onRetry={() => void recent.refetch()} />
+        ) : recent.isPending ? (
+          <Skeleton className="h-40 rounded-xl" />
+        ) : recent.data.length === 0 ? (
+          <Empty className="border">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <Inbox />
+              </EmptyMedia>
+              <EmptyTitle>No messages yet</EmptyTitle>
+              <EmptyDescription>
+                Publishing a week, a shift reminder or an invite sends the first one.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <RecentTable rows={recent.data} />
+        )}
+      </section>
+
       <section aria-labelledby="dead-heading" className="space-y-3">
         <div className="space-y-1">
           <h2 id="dead-heading" className="text-lg font-semibold tracking-tight">
@@ -129,6 +185,93 @@ export function MessagesPage() {
         )}
       </section>
     </>
+  );
+}
+
+const POLL_MS = 3_000;
+
+/**
+ * Queued, or a WhatsApp/SMS that changed in the last minute and may still report delivered or
+ * read. After a quiet minute the page stops polling: a read receipt can take hours, or never come.
+ */
+function inFlight(rows: RecentMessage[] | undefined): boolean {
+  const recentCutoff = Date.now() - 60_000;
+  return (rows ?? []).some(
+    (row) =>
+      row.status === 'queued' ||
+      ((row.status === 'sent' || row.status === 'delivered') &&
+        (row.channel === 'whatsapp' || row.channel === 'sms') &&
+        new Date(row.updatedAt).getTime() > recentCutoff),
+  );
+}
+
+const statusLook: Record<
+  RecentMessage['status'],
+  { label: string; icon: typeof Check; className: string }
+> = {
+  queued: { label: 'Queued', icon: Clock, className: 'text-muted-foreground' },
+  sent: { label: 'Sent', icon: Check, className: 'text-foreground' },
+  delivered: { label: 'Delivered', icon: CheckCheck, className: 'text-foreground' },
+  read: { label: 'Read', icon: CheckCheck, className: 'text-success' },
+  failed: { label: 'Failed', icon: XCircle, className: 'text-destructive' },
+  skipped: { label: 'Skipped', icon: MinusCircle, className: 'text-muted-foreground' },
+};
+
+function RecentTable({ rows }: { rows: RecentMessage[] }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border bg-card">
+      <Table>
+        <TableHeader className="bg-muted/50">
+          <TableRow>
+            <TableHead>For</TableHead>
+            {/* On a phone the channel folds into the first cell, so Status stays on screen. */}
+            <TableHead className="hidden sm:table-cell">Channel</TableHead>
+            <TableHead>Status</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((row) => {
+            const look = statusLook[row.status];
+            const Icon = look.icon;
+            return (
+              <TableRow key={row.id}>
+                <TableCell className="min-w-36 whitespace-normal">
+                  <div className="font-medium">{row.recipient}</div>
+                  <div className="text-xs text-muted-foreground">
+                    <span className="sm:hidden">{channelLabel[row.channel]} · </span>
+                    {row.subject} · {when.format(new Date(row.createdAt))}
+                  </div>
+                </TableCell>
+                <TableCell className="hidden sm:table-cell">
+                  <Badge variant="outline">{channelLabel[row.channel]}</Badge>
+                  {row.address ? (
+                    <div className="tabular mt-1 text-xs text-muted-foreground">{row.address}</div>
+                  ) : null}
+                </TableCell>
+                <TableCell className="max-w-72 min-w-28 whitespace-normal">
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 text-sm font-medium',
+                      look.className,
+                    )}
+                  >
+                    <Icon className="size-4" aria-hidden="true" />
+                    {look.label}
+                  </span>
+                  {row.reason ? (
+                    <div className="text-xs text-muted-foreground">{row.reason}</div>
+                  ) : (
+                    <div className="tabular text-xs text-muted-foreground">
+                      {when.format(new Date(row.updatedAt))}
+                    </div>
+                  )}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
   );
 }
 

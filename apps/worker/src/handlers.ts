@@ -122,6 +122,13 @@ export async function handleNotificationJob(
       console.info(
         `notifications: ${parsed.data.channel} reports → ${outcome.applied} applied, ${outcome.ignored} ignored, ${outcome.unknown} unknown`,
       );
+      // A report can beat the worker's own write of the provider's message id (a fast provider,
+      // a slow database). Throwing asks BullMQ to run the batch again on its backoff (~75 s over
+      // five attempts); the reports already applied are no-ops the second time. An id that is
+      // still unknown after that was never ours, and the job ends in the failed set.
+      if (outcome.unknown > 0) {
+        throw new Error(`${outcome.unknown} report(s) for messages not recorded yet; retrying`);
+      }
       return {
         notifications: 0,
         deliveries: outcome.fallbacks.length,

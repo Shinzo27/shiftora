@@ -1,28 +1,13 @@
 import { createDatabaseConnection } from '@shiftora/db';
-import { Worker, type Queue } from 'bullmq';
 
-import { scanShiftAlerts } from './alerts/scan.js';
 import { parseWorkerEnv } from './env.js';
-import { handleNotificationJob } from './handlers.js';
 import { createMailer } from './mailer.js';
-import { createDeliveryWorker } from './delivery-worker.js';
 import { sendableChannels, type Adapters, type MessageSender } from './notifications/dispatch.js';
 import { FakeMessageSender } from './notifications/fake-sender.js';
 import { createFakeWebhookReporter } from './notifications/fake-webhook.js';
 import { createWebPushSender } from './notifications/push.js';
-import { relayOnce, type Enqueue } from './outbox-relay.js';
-import {
-  ALERT_SCAN_SCHEDULER,
-  ALERTS_QUEUE,
-  alertsQueue,
-  connectionOptions,
-  createRedis,
-  deliveriesQueue,
-  NOTIFICATIONS_QUEUE,
-  notificationsQueue,
-  type DeliveryJobData,
-  type NotificationJob,
-} from './queues.js';
+import { startPipeline } from './pipeline.js';
+import { connectionOptions, createRedis } from './queues.js';
 
 /**
  * The worker process: a relay that moves outbox rows onto a queue, and a consumer that turns
@@ -36,8 +21,6 @@ async function main(): Promise<void> {
   const connection = createDatabaseConnection(env.DATABASE_URL);
   const redis = createRedis(env.REDIS_URL);
   const options = connectionOptions(redis);
-  const queue: Queue<NotificationJob> = notificationsQueue(options);
-  const deliveryQueue: Queue<DeliveryJobData> = deliveriesQueue(options);
   const mailer = createMailer({
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
@@ -92,71 +75,14 @@ async function main(): Promise<void> {
     );
   }
 
-  const enqueue: Enqueue = async (event) => {
-    await queue.add(
-      event.topic,
-      {
-        outboxId: event.id,
-        orgId: event.orgId,
-        topic: event.topic,
-        payload: event.payload,
-      },
-      // The outbox row id as the job id: re-relaying after a crash cannot double-send.
-      { jobId: event.id },
-    );
-  };
-
-  const worker = new Worker<NotificationJob>(
-    NOTIFICATIONS_QUEUE,
-    async (job) =>
-      handleNotificationJob(
-        connection.db,
-        { deliveries: deliveryQueue, appUrl: env.APP_URL, mailer, usable },
-        job.data,
-      ),
-    { connection: options, concurrency: env.WORKER_CONCURRENCY },
-  );
-
-  const sender = createDeliveryWorker({
+  const pipeline = await startPipeline({
     db: connection.db,
-    adapters,
-    queue: deliveryQueue,
     connection: options,
+    adapters,
+    appUrl: env.APP_URL,
     concurrency: env.WORKER_CONCURRENCY,
-  });
-
-  // Shift reminders and missed clock-ins: one repeatable scan job, scheduled in Redis so that
-  // several worker processes still run it once per interval. Upserting on every boot keeps the
-  // interval in step with ALERT_SCAN_INTERVAL_MS.
-  const alerts = alertsQueue(options);
-  await alerts.upsertJobScheduler(
-    ALERT_SCAN_SCHEDULER,
-    { every: env.ALERT_SCAN_INTERVAL_MS },
-    { name: 'scan' },
-  );
-  const scanner = new Worker(
-    ALERTS_QUEUE,
-    async () => {
-      const result = await scanShiftAlerts(connection.db);
-      if (result.reminders + result.missed > 0) {
-        console.info(
-          `alerts: ${result.reminders} reminder(s), ${result.missed} missed clock-in(s) raised`,
-        );
-      }
-      return result;
-    },
-    { connection: options, concurrency: 1 },
-  );
-  scanner.on('failed', (_job, error) => {
-    console.error('alerts: scan failed', error.message);
-  });
-
-  sender.on('failed', (job, error) => {
-    console.error(`deliveries: job ${job?.id ?? '?'} failed`, error.message);
-  });
-
-  worker.on('failed', (job, error) => {
-    console.error(`notifications: job ${job?.id ?? '?'} failed`, error.message);
+    relayBatch: env.RELAY_BATCH,
+    alertScanIntervalMs: env.ALERT_SCAN_INTERVAL_MS,
   });
 
   let ticking = false;
@@ -166,7 +92,7 @@ async function main(): Promise<void> {
     if (ticking || stopping) return;
     ticking = true;
     try {
-      const claimed = await relayOnce({ db: connection.db, enqueue, batch: env.RELAY_BATCH });
+      const claimed = await pipeline.relay();
       if (claimed > 0) console.info(`relay: queued ${claimed} event(s)`);
     } catch (error) {
       // A failed tick is not fatal: the rows are still pending, and the next tick retries.
@@ -187,12 +113,7 @@ async function main(): Promise<void> {
     stopping = true;
     clearInterval(timer);
     console.info(`worker: ${signal}, closing`);
-    await worker.close();
-    await sender.close();
-    await scanner.close();
-    await alerts.close();
-    await queue.close();
-    await deliveryQueue.close();
+    await pipeline.close();
     mailer.close();
     await redis.quit();
     await connection.close();

@@ -52,5 +52,18 @@ export default defineConfig({
       cwd: '../..',
       timeout: 120_000,
     },
+    // The worker sends the messages `messages.spec.ts` waits for. It has no HTTP port, so
+    // Playwright waits for its start-up line. Only in CI: locally `pnpm dev` already runs it,
+    // and a second worker would only compete for the same jobs.
+    ...(process.env.CI
+      ? [
+          {
+            command: 'pnpm --filter @shiftora/worker dev',
+            wait: { stdout: /worker: relaying/ },
+            cwd: '../..',
+            timeout: 120_000,
+          },
+        ]
+      : []),
   ],
 });

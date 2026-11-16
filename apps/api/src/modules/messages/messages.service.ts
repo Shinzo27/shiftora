@@ -4,6 +4,7 @@ import {
   errorCodes,
   type DeadLetter,
   type MessageUsage,
+  type RecentMessage,
   type ReplayResult,
 } from '@shiftora/shared';
 
@@ -50,6 +51,23 @@ export class MessagesService {
           : null,
       };
     });
+  }
+
+  /** The last deliveries with how far each got, for the owner to see that messages arrive. */
+  async recent(): Promise<RecentMessage[]> {
+    const rows = await this.messages.recent();
+    return rows.map((row) => ({
+      id: row.id,
+      channel: row.channel,
+      recipient: row.employeeName ?? row.recipientEmail ?? 'Unknown recipient',
+      address: maskAddress(row.address),
+      subject: row.subject,
+      kind: row.kind,
+      status: row.status === 'delivered' && row.readAt ? 'read' : row.status,
+      reason: row.status === 'failed' || row.status === 'skipped' ? row.lastError : null,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: (row.readAt ?? row.deliveredAt ?? row.sentAt ?? row.createdAt).toISOString(),
+    }));
   }
 
   /**

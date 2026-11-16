@@ -19,6 +19,25 @@ export interface DeadLetterRow {
   recipientEmail: string | null;
 }
 
+export interface RecentRow {
+  id: string;
+  channel: 'email' | 'whatsapp' | 'sms' | 'push';
+  address: string | null;
+  status: 'queued' | 'sent' | 'delivered' | 'failed' | 'skipped';
+  lastError: string | null;
+  createdAt: Date;
+  sentAt: Date | null;
+  deliveredAt: Date | null;
+  readAt: Date | null;
+  subject: string;
+  kind: string;
+  employeeName: string | null;
+  recipientEmail: string | null;
+}
+
+/** How many recent deliveries the Messages page lists. */
+const RECENT_PAGE = 50;
+
 /** The dead-letter page shows the most recent failures; older ones are history, not a queue. */
 const DEAD_LETTER_PAGE = 100;
 
@@ -49,6 +68,32 @@ export class MessagesRepository {
       .limit(DEAD_LETTER_PAGE);
     // isNotNull above guarantees the timestamp; the type system cannot see through the filter.
     return rows.map((row) => ({ ...row, deadLetteredAt: row.deadLetteredAt! }));
+  }
+
+  /** The newest deliveries, every channel and status: what happened to the last messages. */
+  async recent(): Promise<RecentRow[]> {
+    return this.context.tx
+      .select({
+        id: deliveries.id,
+        channel: deliveries.channel,
+        address: deliveries.address,
+        status: deliveries.status,
+        lastError: deliveries.lastError,
+        createdAt: deliveries.createdAt,
+        sentAt: deliveries.sentAt,
+        deliveredAt: deliveries.deliveredAt,
+        readAt: deliveries.readAt,
+        subject: notifications.subject,
+        kind: notifications.kind,
+        employeeName: employees.name,
+        recipientEmail: notifications.recipientEmail,
+      })
+      .from(deliveries)
+      .innerJoin(notifications, eq(notifications.id, deliveries.notificationId))
+      .leftJoin(employees, eq(employees.id, notifications.employeeId))
+      .where(eq(deliveries.orgId, this.context.orgId))
+      .orderBy(desc(deliveries.createdAt), desc(deliveries.id))
+      .limit(RECENT_PAGE);
   }
 
   /** The other deliveries of these messages: where each one went after it gave up. */

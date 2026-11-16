@@ -610,6 +610,12 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   shift (cancelled, reassigned, started, or punched since → nothing) and use the same
   `notifyEmployee` ladder as a publish; a missed clock-in also emails the owners and the managers
   whose scope includes the location.
+- **One wiring (W4 D6).** `startPipeline` (`apps/worker/src/pipeline.ts`) builds the relay, both
+  consumers and the alert scheduler; `main.ts` adds configuration, the relay timer and signals, and
+  `pipeline.int.test.ts` starts the same function on real Postgres + Redis with failure injection.
+  A `delivery.reported` batch naming a message id not stored yet throws, so BullMQ retries it: a
+  fast provider can report before the worker's own "sent" write commits. The owner follows each
+  delivery on the Messages page (`GET /messages/recent`, polled while something is in flight).
 - Still planned for the scheduler: nightly credential-expiry scan, monthly audit partition creation.
 
 ### 7.8 Pay rules engine

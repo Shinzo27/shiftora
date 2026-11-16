@@ -1,5 +1,5 @@
 import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
-import type { DeadLetter, MessageUsage, ReplayResult } from '@shiftora/shared';
+import type { DeadLetter, MessageUsage, RecentMessage, ReplayResult } from '@shiftora/shared';
 
 import { Roles } from '../tenancy/decorators.js';
 import { MessagesService } from './messages.service.js';
@@ -13,6 +13,12 @@ import { MessagesService } from './messages.service.js';
 @Controller('messages')
 export class MessagesController {
   constructor(private readonly messages: MessagesService) {}
+
+  /** The last 50 deliveries, newest first, with how far each got (queued → read). */
+  @Get('recent')
+  recent(): Promise<RecentMessage[]> {
+    return this.messages.recent();
+  }
 
   /** Deliveries that failed every retry, newest first. */
   @Get('dead-letters')

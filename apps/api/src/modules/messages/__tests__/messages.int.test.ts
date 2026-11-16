@@ -1,6 +1,6 @@
 import { and, eq, schema, sql } from '@shiftora/db';
 import { usageMonth } from '@shiftora/domain';
-import type { DeadLetter, MessageUsage } from '@shiftora/shared';
+import type { DeadLetter, MessageUsage, RecentMessage } from '@shiftora/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import {
@@ -201,5 +201,57 @@ describe('GET /messages/usage', () => {
         { channel: 'sms', used: 0, limit: 200 },
       ],
     });
+  });
+});
+
+describe('GET /messages/recent', () => {
+  it('lists the newest deliveries with how far each got, addresses masked', async () => {
+    const { owner, org, deadId } = await clinicWithDeadLetter();
+    // As a provider report would: the WhatsApp delivery reached the phone and was read.
+    await t.queryAs({ userId: owner.id, orgId: org }, (tx) =>
+      tx.execute(sql`
+        update deliveries set status = 'delivered', delivered_at = now(), read_at = now(),
+          dead_lettered_at = null, last_error = null
+        where id = ${deadId}`),
+    );
+
+    const res = await owner.call('GET', '/messages/recent', { org });
+
+    expect(res.status).toBe(200);
+    const rows = res.json<RecentMessage[]>();
+    expect(rows).toHaveLength(2);
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: deadId,
+          channel: 'whatsapp',
+          recipient: 'Asha Mehta',
+          address: '…001',
+          status: 'read',
+          reason: null,
+        }),
+        expect.objectContaining({ channel: 'email', status: 'sent', address: 'a•••@example.com' }),
+      ]),
+    );
+    expect(JSON.stringify(rows)).not.toContain('9820000001');
+  });
+
+  it('says why a delivery failed', async () => {
+    const { owner, org } = await clinicWithDeadLetter();
+    const res = await owner.call('GET', '/messages/recent', { org });
+    expect(res.json<RecentMessage[]>().find((m) => m.channel === 'whatsapp')).toMatchObject({
+      status: 'failed',
+      reason: 'Fake whatsapp: provider unavailable (503)',
+    });
+  });
+
+  it("is owner-only, and never shows another org's messages", async () => {
+    const a = await clinicWithDeadLetter();
+    const b = await clinicWithDeadLetter();
+    const manager = await addMember(t.app, b.owner, b.org, 'manager');
+
+    expect((await manager.call('GET', '/messages/recent', { org: b.org })).status).toBe(403);
+    const mine = await b.owner.call('GET', '/messages/recent', { org: b.org });
+    expect(mine.json<RecentMessage[]>().map((m) => m.id)).not.toContain(a.deadId);
   });
 });

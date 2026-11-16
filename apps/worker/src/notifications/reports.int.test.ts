@@ -13,6 +13,10 @@ import type { Mailer } from '../mailer.js';
 import { dispatchDelivery } from './dispatch.js';
 import { FakeMessageSender } from './fake-sender.js';
 import { fanOutSchedulePublished } from './fan-out.js';
+import type { Queue } from 'bullmq';
+
+import { handleNotificationJob } from '../handlers.js';
+import type { DeliveryJobData } from '../queues.js';
 import { applyDeliveryReports } from './reports.js';
 
 /**
@@ -288,6 +292,37 @@ describe('applying delivery reports', () => {
       { mailer, push: null, whatsapp, sms: null },
       { deliveryId, orgId: clinic.orgId },
     );
+    expect((await rowOf(clinic, deliveryId)).status).toBe('delivered');
+  });
+});
+
+describe('the delivery.reported job', () => {
+  it('a report that beats the recorded message id fails the job (retried), then applies', async () => {
+    const deliveryId = await queuedWhatsApp(clinic);
+    const messageId = `early-${crypto.randomUUID()}`;
+    const deps = {
+      deliveries: { add: () => Promise.resolve() } as unknown as Queue<DeliveryJobData>,
+      appUrl: 'http://app.test',
+      mailer,
+      usable: ALL_CHANNELS,
+    };
+    const job = {
+      outboxId: crypto.randomUUID(),
+      orgId: null as unknown as string, // a platform event
+      topic: 'delivery.reported',
+      payload: report(messageId, 'delivered'),
+    };
+
+    // The provider's report is here; our write of its message id is not, yet.
+    await expect(handleNotificationJob(db, deps, job)).rejects.toThrow(/not recorded yet/);
+
+    await asOrg(clinic, (tx) =>
+      tx.execute(
+        sql`update deliveries set status = 'sent', provider_message_id = ${messageId} where id = ${deliveryId}`,
+      ),
+    );
+    // BullMQ's retry: the same job, now that the id exists.
+    await handleNotificationJob(db, deps, job);
     expect((await rowOf(clinic, deliveryId)).status).toBe('delivered');
   });
 });

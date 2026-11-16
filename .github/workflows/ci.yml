@@ -49,6 +49,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
       - run: cp .env.example .env
+      # The messages E2E needs delivery reports: a throwaway webhook secret shared by the API
+      # and the fake WhatsApp provider (both read .env). Not a real Meta secret.
+      - run: |
+          echo "WHATSAPP_APP_SECRET=ci-only-webhook-secret-$GITHUB_RUN_ID" >> .env
+          echo "WHATSAPP_VERIFY_TOKEN=ci-only-verify-token" >> .env
 
       # Postgres 5433 + Redis 6380, the same compose file developers use.
       - run: pnpm infra:up
@@ -60,8 +65,9 @@ jobs:
       # they import @shiftora/shared, @shiftora/domain and @shiftora/db from their dist folders.
       - run: pnpm build
 
-      # Playwright starts the API and the web app itself (CI=true turns off server reuse) and
-      # waits for each one at its own readiness URL.
+      # Playwright starts the API, the web app and the worker itself (CI=true turns off server
+      # reuse) and waits for each one: the two servers at their readiness URLs, the worker for
+      # its "relaying" line.
       - run: pnpm test:e2e
 
       - if: failure()

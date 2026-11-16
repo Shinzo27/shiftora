@@ -23,6 +23,7 @@ import type {
   Page,
   PublishPreview,
   PublishResult,
+  RecentMessage,
   ReplayResult,
   Schedule,
   ScheduleConflicts,
@@ -218,4 +219,5 @@ export const messagesApi = {
   replay: (orgId: string, id: string) =>
     api.post<ReplayResult>(`/messages/dead-letters/${id}/replay`, { orgId }),
   usage: (orgId: string) => api.get<MessageUsage>('/messages/usage', { orgId }),
+  recent: (orgId: string) => api.get<RecentMessage[]>('/messages/recent', { orgId }),
 };

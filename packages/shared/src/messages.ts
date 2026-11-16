@@ -66,3 +66,24 @@ export const deliveryReportedEvent = z.object({
   reports: z.array(providerReport).min(1),
 });
 export type DeliveryReportedEvent = z.output<typeof deliveryReportedEvent>;
+
+/**
+ * One recent delivery as the owner sees it (W4 D6): who, how, and how far it got. `status` folds
+ * the provider's reports in: a delivery with a read time reads as `read`.
+ */
+export const recentMessage = z.object({
+  id: z.uuid(),
+  channel: messageChannel,
+  recipient: z.string(),
+  /** Masked like the dead-letter list: "…001", "a•••@clinic.in". */
+  address: z.string().nullable(),
+  subject: z.string(),
+  kind: z.string(),
+  status: z.enum(['queued', 'sent', 'delivered', 'read', 'failed', 'skipped']),
+  /** Why it failed or was skipped. */
+  reason: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  /** The latest thing that happened to it: read, delivered, sent, or queued. */
+  updatedAt: z.iso.datetime(),
+});
+export type RecentMessage = z.output<typeof recentMessage>;

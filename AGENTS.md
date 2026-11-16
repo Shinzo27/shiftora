@@ -287,6 +287,13 @@ Do this before writing any code, whatever tool or model you are:
 - **Reminders and missed clock-ins come from one repeatable job** (`alerts` queue, job scheduler
   `shift-alerts`, every `ALERT_SCAN_INTERVAL_MS`). Only shifts in the schedule's latest
   publication count: to see a reminder locally, publish a week with a shift starting within 2 h.
+- **Drizzle queries are lazy.** `void db.insert(...)` sends nothing: a query runs when it is
+  awaited or `.then` is called. Fire-and-forget code must call `.then(ok, fail)` explicitly.
+- **The messages E2E needs the worker.** Locally `pnpm dev` runs it; in CI Playwright starts it
+  (waits for "worker: relaying"). Mailpit's API (`:8025/api/v1/search?query=to:"…"`) is how a
+  spec checks an email arrived.
+- **Worker wiring lives in `startPipeline`** (`apps/worker/src/pipeline.ts`): add a queue or
+  consumer there, not in `main.ts`, or the end-to-end test stops covering it.
 - **`startTestApp({ env, database })`**: extra env (a webhook secret, a `REDIS_URL`) and a shared
   database for a second API instance. Close the sharing apps before the one that owns it.
 - `pnpm-workspace.yaml` blocks package versions younger than 7 days; if an install fails on
