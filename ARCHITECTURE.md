@@ -415,17 +415,24 @@ not a cached GET. Every route is `lazy()`-loaded, so the entry chunk is the shel
 page (130 kB gzip) instead of the whole app (339 kB before).
 
 ### 7.4 Open shifts and swaps: concurrency
-- Claiming an open shift:
+- **Claiming an open shift (implemented, W5 D4; ADR 019):**
   ```sql
   UPDATE shifts SET employee_id = $emp, status = 'assigned', version = version + 1
   WHERE id = $shift AND status = 'open' AND version = $expectedVersion
   RETURNING *;
   ```
-  Zero rows → "already taken". The exclusion constraint independently prevents the claimer
-  from being double-booked. Eligibility (role, hours, rest, credentials) is checked in the
-  same transaction.
-- The client sends an `Idempotency-Key`; the first response is stored in `idempotency_keys`,
-  so a retried request returns the same result instead of a confusing error.
+  Zero rows → "already taken" (`shift.already_taken`). The exclusion constraint independently
+  prevents the claimer from being double-booked, so a lost race and a corrupt rota are caught by
+  two different mechanisms. Eligibility (role, hours, rest, time off) is re-checked in the same
+  transaction through `assessMany`, so a claim cannot be a way around a rule the offer respected.
+  The winning claim clears `offered_at`, audits before/after, writes one `shift.claimed` event
+  (managers only) and patches the publication so the reminders follow the new person.
+- The client sends an `Idempotency-Key`; `IdempotencyService` reserves the row in
+  `idempotency_keys` (unique per organisation + route + key, with a SHA-256 of the request's
+  identifying parts) **before** doing the work, so a concurrent retry blocks on the unique index
+  until the first answer exists and then returns it verbatim. The same key on a different shift is
+  `idempotency.key_reuse`; a request with no key is refused outright. Everything runs in the
+  request's own transaction, so a failure takes the reservation with it.
 - **Swaps and drops (implemented, W5 D1–D2).** `shift_requests` + a pure state machine
   (`packages/domain/requests`): swap = `pending_colleague` → `pending_manager` → `approved`, drop
   = `pending_manager` → `approved`; a manager always decides. Approval (`ShiftRequestsService`)

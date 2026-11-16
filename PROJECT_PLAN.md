@@ -97,8 +97,8 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 20 migrations, 695 automated tests (333 unit, 362 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 89 API endpoints, a React web app on shadcn/ui
+Numbers today: 21 migrations, 704 automated tests (334 unit, 370 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 90 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
@@ -106,185 +106,39 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
 
-> **2026-11-16 (first dev machine, Claude Code) — W5 D1–D3 done (one commit per day).**
-> - **Owner's decision:** a manager always approves a swap (the colleague's yes is never enough).
-> - **D1:** `packages/domain/requests/shift-request.ts` (state machine, exhaustively tested) and
->   `scheduling/eligibility.ts` (blocking vs advisory), `shift_requests` (`0018`).
-> - **D2:** `/me/shift-requests` (ask, accept, decline, cancel) and `/shift-requests` (scoped inbox,
->   approve, reject). Approval locks both shifts in id order, re-checks, reassigns via "open", and
->   records the change as told (schedule version + patched publication, so reminders follow the new
->   person). Worker tells the colleague / managers / affected people; the minute scan expires
->   undecided requests whose shift started.
-> - **D3:** open shifts — candidates with reasons, offer to the eligible only (`shift.offered`,
->   `offered_at` in `0019`), `/me/open-shifts`; an approved drop offers the shift automatically.
-> - **Not built yet:** claiming an open shift (D4: conditional UPDATE + version + idempotency keys),
->   and every screen for this (D5: staff requests and open shifts, manager inbox). The API is
->   complete enough for D5 to be UI only.
-> - **Checks:** 333 unit + 362 integration (db 61, worker 68, api 233) + 6 E2E; lint, typecheck, build. Mutation checks:
->   exchange ordering, approval re-check, offer eligibility filter.
-> - **Next — W5 D4:** race-safe claim of an open shift + `idempotency_keys`.
-
-> **2026-11-16 (first dev machine, Claude Code) — W4 D6 done: week 4 is finished.**
-> - **One wiring:** `apps/worker/src/pipeline.ts` (`startPipeline`) builds the relay, the
->   `notifications` and `deliveries` consumers and the alert scheduler; `main.ts` only adds
->   config, the relay timer and signals. `pipeline.int.test.ts` runs it on real Postgres + Redis:
->   healthy (WhatsApp read, email sent), accepted-then-undeliverable (→ email), down for every
->   retry (5 attempts, dead letter → email), a reminder from scan to read, and a duplicate event
->   that sends once.
-> - **Found by that test:** a delivery report that arrives before the worker has stored the
->   provider's message id was dropped as "unknown". The `delivery.reported` job now throws for
->   unknown ids, so BullMQ retries the batch (~75 s); covered by a deterministic test.
-> - **Owner's Recent messages:** `GET /messages/recent` (last 50, masked, `read` folded in) and a
->   table on the Messages page that polls while something is in flight — which also fixes the
->   usage meter lagging after a Replay. Phone layout folds the channel into the first cell.
-> - **Browser E2E:** `e2e/messages.spec.ts` publishes in the UI, finds Meera's email through
->   Mailpit's API and sees Asha's WhatsApp turn "Read". CI now starts the worker too (Playwright
->   `wait: { stdout }`) and writes a throwaway `WHATSAPP_APP_SECRET` into `.env` — **unverified
->   until the next push** (it could not run locally beside the dev stack).
-> - **Checks:** 307 unit + 322 integration (db 53, worker 60, api 209) + 6 E2E, lint, typecheck,
->   build; Messages page Lighthouse accessibility 100, no console errors, 390 px checked.
-> - **Next — W5 D1:** `shift_requests` and the swap/drop/pickup state machine as a pure function.
->   Open questions for the owner then: who approves a swap (manager always, or auto when both
->   agree and no rule breaks?).
-
-> **2026-11-16 (first dev machine, Claude Code) — W4 D5 done.**
-> - **Delivery reports:** senders return the provider's message id (`deliveries.provider_message_id`,
->   `delivered_at`, `read_at`, migration `0017`). `POST /webhooks/whatsapp` verifies Meta's
->   `X-Hub-Signature-256` over the raw body (`WHATSAPP_APP_SECRET`; 404 without it), drops the
->   phone number and writes a `delivery.reported` platform event; `GET /webhooks/whatsapp` is
->   Meta's handshake (`WHATSAPP_VERIFY_TOKEN`). The worker (`applyDeliveryReports`) finds the
->   delivery through the `app.provider_report` switch (ADR 019) and applies `applyProviderReport`:
->   forward only, idempotent; a late failure fails the row, releases the quota and falls back.
->   The fake WhatsApp provider posts the same signed webhooks locally (`FAKE_PROVIDER_REPORT_URL`,
->   `FAKE_PROVIDER_FAILURE=undeliverable`).
-> - **Reminders and missed clock-ins:** BullMQ job scheduler `shift-alerts` on the `alerts` queue
->   (every `ALERT_SCAN_INTERVAL_MS`) → `scanShiftAlerts` (orgs via `app.alert_scan`) →
->   `shift_alerts` insert + outbox event, exactly once → `shift.reminder` / `attendance.missed`
->   handlers on the shared `notifyEmployee` ladder (extracted from the fan-out); managers of the
->   location are emailed for a missed clock-in. Only shifts in the latest publication count.
-> - **Rate limits in Redis:** `RedisThrottlerStorage` (one Lua script per hit) when `REDIS_URL` is
->   set; falls back to memory while Redis is down. Also fixed: the realtime gateway's Redis
->   clients had no `error` listener, so a Redis restart would have crashed the API.
-> - **Verified live:** publish → Asha's WhatsApp `delivered` + `read` via signed fake webhooks;
->   a shift 90 min out → "Shift in 1 hour 29 minutes" WhatsApp, delivered/read; a shift that
->   started 10 min ago with no punch → Meera + owner + unscoped manager emailed (Mailpit), the
->   Bandra-only manager not; `undeliverable` → WhatsApp `failed` "Message undeliverable (131026)"
->   and Rohan emailed instead; a login counted under `shiftora:throttle:*` in Redis. Mutation
->   checks: dropping the publication filter, the signature check, or the "never downgrade
->   delivered" write each turn tests red.
-> - **Checks:** 307 unit + 313 integration (db 53, worker 54, api 206), lint, typecheck, build.
->   `testcontainers` added to `apps/api` dev dependencies (same version as the worker).
-> - **Local `.env`** gained `WHATSAPP_APP_SECRET`, `WHATSAPP_VERIFY_TOKEN`,
->   `FAKE_PROVIDER_REPORT_URL`, `ALERT_SCAN_INTERVAL_MS` (see `.env.example`).
-> - **Next — W4 D6:** end-to-end publish → messages, failure injection end to end.
-
-> **2026-11-16 (first dev machine, Claude Code) — W4 D4 done with a fake provider.**
-> - **What exists:** `FakeMessageSender` (WhatsApp and SMS, `WHATSAPP_PROVIDER=fake`,
->   `FAKE_PROVIDER_FAILURE=none|transient|permanent|rate_limited`), `SendError` kinds, the
->   jittered backoff (`retryDelayMs`), dead letters + fallback (`createFallback`, `nextFallback`),
->   the race-safe quota (`reserveMessage`/`releaseMessage`, `0016`), `delivery.replay` handled by
->   the worker, and the owner's **Messages** page (usage meters, dead letters, Replay) on
->   `GET /messages/dead-letters`, `POST /messages/dead-letters/:id/replay`, `GET /messages/usage`.
-> - **Verified live:** publishing in the demo clinic with `FAKE_PROVIDER_FAILURE=transient` →
->   both WhatsApp messages tried 5 times, dead-lettered, and emailed instead (both in Mailpit);
->   the Messages page listed them with masked numbers and "Email: sent"; after switching the
->   fake to healthy, Replay sent Asha's WhatsApp (status `sent`, `replays 1`, quota 1).
->   Lighthouse accessibility 100. Real BullMQ path covered by a Redis Testcontainer test
->   (retry ×2 then sent; 5 attempts → dead → email → replay → sent). Mutation checks: removing the
->   quota's limit clause and never flagging the final attempt both turn tests red.
-> - **Also fixed:** the manager shell's `SidebarInset` had no `min-w-0`, so a wide table made the
->   whole page scroll sideways at tablet widths.
-> - **Checks:** 285 unit + 287 integration (db 53, worker 37, api 197) + 5 E2E, lint, typecheck,
->   build, format clean.
-> - **Next — W4 D5:** delivery-status webhooks (signature-verified), repeatable jobs (shift
->   reminders, missed clock-in), throttler storage to Redis. The Meta adapter can land with the
->   webhook work. Local `.env` now has `WHATSAPP_PROVIDER=fake`; set `FAKE_PROVIDER_FAILURE` to
->   watch the failure path.
-
-> Last session: 2026-11-15 (Hermes, second dev machine) — **W4 D1–D3 done; week 4 is a third
-> finished.**
+> **2026-11-16 (second dev machine, Hermes) — W5 D4–D6 done: week 5 is finished.**
 >
-> - **W4 D1 — the worker and the relay.** `apps/worker` (`@shiftora/worker`, BullMQ) claims
->   pending outbox rows with `for update skip locked` inside a transaction that sets
->   `app.outbox_relay` (migration `0011` adds the two `outbox`-only policies, ADR 017),
->   enqueues them (job id = outbox id), then marks them published. `pnpm dev` runs it beside the
->   API and web. Verified live: 20 pending → 20 published, 20 jobs waiting, 0 failed, and a
->   sampled job's `outbox_id` matched a published row.
-> - **W4 D2 — the fan-out.** `notifications` + `deliveries` (`0012`, RLS); one personalised
->   message per affected employee, not the whole rota; templates in
->   `packages/domain/notifications`; routing by the person's own preference with email as the
->   ladder's floor and **never** a silent WhatsApp. Verified live: one publish → one delivery row
->   per person, correct addresses and statuses.
-> - **W4 D3 — email, account mail and Web Push.** SMTP (nodemailer → Mailpit), a `deliveries`
->   queue, `dispatchDelivery` (attempt counted before the call, reason recorded, throws to ask
->   for backoff, never sends twice) and the **invite email** (`0013`; `invite.created` written in
->   the same transaction as the invite). Then the two halves that were missing:
->   **one-time tokens** (`0014`, hashed, single-use, platform table) with
->   `POST /auth/verify-email`, `POST /auth/password/forgot` (always 202) and
->   `POST /auth/password/reset` (revokes every live session, burns the link), plus three web
->   pages (`/verify-email`, `/forgot-password`, `/reset-password`); and **Web Push**
->   (`0015` `push_subscriptions`, `web-push` + VAPID, a `push` branch in dispatch that fans out
->   to every device and prunes 404/410, `public/push-handler.js` imported into the generated
->   service worker, and a per-device toggle on the staff profile that explains *why* it cannot
->   work when it cannot).
-> - **Verified live, not just in tests:** invite, verification and reset emails all arrived in
->   Mailpit with working links; the verification link answered 204 and then 400 on replay; the
->   reset changed the password (old 401 / new 200) and refused the used link; a real Chrome
->   subscription was stored, **FCM accepted our VAPID push (HTTP 201 with a message id)**, and
->   the toggle flipped to "on" in the built app.
-> - **Checks:** 271 unit + 265 integration (db 53, api 187, worker 25) + 5 E2E, 16 migrations,
->   72 endpoints, lint and typecheck clean. Tree clean at the commit that follows this note.
-> - **Next — W4 D4:** WhatsApp and SMS adapters behind the same `dispatchDelivery` contract,
->   `message_usage` for the per-org quota, a dead-letter queue with a replay button, and fallback
->   down the routing ladder when a channel fails permanently. **Provider decision still open**
->   (Meta Cloud API / Twilio sandbox / fake adapter first); the fake transport is worth building
->   either way.
-> - **Watch out for:** `psql` as `app_user` returns an empty set for tenant tables without
->   `app.org_id` (connect as `postgres` to inspect). The service worker only exists in a build —
->   test push with `vite preview`, never `dev`. `notifications.outbox_id` is `NOT NULL`, so any
->   fixture needs an outbox row first. `.env.example` ships VAPID keys **empty** on purpose:
->   generate your own pair, or leave them blank and push is simply off.
->
-> **Same day, after the handoff — the WhatsApp hole.** Publishing to staff who chose WhatsApp
-> produced a delivery row on a channel with no sender: it retried five times and stayed in the
-> failed set, and because the fan-out inserted only the *first* rung of the routing ladder, those
-> people received **nothing at all** — no email fallback. Three changes fixed it:
-> `sendableChannels(adapters)` turns "is there a provider?" into the channel policy handed to
-> `routeChannels`, so routing never offers a channel this worker cannot send on; a row that still
-> lands on a sender-less channel (or push with no VAPID keys) is `skipped` with the reason, never
-> `retried`, because five attempts cannot conjure a provider; and the push rung now reads real
-> `push_subscriptions` counts instead of a hard-coded `0`, which is why push was unreachable
-> even after D3 shipped it. A `MessageSender` contract (same shape as `Mailer`) is in place for
-> the providers D4 adds. Verified live: Asha — a WhatsApp preference — now gets an **email
-> delivery `sent` on the first attempt**, and the message is in Mailpit; the two pre-fix rows
-> stay in the failed set as the before-picture. 272 unit + 269 integration, lint, typecheck and
-> build clean.
-
-> **2026-11-16 — pulled onto the first dev machine (Claude Code) and brought up from the
-> handoff alone.** Existing database migrated 0005 → 0015 in place; VAPID keys generated into
-> `.env`; `pnpm dev` runs API + web + worker; `pnpm db:seed` works. 272 unit + 269 integration
-> green as reported. Two fixes, both found only on a different day/machine:
-> - **E2E seed used a fixed week (`2026-11-09`)** while the board opens on the current week, so
->   "a manager adds a shift…" failed the Monday after it was written. `e2e/seed.ts` now seeds
->   `startOfWeek(toLocal(now, zone).date)`. 5/5 E2E pass.
-> - **Week board header covered the first employee row.** The day headers were `sticky top-14`
->   inside the `overflow-x-auto` wrapper, which is the scroll container `sticky` measures from,
->   so they sat 56 px down on top of row one. Now `top-0` (verified in Chrome). A header that
->   stays put while the *page* scrolls needs a vertical scroll container: follow-up in §18.
-> - Playwright's browser build moved (1234 → 1248): on a machine with an older one, run
->   `pnpm --filter @shiftora/web exec playwright install chromium` once.
->
-> **Same day — refresh rate limit per login (owner's decision).** `/auth/refresh` used the
-> per-IP limit, and the app refreshes on every full page load, so a clinic's staff behind one
-> internet connection would log each other out after ten reloads a minute (reproduced locally:
-> a 429 on refresh bounced the demo owner to the login page). `RefreshThrottlerGuard` now keys
-> the limit by the session family, falling back to the IP for a missing or unknown cookie. Three
-> new integration tests: twelve people behind one IP all refresh (200 ×12); one login across
-> eleven IPs is capped (429 on the 11th); junk cookies from one IP are still capped. Mutation
-> check: keying unknown cookies by their value turns the junk-cookie test red. 272 unit +
-> 272 integration (api 190) + 5 E2E green. One `pnpm test:int` run had a single API test *file*
-> fail with no failing test while the db/worker suites and the dev stack ran in parallel; three
-> reruns were clean and the log of that run didn't name the file — watch for it.
+> - **D4 — the claim.** `POST /me/open-shifts/:id/claim` is a conditional UPDATE
+>   (`status = 'open' AND employee_id IS NULL AND version = <read>`): three simultaneous claims →
+>   exactly one 200 and two 409s, with the winner's id on the row. `idempotency_keys` (`0020`, RLS,
+>   unique per org + route + key, request hash, stored response) reserves the key **before** the
+>   work, so a retry returns the first answer byte for byte and never claims twice; the same key on
+>   a different shift is `idempotency.key_reuse`. The claim audits before/after, writes one
+>   `shift.claimed` event (managers only — the claimer pressed the button), and patches the
+>   publication so reminders follow the new person. ADR 019 records the reasoning.
+> - **D5 — the screens.** Staff: "Open shifts you can take" (claim with a key minted per tap, and a
+>   plain "someone else took it" when the race is lost), "Your requests" (waiting on you / yours,
+>   with withdraw and the manager's note), and the two asks in the shift drawer ("Ask a colleague",
+>   "I cannot work this shift"). Manager: a **Requests** inbox at `/o/:orgId/requests` with
+>   approve/reject, in the sidebar. Buttons come from the server's `actions`, so the UI cannot offer
+>   a transition the state machine refuses.
+> - **D6 — the writing.** ADR 019 and `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md`:
+>   the naive read-then-write, why a lock and a queue are both wrong here, the actual statement, the
+>   retry problem and where the idempotency row has to be written, and the parallel test.
+> - **Verified in the browser end to end:** Asha claimed an offered shift (it left the open list and
+>   appeared in her week), asked to give it up (request showed "Waiting on a manager"), Priya
+>   approved it from the inbox (inbox emptied, shift left Asha's week). Also hit and confirmed the
+>   rule that requests need a published week — the app shows the server's sentence rather than
+>   hiding the button.
+> - **Checks:** 334 unit + 370 integration (db 61, api 241, worker 68) + 6 E2E; lint, typecheck,
+>   build green; 21 migrations; 90 endpoints.
+> - **Next — W6:** pay rules, overtime and the payroll export (rates, premiums, overtime after N
+>   hours, a CSV the accountant actually accepts). The API for requests is complete; W6 should not
+>   need to revisit it.
+> - **Watch out for:** a claim needs `Idempotency-Key` and must go through `IdempotencyService` —
+>   calling `OpenShiftsService.claim` directly would work once and lie on every retry. `psql` as
+>   `app_user` sees no tenant rows without `app.org_id`. The service worker only exists in a build,
+>   so test push with `vite preview`.
 
 ## 3. Product
 
@@ -1074,7 +928,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D3 | ✅ | Open shifts: post, eligibility query (job role, location, hours, rest), notify eligible staff. **Done 2026-11-16:** `OpenShiftsService` (`candidates`, `offer`/`offerShift`, `mine`) on the shared `assessMany` + `canTakeOpenShift`, migration `0019` (`offered_at` + partial index), `handleShiftOffered` in the worker | Only eligible staff are notified: 5 API tests (of five people only the free nurse at the branch is offered it and sees it; a drop's freed shift goes to the others, not the dropper), 2 worker tests, 1 template test; mutation check: offering to everyone at the location turns the test red |
 | D4 | ✅ | Race-safe claim (conditional UPDATE + version) + `idempotency_keys`. **Done 2026-11-16:** `POST /me/open-shifts/:id/claim` (`ShiftsRepository.claim` updates only while `status = open`, `employee_id is null` **and** `version` is the one it read), `idempotency_keys` (`0020`, RLS, unique per org + route + key, request hash, stored response), `IdempotencyService` (reserve → run → store; the reservation is the lock, the unique index is the serialization point), audit `shift.claimed` + `shift.claimed` event (managers only — the claimer pressed the button), `recordToldChange` so reminders follow the new person, realtime hint | Three claims at the same instant → exactly one 200 and two 409s with the winner on the row; a retry with the same key returns the first answer byte for byte and claims once; the same key on a different shift is refused (`idempotency.key_reuse`); 8 integration tests |
 | D5 | ✅ | **Done 2026-11-16:** staff app gains "Open shifts you can take" (claim, with a per-tap `Idempotency-Key` and a plain "someone else took it" when the race is lost) and "Your requests" (what I asked for, what is waiting on my answer, withdraw), plus "Ask a colleague to take it" / "I cannot work this shift" in the shift drawer; manager gains a **Requests** inbox (`/o/:orgId/requests`) with approve/reject, wired into the sidebar for managers. Buttons come from the server's `actions`, so the UI cannot offer a move the state machine would refuse | Full loop in the browser: Asha claimed an offered shift (it left the open list and appeared in her week), asked to give it up (request showed "Waiting on a manager"), Priya approved it from the inbox (inbox emptied, the shift left Asha's week and returned to open) |
-| D6 | ☐ | Buffer + blog draft: "How I stop two nurses taking the same shift" | Draft in `docs/blog/` |
+| D6 | ✅ | **Done 2026-11-16:** ADR 019 (why a conditional update beats a lock or a queue, and why the idempotency row must be written before the work) and the blog draft `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md` — the naive read-then-write, the three fixes that do not work, the real statement, the retry problem, and the parallel test that makes the whole thing credible | Draft in `docs/blog/`; week 5 is finished (D1–D6) |
 
 ### Week 6: Pay rules, overtime, payroll export
 

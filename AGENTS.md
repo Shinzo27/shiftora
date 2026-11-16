@@ -301,6 +301,22 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Non-negotiable rules
 
+### Claims, requests and idempotency
+
+- **A claim is a conditional UPDATE, never a read-then-write.** `ShiftsRepository.claim` matches
+  `status = 'open' AND employee_id IS NULL AND version = <the version you read>`; zero rows means
+  someone else won, which is `409 shift.already_taken` — not an internal error and not a retry.
+- **`POST /me/open-shifts/:id/claim` requires an `Idempotency-Key`** and must go through
+  `IdempotencyService.run`: the reservation row is written before the work, and that row is what
+  makes a retry return the first answer instead of a second shift. Do not call
+  `OpenShiftsService.claim` directly from a new route.
+- **`idempotency_keys` is scoped per organisation, route and key**, and stores the response body
+  and status as jsonb. Reusing a key with a different request is refused loudly
+  (`idempotency.key_reuse`), because that is a client bug rather than a retry.
+- **Swap and drop requests only exist for published weeks** (`shift_request.not_published`);
+  an unpublished shift is still a draft a manager edits directly. The web app shows the server's
+  sentence instead of pre-hiding the button, so the rule lives in one place.
+
 ### Notifications, push and account mail
 
 - **A channel with no sender is never offered, and never retried.** `sendableChannels(adapters)` is
