@@ -34,6 +34,7 @@ import { LocationsRepository } from '../locations/locations.repository.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { RealtimeService } from '../realtime/realtime.service.js';
 import type { OrgMember } from '../tenancy/member.js';
+import { OpenShiftsService } from './open-shifts.service.js';
 import { PublicationsRepository } from './publications.repository.js';
 import { SchedulesRepository } from './schedules.repository.js';
 import { ShiftRequestsRepository, type ShiftRequestRecord } from './shift-requests.repository.js';
@@ -76,6 +77,7 @@ export class ShiftRequestsService {
     private readonly requests: ShiftRequestsRepository,
     private readonly shifts: ShiftsRepository,
     private readonly shiftsService: ShiftsService,
+    private readonly openShifts: OpenShiftsService,
     private readonly schedules: SchedulesRepository,
     private readonly publications: PublicationsRepository,
     private readonly employees: EmployeesService,
@@ -286,6 +288,12 @@ export class ShiftRequestsService {
       });
     }
     await this.recordAction(changed, 'manager_approve', request.status);
+    // A dropped shift needs someone: offer it straight away to whoever could take it, except the
+    // person who just gave it up (W5 D3).
+    if (request.type === 'drop') {
+      const open = await this.shifts.findById(given.id);
+      if (open) await this.openShifts.offerShift(open, [request.requesterEmployeeId]);
+    }
     return this.viewOne(changed, { employeeId: null, manager: true });
   }
 

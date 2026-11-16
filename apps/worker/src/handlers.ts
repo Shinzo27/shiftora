@@ -8,7 +8,7 @@ import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
 import { applyDeliveryReports } from './notifications/reports.js';
-import { handleShiftRequestEvent } from './notifications/shift-requests.js';
+import { handleShiftOffered, handleShiftRequestEvent } from './notifications/shift-requests.js';
 import { sendAccountMail } from './platform-mail.js';
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
@@ -122,6 +122,19 @@ export async function handleNotificationJob(
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
         console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
+      }
+      return result;
+    }
+    // An open shift offered to the staff who could take it (W5 D3).
+    case 'shift.offered': {
+      const result = await handleShiftOffered(
+        db,
+        { id: job.outboxId, orgId: job.orgId, topic: job.topic, payload: job.payload },
+        { usable: deps.usable, appUrl: deps.appUrl },
+      );
+      await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
+      if (result.notifications > 0) {
+        console.info(`notifications: shift.offered → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
     }

@@ -7,6 +7,8 @@ import { JobRolesModule } from '../job-roles/job-roles.module.js';
 import { LocationsModule } from '../locations/locations.module.js';
 import { OutboxModule } from '../outbox/outbox.module.js';
 import { RealtimeModule } from '../realtime/realtime.module.js';
+import { OpenShiftsController } from './open-shifts.controller.js';
+import { OpenShiftsService } from './open-shifts.service.js';
 import { PublicationsRepository } from './publications.repository.js';
 import { SchedulesRepository } from './schedules.repository.js';
 import { SchedulesService } from './schedules.service.js';
@@ -34,7 +36,12 @@ import { ShiftsService } from './shifts.service.js';
     OutboxModule,
     RealtimeModule,
   ],
-  controllers: [SchedulingController, ShiftsController, ShiftRequestsController],
+  controllers: [
+    SchedulingController,
+    ShiftsController,
+    ShiftRequestsController,
+    OpenShiftsController,
+  ],
   providers: [
     ShiftTemplatesService,
     SchedulesService,
@@ -44,6 +51,7 @@ import { ShiftsService } from './shifts.service.js';
     ShiftsRepository,
     PublicationsRepository,
     ShiftRequestsService,
+    OpenShiftsService,
     ShiftRequestsRepository,
   ],
   // Attendance checks that a punch's shift belongs to the caller at that location.

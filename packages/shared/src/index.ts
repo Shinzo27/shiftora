@@ -11,3 +11,4 @@ export * from './publication.js';
 export * from './scheduling.js';
 export * from './shifts.js';
 export * from './shift-requests.js';
+export * from './open-shifts.js';

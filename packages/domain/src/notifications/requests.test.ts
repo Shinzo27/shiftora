@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderRequestForManager, renderRequestOutcome, renderSwapAsked } from './requests.js';
+import {
+  renderOpenShiftOffered,
+  renderRequestForManager,
+  renderRequestOutcome,
+  renderSwapAsked,
+} from './requests.js';
 
 const base = {
   type: 'swap' as const,
@@ -68,5 +73,18 @@ describe('request messages', () => {
       recipientName: 'Asha Mehta',
     });
     expect(dropped.body).toContain('open for others to pick up');
+  });
+});
+
+describe('open shift offers', () => {
+  it('says it is first come, first served, with the role', () => {
+    const message = renderOpenShiftOffered({
+      employeeName: 'Meera Iyer',
+      shift: base.shift,
+      roleName: 'Nurse',
+    });
+    expect(message.subject).toBe('Open shift you can take · Mon 30 Nov 09:00–17:00');
+    expect(message.body).toContain('Mon 30 Nov · 09:00–17:00 · Andheri · Nurse');
+    expect(message.body).toContain('The first person to take it gets it.');
   });
 });

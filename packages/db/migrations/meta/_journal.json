@@ -134,6 +134,13 @@
       "when": 1794831108182,
       "tag": "0018_shift_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1794832283152,
+      "tag": "0019_open_shift_offers",
+      "breakpoints": true
     }
   ]
 }

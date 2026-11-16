@@ -148,6 +148,19 @@ export class EmployeesService {
     return { locationIds, jobRoleIds };
   }
 
+  /**
+   * Active staff working at this location: the candidates for an open shift there. Unscoped
+   * (the caller has already proven access to the location).
+   */
+  activeAt(locationId: string): Promise<EmployeeRecord[]> {
+    return this.employees.list({
+      scope: { kind: 'all' },
+      status: 'active',
+      locationId,
+      limit: 1_000,
+    });
+  }
+
   async get(id: string): Promise<Employee> {
     const [employee] = await this.withRelations([await this.findAccessible(id)]);
     return employee!;

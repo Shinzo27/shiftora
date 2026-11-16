@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, gt, inArray, lt, ne, schema, sql } from '@shiftora/db';
+import { and, asc, eq, gt, inArray, isNotNull, lt, ne, schema, sql } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -102,6 +102,31 @@ export class ShiftsRepository {
       .where(and(eq(shifts.orgId, this.context.orgId), eq(shifts.id, id)))
       .returning();
     return row!;
+  }
+
+  async markOffered(id: string, at: Date): Promise<void> {
+    await this.context.tx
+      .update(shifts)
+      .set({ offeredAt: at })
+      .where(and(eq(shifts.orgId, this.context.orgId), eq(shifts.id, id)));
+  }
+
+  /** Offered, still-open shifts at these locations that have not started (partial index 0019). */
+  async offeredOpen(locationIds: string[], after: Date): Promise<ShiftRecord[]> {
+    if (locationIds.length === 0) return [];
+    return this.context.tx
+      .select()
+      .from(shifts)
+      .where(
+        and(
+          eq(shifts.orgId, this.context.orgId),
+          inArray(shifts.locationId, locationIds),
+          eq(shifts.status, 'open'),
+          isNotNull(shifts.offeredAt),
+          gt(shifts.startsAt, after),
+        ),
+      )
+      .orderBy(asc(shifts.startsAt));
   }
 
   async remove(id: string): Promise<void> {

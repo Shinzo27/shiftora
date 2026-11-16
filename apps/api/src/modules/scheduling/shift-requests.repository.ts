@@ -74,6 +74,24 @@ export class ShiftRequestsRepository {
     return row ?? null;
   }
 
+  /** Which of these shifts this person gave up through an approved drop. */
+  async droppedBy(employeeId: string, shiftIds: string[]): Promise<Set<string>> {
+    if (shiftIds.length === 0) return new Set();
+    const rows = await this.context.tx
+      .select({ shiftId: shiftRequests.shiftId })
+      .from(shiftRequests)
+      .where(
+        and(
+          eq(shiftRequests.orgId, this.context.orgId),
+          eq(shiftRequests.type, 'drop'),
+          eq(shiftRequests.status, 'approved'),
+          eq(shiftRequests.requesterEmployeeId, employeeId),
+          inArray(shiftRequests.shiftId, shiftIds),
+        ),
+      );
+    return new Set(rows.map((row) => row.shiftId));
+  }
+
   /** The requests a person is part of, as requester or as the named colleague. */
   async forEmployee(employeeId: string): Promise<ShiftRequestRecord[]> {
     return this.context.tx

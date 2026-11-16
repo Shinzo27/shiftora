@@ -438,6 +438,11 @@ page (130 kB gzip) instead of the whole app (339 kB before).
   publication), audited per shift, and announced through the outbox; the request's own status
   moves with a conditional update (`where status = <seen>`), so two deciders produce one
   decision.
+- **Offering (implemented, W5 D3).** `POST /shifts/:id/offer` sets `offered_at` and writes one
+  `shift.offered` event naming the people `canTakeOpenShift` allows at that moment (location, job
+  role, no overlap, no time off / rest / weekly-hours problem; availability does not exclude). The
+  worker messages exactly them; `GET /me/open-shifts` re-checks per person on read. An approved
+  drop offers the freed shift at once, excluding the person who dropped it.
 - Test: N concurrent claims via `Promise.all` against a real Postgres → exactly one winner.
 
 ### 7.5 Attendance and anti-fraud (geofence in W3 D2, matching in W3 D4, corrections in W3 D5)

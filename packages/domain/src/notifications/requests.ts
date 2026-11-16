@@ -113,3 +113,27 @@ export function renderRequestOutcome(
     ].join('\n'),
   };
 }
+
+/**
+ * To someone who could take an open shift (W5 D3). Says plainly that it is first come, first
+ * served, so nobody reads it as an assignment.
+ */
+export function renderOpenShiftOffered(context: {
+  employeeName: string;
+  shift: RequestShiftLine;
+  roleName: string | null;
+  appUrl?: string;
+}): RenderedMessage {
+  const { employeeName, shift, roleName, appUrl } = context;
+  return {
+    subject: `Open shift you can take · ${dayLabel(shift.date)} ${shift.startTime}–${shift.endTime}`,
+    body: [
+      `Hi ${first(employeeName)}, a shift is open and you are free to take it:`,
+      '',
+      `${line(shift)}${roleName ? ` · ${roleName}` : ''}`,
+      '',
+      'The first person to take it gets it.',
+      ...(appUrl ? ['', `Take it in the app: ${appUrl}`] : []),
+    ].join('\n'),
+  };
+}

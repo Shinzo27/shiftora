@@ -1,5 +1,6 @@
 import { and, eq, inArray, schema, type Database, type Transaction } from '@shiftora/db';
 import {
+  renderOpenShiftOffered,
   renderRequestForManager,
   renderRequestOutcome,
   renderSwapAsked,
@@ -239,4 +240,99 @@ async function load(tx: Transaction, orgId: string, requestId: string): Promise<
       decisionNote: request.decisionNote,
     },
   };
+}
+
+/**
+ * `shift.offered` (W5 D3): the open shift to each person the API found eligible when it was
+ * offered — named in the event, so the worker never widens the audience. Someone archived or
+ * already given the shift since gets nothing; claiming re-checks eligibility anyway (W5 D4).
+ */
+export async function handleShiftOffered(
+  db: Database,
+  event: OutboxEvent,
+  deps: RequestNotifyDeps,
+): Promise<FanOutResult> {
+  const payload = (event.payload ?? {}) as { shiftId?: unknown; employeeIds?: unknown };
+  const employeeIds = Array.isArray(payload.employeeIds)
+    ? payload.employeeIds.filter((id): id is string => typeof id === 'string')
+    : [];
+  if (typeof payload.shiftId !== 'string' || employeeIds.length === 0) return NOTHING;
+  const shiftId = payload.shiftId;
+
+  return db.transaction(async (tx) => {
+    await setOrg(tx, event.orgId);
+    const [shift] = await tx
+      .select({
+        status: schema.shifts.status,
+        startsAt: schema.shifts.startsAt,
+        endsAt: schema.shifts.endsAt,
+        jobRoleId: schema.shifts.jobRoleId,
+        locationName: schema.locations.name,
+        timezone: schema.locations.timezone,
+      })
+      .from(schema.shifts)
+      .innerJoin(schema.locations, eq(schema.locations.id, schema.shifts.locationId))
+      .where(and(eq(schema.shifts.orgId, event.orgId), eq(schema.shifts.id, shiftId)));
+    // Taken or cancelled before the message went out: nobody needs to hear about it.
+    if (!shift || shift.status !== 'open') return NOTHING;
+
+    const role = shift.jobRoleId
+      ? (
+          await tx
+            .select({ name: schema.jobRoles.name })
+            .from(schema.jobRoles)
+            .where(eq(schema.jobRoles.id, shift.jobRoleId))
+        )[0]
+      : undefined;
+    const start = toLocal(shift.startsAt, shift.timezone);
+    const end = toLocal(shift.endsAt, shift.timezone);
+    const line: RequestShiftLine = {
+      date: start.date,
+      startTime: start.time,
+      endTime: end.time,
+      locationName: shift.locationName,
+    };
+
+    const staff = await tx
+      .select({
+        id: schema.employees.id,
+        name: schema.employees.name,
+        email: schema.employees.email,
+        phone: schema.employees.phone,
+        notifyChannel: schema.employees.notifyChannel,
+        status: schema.employees.status,
+      })
+      .from(schema.employees)
+      .where(
+        and(eq(schema.employees.orgId, event.orgId), inArray(schema.employees.id, employeeIds)),
+      );
+    const devices = await pushSubscriptionCounts(tx, employeeIds);
+    const path = `/o/${event.orgId}/shifts`;
+
+    const deliveryIds: string[] = [];
+    let notifications = 0;
+    for (const person of staff) {
+      if (person.status === 'archived') continue;
+      const result = await notifyEmployee(tx, {
+        orgId: event.orgId,
+        outboxId: event.id,
+        employee: person,
+        pushDevices: devices.get(person.id) ?? 0,
+        kind: event.topic,
+        message: renderOpenShiftOffered({
+          employeeName: person.name,
+          shift: line,
+          roleName: role?.name ?? null,
+          appUrl: `${deps.appUrl}${path}`,
+        }),
+        payload: { shiftId, url: path },
+        usable: deps.usable,
+      });
+      if (result) {
+        notifications += 1;
+        if (result.deliveryId) deliveryIds.push(result.deliveryId);
+      }
+    }
+    return { notifications, deliveries: deliveryIds.length, deliveryIds };
+  });
 }

@@ -50,6 +50,11 @@ export const shifts = pgTable(
     /** Increases on every change; clients send it back to detect concurrent edits. */
     version: integer().notNull().default(1),
     notes: text(),
+    /**
+     * When a manager offered this open shift to the eligible staff (W5 D3). Null = not offered:
+     * an open shift on a draft can stay the manager's business until they choose to offer it.
+     */
+    offeredAt: timestamptz(),
     ...timestamps,
   },
   (t) => [
@@ -92,6 +97,10 @@ export const shifts = pgTable(
     // Every check for one employee (overlap, hours, rest) walks this index.
     index('shifts_org_employee_start_idx').on(t.orgId, t.employeeId, t.startsAt),
     index('shifts_org_location_start_idx').on(t.orgId, t.locationId, t.startsAt),
+    // "Open shifts I could take": offered and still open, by location (migration 0019).
+    index('shifts_offered_open_idx')
+      .on(t.orgId, t.locationId, t.startsAt)
+      .where(sql`status = 'open' AND offered_at IS NOT NULL`),
   ],
 );
 

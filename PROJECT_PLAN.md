@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-16 (Week 5, Day 2 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-16 (Week 5, Day 3 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W5 D3 | Open shifts: `GET /shifts/:id/candidates` (everyone at the location, eligible first, with reasons), `POST /shifts/:id/offer` (`shifts.offered_at`, `0019`; one `shift.offered` event naming only the eligible), `GET /me/open-shifts`; an approved drop offers the freed shift automatically, never back to the person who dropped it | ✅ Done | see `git log` |
 | W5 D2 | Swap/drop API: staff ask (`/me/shift-requests`), the colleague accepts or declines, a manager approves or rejects (`/shift-requests`, scoped); approval locks both shifts in id order, re-checks them and the new assignees (blocking vs acknowledged advisories), reassigns via "open" and records what staff were told; every step messaged through the outbox; the minute scan expires undecided requests whose shift started | ✅ Done | see `git log` |
 | W5 D1 | `shift_requests` (`0018`, RLS, one open request per shift on either side, swap ⇔ colleague, open ⇔ undecided) and the swap/drop/pickup state machine as pure functions; `assessAssignment` (blocking vs advisory) shared by approvals and open shifts | ✅ Done | see `git log` |
 | W4 D6 | End to end: one `startPipeline` wiring for production and tests; an outbox → relay → fan-out → provider → report → fallback test on real Postgres + Redis with failure injection; a Playwright test that publishes in the browser and finds the email in Mailpit and the WhatsApp "Read"; the owner's Recent messages list (`GET /messages/recent`); a report that beats the send is retried, not lost | ✅ Done | see `git log` |
@@ -96,14 +97,32 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 19 migrations, 687 automated tests (332 unit, 355 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 86 API endpoints, a React web app on shadcn/ui
+Numbers today: 20 migrations, 695 automated tests (333 unit, 362 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 89 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-16 (first dev machine, Claude Code) — W5 D1–D3 done (one commit per day).**
+> - **Owner's decision:** a manager always approves a swap (the colleague's yes is never enough).
+> - **D1:** `packages/domain/requests/shift-request.ts` (state machine, exhaustively tested) and
+>   `scheduling/eligibility.ts` (blocking vs advisory), `shift_requests` (`0018`).
+> - **D2:** `/me/shift-requests` (ask, accept, decline, cancel) and `/shift-requests` (scoped inbox,
+>   approve, reject). Approval locks both shifts in id order, re-checks, reassigns via "open", and
+>   records the change as told (schedule version + patched publication, so reminders follow the new
+>   person). Worker tells the colleague / managers / affected people; the minute scan expires
+>   undecided requests whose shift started.
+> - **D3:** open shifts — candidates with reasons, offer to the eligible only (`shift.offered`,
+>   `offered_at` in `0019`), `/me/open-shifts`; an approved drop offers the shift automatically.
+> - **Not built yet:** claiming an open shift (D4: conditional UPDATE + version + idempotency keys),
+>   and every screen for this (D5: staff requests and open shifts, manager inbox). The API is
+>   complete enough for D5 to be UI only.
+> - **Checks:** 333 unit + 362 integration (db 61, worker 68, api 233) + 6 E2E; lint, typecheck, build. Mutation checks:
+>   exchange ordering, approval re-check, offer eligibility filter.
+> - **Next — W5 D4:** race-safe claim of an open shift + `idempotency_keys`.
 
 > **2026-11-16 (first dev machine, Claude Code) — W4 D6 done: week 4 is finished.**
 > - **One wiring:** `apps/worker/src/pipeline.ts` (`startPipeline`) builds the relay, the
@@ -389,6 +408,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | **WhatsApp/SMS: a fake provider first, Meta next** (owner's choice). The whole delivery pipeline (quota, retries, dead letters, fallback, replay) is built and tested against `FakeMessageSender`, which can fail permanently, transiently or with a 429 on demand; the Meta Cloud API adapter replaces it behind `MessageSender`. Provider errors are classified by the adapter (`SendError.kind`): permanent → fall back now, transient → retry with jittered exponential backoff (5 s → 30 min cap), 429 → pause the queue without spending an attempt. After the last attempt the delivery is **dead-lettered in the database** (`dead_lettered_at`) and falls back to the next free rung; paid channels are never a fallback. The quota (1,000 WhatsApp + 200 SMS per active location per Indian calendar month, until billing) is reserved with one conditional upsert before sending and released if the provider refuses. The dead-letter page and Replay are owner-only; Replay goes through the outbox like every other side effect | 2026-11-16 |
+| — | **Open shifts are offered, not broadcast**: a manager (or an approved drop) offers an open shift; the API computes who could take it at that moment and names them in the `shift.offered` event, and the worker messages exactly those people. Availability does not exclude anyone (a preference); rest, weekly hours, time off, role, location and overlap do. The person who dropped a shift is never offered it back | 2026-11-16 |
 | — | **An approved swap or drop is published on its own** (`recordToldChange` + a patched publication): the people involved were told by the request messages, so the schedule's published version moves with the change when there were no other drafts, and the latest publication carries the new assignee — reminders follow the new person and the next publish does not re-announce it | 2026-11-16 |
 | — | **Only published shifts can be swapped or dropped** (in the latest publication, with the requester on it); a draft is the manager's to change directly. A swap needs a colleague with a login (they must accept); an owner with no staff profile cannot ask (403) | 2026-11-16 |
 | — | **A manager always approves a swap** (owner's decision): the colleague accepting moves it to `pending_manager`, never to `approved`. A drop goes straight to a manager; a pickup (open shift) is decided by the race-safe claim (D4), so it is recorded already approved. Any open request can be withdrawn by its requester, rejected by a manager or expire when the shift starts | 2026-11-16 |
@@ -722,7 +742,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0018)
+### 10.1 Implemented (migrations 0000–0019)
 
 | Migration | Contents |
 |---|---|
@@ -742,6 +762,7 @@ Fastify
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
+| `0019_open_shift_offers` | `shifts.offered_at` and a partial index `(org_id, location_id, starts_at) WHERE status = 'open' AND offered_at IS NOT NULL` for "open shifts I could take" |
 | `0018_shift_requests` | `shift_requests` (type swap\|drop\|pickup, status, shift, requester, colleague, optional shift in return, note, responded/decided times, decider, decision note; partial unique indexes: one open request per shift and per shift-in-return; CHECKs: swap ⇔ colleague, not self, open ⇔ undecided; same-org FKs; RLS) |
 | `0017_delivery_reports_and_shift_alerts` | `deliveries.provider_message_id` (unique per channel), `delivered_at`, `read_at`; `shift_alerts` (org, shift, `reminder`\|`missed_clock_in`; same-org FK, cascade; RLS); `SELECT` switches `app.alert_scan` on `organizations` and `app.provider_report` on `deliveries` (ADR 019) |
 | `0006_shifts` | `shift_status` enum; `shifts`; `schedules (org_id, id, location_id)` unique (FK target, hand-moved above the FK); 3-column FK to the schedule, employee `ON DELETE RESTRICT`, job role `SET NULL (job_role_id)`; **`EXCLUDE USING gist` against double-booking** (hand-written); CHECKs (positive range, break shorter than shift, status matches assignee, version); RLS |
@@ -897,6 +918,9 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /shift-requests/:id` | token + org | owner, manager (scoped) |
 | `POST /shift-requests/:id/approve` | token + org | owner, manager (scoped, writable); `{ note?, acknowledgeWarnings? }`; 409 `not_eligible` (blocking) / `needs_acknowledgement` (advisories) / `invalid_transition` |
 | `POST /shift-requests/:id/reject` | token + org | owner, manager (scoped); `{ note? }` |
+| `GET /shifts/:id/candidates` | token + org | owner, manager (scoped): everyone at the location with `eligible` and the reasons; 409 `shift.not_open` |
+| `POST /shifts/:id/offer` | token + org | owner, manager (scoped, writable): offers an open shift to the eligible staff → `{ offeredTo }` |
+| `GET /me/open-shifts` | token + org | any member: offered open shifts they could take now (never one they dropped) |
 | `POST /schedules/:id/publish` | token + org | owner, manager (in scope), writable location; 200 with `{ schedule, publication }`; one `schedule.published` outbox row + one audit row in the same transaction |
 
 Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_error`,
@@ -910,7 +934,8 @@ Error codes in use: `validation_failed`, `not_found`, `rate_limited`, `internal_
 `delivery.not_found`, `delivery.not_dead_lettered`, `webhook.bad_signature`,
 `webhook.not_configured`, `shift_request.not_found`, `shift_request.invalid_transition`,
 `shift_request.already_open`, `shift_request.not_published`, `shift_request.expired`,
-`shift_request.not_eligible`, `shift_request.needs_acknowledgement`, `employee.profile_required`.
+`shift_request.not_eligible`, `shift_request.needs_acknowledgement`, `employee.profile_required`,
+`shift.not_open`.
 
 ### 11.2 Conventions
 
@@ -1037,8 +1062,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 |---|---|---|---|
 | D1 | ✅ | `shift_requests` and its state machine (swap/drop/pickup) as a pure function. **Done 2026-11-16:** `packages/domain/requests/shift-request.ts` (`transition`, `availableActions`, `initialStatus`), `scheduling/eligibility.ts` (`assessAssignment`, `canTakeOpenShift`, `needsAcknowledgement`), migration `0018` | 21 unit tests (an exhaustive state × action × actor sweep: approval only from `pending_manager` by a manager; decided requests refuse everything) + 8 database tests |
 | D2 | ✅ | Swap/drop APIs; colleague accepts; manager approves; re-validate on approval; lock both shifts in a stable order. **Done 2026-11-16:** 8 endpoints, `ShiftsService.assessMany`, `lockForUpdate` (id order), `recordToldChange` + patched publication, `handleShiftRequestEvent` (colleague / managers / affected people), expiry in the minute scan | Approve re-checks overlap/hours: 19 API tests (overlap and location refused, rest needs acknowledgement, a moved shift refused, two managers approving at once → one 200 + one 409 and one audit row, an overlapping exchange works), 6 worker tests, 4 template tests; mutation checks on the exchange ordering and the re-check |
-| D3 | ⏭ | Open shifts: post, eligibility query (job role, location, hours, rest), notify eligible staff | Only eligible staff are notified |
-| D4 | ☐ | Race-safe claim (conditional UPDATE + version) + `idempotency_keys` | N parallel claims → exactly one winner; retried request returns the same answer |
+| D3 | ✅ | Open shifts: post, eligibility query (job role, location, hours, rest), notify eligible staff. **Done 2026-11-16:** `OpenShiftsService` (`candidates`, `offer`/`offerShift`, `mine`) on the shared `assessMany` + `canTakeOpenShift`, migration `0019` (`offered_at` + partial index), `handleShiftOffered` in the worker | Only eligible staff are notified: 5 API tests (of five people only the free nurse at the branch is offered it and sees it; a drop's freed shift goes to the others, not the dropper), 2 worker tests, 1 template test; mutation check: offering to everyone at the location turns the test red |
+| D4 | ⏭ | Race-safe claim (conditional UPDATE + version) + `idempotency_keys` | N parallel claims → exactly one winner; retried request returns the same answer |
 | D5 | ☐ | Employee UI for requests and open shifts; manager inbox | Full swap in the browser |
 | D6 | ☐ | Buffer + blog draft: "How I stop two nurses taking the same shift" | Draft in `docs/blog/` |
 

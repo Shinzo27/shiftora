@@ -62,6 +62,8 @@ export const errorCodes = {
   shiftRequestNotEligible: 'shift_request.not_eligible',
   /** Approving would break a rule a manager may overrule: say so with acknowledgeWarnings. */
   shiftRequestNeedsAcknowledgement: 'shift_request.needs_acknowledgement',
+  /** Only an open shift (nobody on it) can be offered or picked up. */
+  shiftNotOpen: 'shift.not_open',
   /** The caller has no staff profile in this organisation, so has no shifts to request about. */
   staffProfileRequired: 'employee.profile_required',
   /** A provider webhook whose signature does not match the shared secret. */

@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { scanShiftAlerts } from '../alerts/scan.js';
 import type { OutboxEvent } from '../outbox-relay.js';
-import { handleShiftRequestEvent } from './shift-requests.js';
+import { handleShiftOffered, handleShiftRequestEvent } from './shift-requests.js';
 
 /**
  * W5 D2: each step of a swap or drop tells the right people — the colleague when asked, the
@@ -266,5 +266,61 @@ describe('expiry', () => {
       decidedBy: null,
     });
     expect(rows.find((r) => r.id === later.id)?.status).toBe('pending_manager');
+  });
+});
+
+describe('an offered open shift', () => {
+  async function openShift(): Promise<string> {
+    return asOrg(async (tx) => {
+      const [row] = await tx
+        .insert(schema.shifts)
+        .values({
+          orgId: org.id,
+          scheduleId: org.scheduleId,
+          locationId: org.locationId,
+          employeeId: null,
+          startsAt: new Date('2026-12-20T03:30:00Z'),
+          endsAt: new Date('2026-12-20T11:30:00Z'),
+          status: 'open',
+        })
+        .returning();
+      return row!.id;
+    });
+  }
+
+  async function offered(shiftId: string, employeeIds: string[]): Promise<OutboxEvent> {
+    return asOrg(async (tx) => {
+      const [row] = await tx
+        .insert(schema.outbox)
+        .values({ orgId: org.id, topic: 'shift.offered', payload: { shiftId, employeeIds } })
+        .returning();
+      return { id: row!.id, orgId: org.id, topic: 'shift.offered', payload: row!.payload };
+    });
+  }
+
+  it('messages exactly the people the API found eligible, once', async () => {
+    const shiftId = await openShift();
+    const event = await offered(shiftId, [people.rohan]);
+
+    const result = await handleShiftOffered(db, event, deps);
+    const again = await handleShiftOffered(db, event, deps);
+
+    expect(result).toMatchObject({ notifications: 1, deliveries: 1 });
+    expect(again).toMatchObject({ notifications: 0 });
+    const sent = await recipients(event.id);
+    expect(sent.map((r) => r.who)).toEqual(['Rohan Desai']);
+    expect(sent[0]!.subject).toMatch(/^Open shift you can take · /);
+  });
+
+  it('sends nothing once the shift has been taken', async () => {
+    const shiftId = await openShift();
+    const event = await offered(shiftId, [people.rohan]);
+    await asOrg((tx) =>
+      tx.execute(
+        sql`update shifts set status = 'assigned', employee_id = ${people.rohan} where id = ${shiftId}`,
+      ),
+    );
+
+    expect(await handleShiftOffered(db, event, deps)).toMatchObject({ notifications: 0 });
   });
 });
