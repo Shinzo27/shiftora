@@ -87,6 +87,17 @@ export class ApiClient {
     return this.request<T>('DELETE', path, options);
   }
 
+  /**
+   * A file from the API (a payroll export): same auth, org header and refresh-and-retry as every
+   * other call, but the body comes back as a Blob for the browser to save.
+   */
+  async download(path: string, options: RequestOptions = {}): Promise<Blob> {
+    let res = await this.send('GET', path, options);
+    if (res.status === 401 && (await this.refresh())) res = await this.send('GET', path, options);
+    if (!res.ok) throw await toApiError(res);
+    return res.blob();
+  }
+
   async request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
     let res = await this.send(method, path, options);
     // Auth endpoints answer 401 for wrong passwords etc.; never refresh-and-retry those.

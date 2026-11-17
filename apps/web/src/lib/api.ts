@@ -1,14 +1,15 @@
 import type {
   Attendance,
-  ClaimOpenShiftResult,
   AuthResponse,
   AuthUser,
+  ClaimOpenShiftResult,
   ClockInRequest,
   ClockOutRequest,
   ClockResult,
   CreateEmployeeRequest,
   CreateLocationRequest,
   CreateOrgRequest,
+  CreatePayPeriod,
   CreateScheduleRequest,
   CreateShiftRequest,
   DeadLetter,
@@ -25,6 +26,7 @@ import type {
   OpenShift,
   OrgSummary,
   Page,
+  PayPeriodView,
   PublishPreview,
   PublishResult,
   RecentMessage,
@@ -262,4 +264,16 @@ export const messagesApi = {
     api.post<ReplayResult>(`/messages/dead-letters/${id}/replay`, { orgId }),
   usage: (orgId: string) => api.get<MessageUsage>('/messages/usage', { orgId }),
   recent: (orgId: string) => api.get<RecentMessage[]>('/messages/recent', { orgId }),
+};
+
+/** Pay periods and payroll (W6): managers set periods up; owners approve, read and export. */
+export const payrollApi = {
+  periods: (orgId: string) => api.get<PayPeriodView[]>('/pay-periods', { orgId }),
+  create: (orgId: string, body: CreatePayPeriod) =>
+    api.post<PayPeriodView>('/pay-periods', { orgId, body }),
+  remove: (orgId: string, id: string) => api.delete<void>(`/pay-periods/${id}`, { orgId }),
+  approve: (orgId: string, id: string) =>
+    api.post<PayPeriodView>(`/pay-periods/${id}/approve`, { orgId }),
+  export: (orgId: string, id: string, query: string) =>
+    api.download(`/pay-periods/${id}/export?${query}`, { orgId }),
 };

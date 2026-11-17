@@ -658,6 +658,10 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   the day before the period's first week (`payWindow`), runs `computePay` per person and keeps the
   lines dated inside the period (`linesInPeriod`), so each minute is paid in exactly one period.
   `PayLocksModule` refuses punch corrections and backdated pay rules inside a paid period.
+- **Export (W6 D5, implemented):** `PayrollExportService` reads `timesheet_lines` in pages of
+  1 000 (stable order) and writes each row to a `PassThrough` already handed to Fastify, waiting
+  on `drain` — CSV by hand (BOM, RFC 4180), XLSX through exceljs's streaming `WorkbookWriter`.
+  All inside the request's tenant transaction, so RLS applies to every page.
 - Rules are versioned JSON validated by a Zod schema, e.g.:
   ```json
   {

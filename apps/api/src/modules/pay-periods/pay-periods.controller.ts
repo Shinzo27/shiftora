@@ -7,9 +7,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Query,
+  Res,
 } from '@nestjs/common';
+import type { FastifyReply } from 'fastify';
 import {
   createPayPeriod,
+  payrollExportQuery,
+  type PayrollExportQuery,
   type CreatePayPeriod,
   type PayPeriodView,
   type PayrollEmployee,
@@ -18,6 +23,7 @@ import {
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { Roles } from '../tenancy/decorators.js';
 import { PayPeriodsService } from './pay-periods.service.js';
+import { PayrollExportService } from './payroll-export.service.js';
 
 /**
  * Pay periods. Managers set them up and see what blocks approval; only an owner approves and
@@ -25,7 +31,10 @@ import { PayPeriodsService } from './pay-periods.service.js';
  */
 @Controller('pay-periods')
 export class PayPeriodsController {
-  constructor(private readonly periods: PayPeriodsService) {}
+  constructor(
+    private readonly periods: PayPeriodsService,
+    private readonly exports: PayrollExportService,
+  ) {}
 
   @Roles('owner', 'manager')
   @Get()
@@ -66,5 +75,19 @@ export class PayPeriodsController {
   @Get(':id/payroll')
   payroll(@Param('id', ParseUUIDPipe) id: string): Promise<PayrollEmployee[]> {
     return this.periods.payroll(id);
+  }
+
+  /**
+   * The approved period as a file, streamed: `?format=csv&view=summary|lines` or `?format=xlsx`
+   * (both sheets). Owner only, like the payroll it carries.
+   */
+  @Roles('owner')
+  @Get(':id/export')
+  async export(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query(new ZodValidationPipe(payrollExportQuery)) query: PayrollExportQuery,
+    @Res() reply: FastifyReply,
+  ): Promise<void> {
+    await this.exports.export(id, query, reply);
   }
 }

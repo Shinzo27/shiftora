@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, schema } from '@shiftora/db';
+import { and, asc, desc, eq, schema, sql } from '@shiftora/db';
 
 import { RequestContext } from '../../database/request-context.js';
 
@@ -70,5 +70,59 @@ export class PayPeriodsRepository {
         and(eq(timesheetLines.orgId, this.context.orgId), eq(timesheetLines.payPeriodId, periodId)),
       )
       .orderBy(asc(employees.name), asc(timesheetLines.employeeId), asc(timesheetLines.date));
+  }
+
+  /**
+   * One page of per-person totals for the export, in a stable order (name, then id) so paging
+   * by offset never repeats or skips anyone.
+   */
+  async summaryPage(periodId: string, offset: number, limit: number) {
+    return this.context.tx
+      .select({
+        employeeId: timesheetLines.employeeId,
+        name: employees.name,
+        email: employees.email,
+        rateMinor: sql<number>`max(${timesheetLines.rateMinor})::int`,
+        currency: sql<string>`max(${timesheetLines.currency})`,
+        regularMinutes: sql<number>`coalesce(sum(${timesheetLines.minutes}) filter (where ${timesheetLines.category} = 'regular'), 0)::int`,
+        overtimeMinutes: sql<number>`coalesce(sum(${timesheetLines.minutes}) filter (where ${timesheetLines.category} = 'overtime'), 0)::int`,
+        nightMinutes: sql<number>`coalesce(sum(${timesheetLines.minutes}) filter (where ${timesheetLines.night}), 0)::int`,
+        amountMinor: sql<number>`sum(${timesheetLines.amountMinor})::int`,
+      })
+      .from(timesheetLines)
+      .innerJoin(
+        employees,
+        and(eq(employees.orgId, timesheetLines.orgId), eq(employees.id, timesheetLines.employeeId)),
+      )
+      .where(
+        and(eq(timesheetLines.orgId, this.context.orgId), eq(timesheetLines.payPeriodId, periodId)),
+      )
+      .groupBy(timesheetLines.employeeId, employees.name, employees.email)
+      .orderBy(asc(employees.name), asc(timesheetLines.employeeId))
+      .offset(offset)
+      .limit(limit);
+  }
+
+  /** One page of lines for the export, ordered by person, day, kind and id (stable). */
+  async linesPage(periodId: string, offset: number, limit: number) {
+    return this.context.tx
+      .select({ line: timesheetLines, name: employees.name })
+      .from(timesheetLines)
+      .innerJoin(
+        employees,
+        and(eq(employees.orgId, timesheetLines.orgId), eq(employees.id, timesheetLines.employeeId)),
+      )
+      .where(
+        and(eq(timesheetLines.orgId, this.context.orgId), eq(timesheetLines.payPeriodId, periodId)),
+      )
+      .orderBy(
+        asc(employees.name),
+        asc(timesheetLines.employeeId),
+        asc(timesheetLines.date),
+        asc(timesheetLines.category),
+        asc(timesheetLines.id),
+      )
+      .offset(offset)
+      .limit(limit);
   }
 }

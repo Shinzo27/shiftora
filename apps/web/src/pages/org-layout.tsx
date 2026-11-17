@@ -150,7 +150,7 @@ const navItems: NavItem[] = [
   { label: 'Timesheets', to: 'timesheets', icon: Clock, managersOnly: true },
   { label: 'Requests', to: 'requests', icon: ArrowLeftRight, managersOnly: true },
   { label: 'Messages', to: 'messages', icon: MessagesSquare, ownerOnly: true },
-  { label: 'Payroll', to: 'payroll', icon: IndianRupee, soon: true },
+  { label: 'Payroll', to: 'payroll', icon: IndianRupee, managersOnly: true },
 ];
 
 function AppSidebar() {

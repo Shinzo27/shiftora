@@ -74,3 +74,10 @@ export const payrollEmployee = z.object({
   lines: z.array(payrollLine),
 });
 export type PayrollEmployee = z.output<typeof payrollEmployee>;
+
+export const payrollExportQuery = z.object({
+  format: z.enum(['csv', 'xlsx']).default('csv'),
+  /** CSV only (XLSX has both sheets): a row per person, or a row per day and kind. */
+  view: z.enum(['summary', 'lines']).default('summary'),
+});
+export type PayrollExportQuery = z.output<typeof payrollExportQuery>;

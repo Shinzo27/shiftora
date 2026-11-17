@@ -36,6 +36,9 @@ const LocationsPage = lazy(async () => ({
 const AttendancePage = lazy(async () => ({
   default: (await import('@/pages/attendance-page')).AttendancePage,
 }));
+const PayrollPage = lazy(async () => ({
+  default: (await import('@/pages/payroll-page')).PayrollPage,
+}));
 const MessagesPage = lazy(async () => ({
   default: (await import('@/pages/messages-page')).MessagesPage,
 }));
@@ -116,6 +119,7 @@ export const router = createBrowserRouter([
                   { path: 'locations', element: <LocationsPage /> },
                   { path: 'employees', element: <EmployeesPage /> },
                   { path: 'messages', element: <MessagesPage /> },
+                  { path: 'payroll', element: <PayrollPage /> },
                   { path: 'requests', element: <RequestsPage /> },
                 ],
               },

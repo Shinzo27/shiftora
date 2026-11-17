@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-17 (Week 6, Day 4 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-17 (Week 6, Day 5 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W6 D5 | Payroll export, streamed in pages of 1 000 rows: `GET /pay-periods/:id/export?format=csv&view=summary\|lines` (BOM, RFC 4180 quoting) or `format=xlsx` (exceljs streaming writer, Summary + Lines sheets), owner only; and the **Payroll page** (periods, what blocks approval, Approve, CSV/XLSX download) replacing the "soon" sidebar item | ✅ Done | see `git log` |
 | W6 D4 | Pay periods (`0022`: dates a manager picks, ≤ 31 days, no overlap by exclusion constraint) and `timesheet_lines`; approval (owner only) refused while punches are open or flagged-and-unreviewed, then `pay_period.approved` → the worker runs `computePay` per person (weekly overtime counted from the week before the period, lines kept inside it, disputed punches left out) → `approved` with totals; approved periods lock punch corrections and backdated pay rules | ✅ Done | see `git log` |
 | W6 D3 | Overtime (daily and weekly, each minute at most once: the weekly threshold counts only minutes that were not daily overtime), the night premium split at the window's edges on each local day, premiums adding on base (1 + 0.5 + 0.25 = 1.75×); 8 fast-check properties × 400 random timesheets and rule sets | ✅ Done | see `git log` |
 | W6 D2 | Pure `computePay(periods, versions, rate)` in `packages/domain/pay`: rules in force on the day the work started, punches rounded on the location's wall clock, the unpaid break taken from the middle of a stretch, pieces cut at local midnight (DST-correct), one priced line per day, integer money (basis points, half-up per line) | ✅ Done | see `git log` |
@@ -101,8 +102,8 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 23 migrations, 779 automated tests (388 unit, 391 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 100 API endpoints, a React web app on shadcn/ui
+Numbers today: 23 migrations, 785 automated tests (388 unit, 397 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 101 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
@@ -816,6 +817,7 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /pay-periods/:id` \| `DELETE /pay-periods/:id` | token + org | owner, manager: one period (open, calculating or approved with totals) / delete an open one |
 | `POST /pay-periods/:id/approve` | token + org | owner: 409 `pay_period.not_ready` (open punches, unreviewed flags) or `not_open`; → `calculating`, worker writes the lines |
 | `GET /pay-periods/:id/payroll` | token + org | owner: each person's totals and lines; 409 `pay_period.not_calculated` until the worker is done |
+| `GET /pay-periods/:id/export` | token + org | owner: `?format=csv&view=summary\|lines` or `?format=xlsx` (both sheets), streamed; 409 until approved and calculated |
 | `GET /pay-rules` | token + org | owner, manager: every version, newest first, with who wrote it |
 | `GET /pay-rules/in-force?date=` | token + org | owner, manager: the rules for a local date and their version (`null` = plain hourly pay) |
 | `POST /pay-rules` | token + org | owner: a new version `{ effectiveFrom, rules, note? }` → 201; 409 `pay_rules.not_after_latest` |
@@ -980,8 +982,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D2 | ✅ | Pure `computePay(entries, rules, timezone)` → line items. **Done 2026-11-17:** `pay/compute.ts` — `paidPieces` (rules by start date → `roundPunch` on the wall clock → `breakFor`/`withoutBreak` → `splitAtLocalMidnight`), `summarise`/`price` (lines per day and rate, integer paise) | Unit tests: 17 (midnight split, wall-clock rounding incl. Nepal +05:45, breaks, versions by date, a London DST night of 9 h, money rounding); mutation check: rounding in UTC turns the Nepal test red |
 | D3 | ✅ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check). **Done 2026-11-17:** `splitAtNight` (wrapping windows are two stretches of each day) and `classify` (minute by minute in time order; weekly counts only non-daily-overtime minutes; weekly threshold from the week's Monday) in `pay/compute.ts`; `fast-check` added to `packages/domain` (dev) | Paid minutes never exceed worked minutes, etc.: 8 properties × 400 cases across four zones and DST (paid = worked − breaks; lines add up; nothing below base; order-independent; splitting an entry at any minute changes nothing; no rules = all base; raising a threshold never adds overtime; a night premium never lowers pay) + 10 examples (six 10-hour days at 9 h/48 h = 12 h overtime, not 16); mutation checks: double-counting and weekly-counts-overtime each turn tests red |
 | D4 | ✅ | Pay-period approval; payroll calculation as a worker job. **Done 2026-11-17:** `pay_periods` + `timesheet_lines` (`0022`), `PayPeriodsModule` (create/list/get/delete, approve, payroll), `PayLocksModule` (punch corrections and pay rules refused inside a paid period), `periodReadiness` in attendance, `calculatePayroll` in the worker, `payWindow`/`linesInPeriod` in the domain | Approve → lines computed: 6 worker tests (lines and totals per person at their own rate, disputed left out, an overnight shift split between two periods, weekly overtime counting the days before the period, replay is a no-op, other org untouched), 7 API tests, 4 unit; mutation check: loading from the period start breaks the week and edge tests |
-| D5 | ⏭ | CSV/XLSX export (exceljs, streamed) | 500-employee period exports without memory spikes |
-| D6 | ☐ | Labour-cost projection for a schedule (basis for A6) | Draft schedule shows projected cost |
+| D5 | ✅ | CSV/XLSX export (exceljs, streamed). **Done 2026-11-17:** `PayrollExportService` (paged repository reads, `drain`-aware writes, exceljs `WorkbookWriter` into the response stream), `api.download()` in the web client, `pages/payroll-page.tsx`; `exceljs` added to `apps/api` (owner-approved) | 500-employee period exports without memory spikes: 6 API tests on a 500-person month (23 000 lines, 23 pages) — CSV summary and lines and XLSX complete and correct, quoting, BOM, owner only, 409 before approval. Verified in Chrome on the demo clinic: period → flag reviewed → Approve → "Calculating" → ₹14,855.83 for 3 people; the CSV adds up to the same; Lighthouse accessibility 100. Memory is bounded by design (one page in memory, back-pressure on the response) rather than by a heap measurement |
+| D6 | ⏭ | Labour-cost projection for a schedule (basis for A6) | Draft schedule shows projected cost |
 
 ### Week 7: Auto-scheduler v1, audit UI, observability
 
