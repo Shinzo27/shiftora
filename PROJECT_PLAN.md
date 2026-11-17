@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-16 (Week 5, Day 3 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-17 (Week 6, Day 1 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W6 D1 | `pay_rules` (`0021`, RLS, **immutable**: UPDATE revoked): dated versions per organisation, Zod-validated (overtime per day/week, night window, breaks, rounding), `rulesInForce` picks the version for a date; `GET /pay-rules`, `GET /pay-rules/in-force?date=`, `POST /pay-rules` (owner), `DELETE /pay-rules/:id` (latest, not started) | ✅ Done | see `git log` |
 | W5 D3 | Open shifts: `GET /shifts/:id/candidates` (everyone at the location, eligible first, with reasons), `POST /shifts/:id/offer` (`shifts.offered_at`, `0019`; one `shift.offered` event naming only the eligible), `GET /me/open-shifts`; an approved drop offers the freed shift automatically, never back to the person who dropped it | ✅ Done | see `git log` |
 | W5 D2 | Swap/drop API: staff ask (`/me/shift-requests`), the colleague accepts or declines, a manager approves or rejects (`/shift-requests`, scoped); approval locks both shifts in id order, re-checks them and the new assignees (blocking vs acknowledged advisories), reassigns via "open" and records what staff were told; every step messaged through the outbox; the minute scan expires undecided requests whose shift started | ✅ Done | see `git log` |
 | W5 D1 | `shift_requests` (`0018`, RLS, one open request per shift on either side, swap ⇔ colleague, open ⇔ undecided) and the swap/drop/pickup state machine as pure functions; `assessAssignment` (blocking vs advisory) shared by approvals and open shifts | ✅ Done | see `git log` |
@@ -97,8 +98,8 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 21 migrations, 704 automated tests (334 unit, 370 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 90 API endpoints, a React web app on shadcn/ui
+Numbers today: 22 migrations, 727 automated tests (349 unit, 378 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 94 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
@@ -261,6 +262,8 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | Prices exclusive of GST; Free plan = 1 location | 2026-11-03 |
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
+| — | **Pay rules are org-wide, start empty, and premiums add** (owner's decisions, W6): one versioned rule set per organisation (per-location overrides later, without touching old periods); a new organisation is on plain hourly pay until the owner writes rules — Shiftora never assumes a labour-law rule on a clinic's behalf; overtime and night premiums add on base (1 + 0.5 + 0.25 = 1.75×, not 1.875× or the higher one) | 2026-11-17 |
+| — | **A pay rules version never changes**: UPDATE is revoked at the database; a change is a new version starting after the latest; only the latest, not yet started (Asia/Kolkata calendar), can be withdrawn. Multipliers carry at most two decimals so the engine works in exact basis points | 2026-11-17 |
 | — | **WhatsApp/SMS: a fake provider first, Meta next** (owner's choice). The whole delivery pipeline (quota, retries, dead letters, fallback, replay) is built and tested against `FakeMessageSender`, which can fail permanently, transiently or with a 429 on demand; the Meta Cloud API adapter replaces it behind `MessageSender`. Provider errors are classified by the adapter (`SendError.kind`): permanent → fall back now, transient → retry with jittered exponential backoff (5 s → 30 min cap), 429 → pause the queue without spending an attempt. After the last attempt the delivery is **dead-lettered in the database** (`dead_lettered_at`) and falls back to the next free rung; paid channels are never a fallback. The quota (1,000 WhatsApp + 200 SMS per active location per Indian calendar month, until billing) is reserved with one conditional upsert before sending and released if the provider refuses. The dead-letter page and Replay are owner-only; Replay goes through the outbox like every other side effect | 2026-11-16 |
 | — | **Open shifts are offered, not broadcast**: a manager (or an approved drop) offers an open shift; the API computes who could take it at that moment and names them in the `shift.offered` event, and the worker messages exactly those people. Availability does not exclude anyone (a preference); rest, weekly hours, time off, role, location and overlap do. The person who dropped a shift is never offered it back | 2026-11-16 |
 | — | **An approved swap or drop is published on its own** (`recordToldChange` + a patched publication): the people involved were told by the request messages, so the schedule's published version moves with the change when there were no other drafts, and the latest publication carries the new assignee — reminders follow the new person and the next publish does not re-announce it | 2026-11-16 |
@@ -604,7 +607,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0019)
+### 10.1 Implemented (migrations 0000–0021)
 
 | Migration | Contents |
 |---|---|
@@ -624,6 +627,8 @@ Fastify
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
+| `0021_pay_rules` | `pay_rules` (org, version, `effective_from` local date, `rules` jsonb, note, created by/at; unique per org by version and by start date; **UPDATE revoked from `app_user`** so a version never changes; RLS) |
+| `0020_idempotency_keys` | `idempotency_keys` (org, route, key, request hash, stored response; RLS) for the open-shift claim (W5 D4, ADR 020) |
 | `0019_open_shift_offers` | `shifts.offered_at` and a partial index `(org_id, location_id, starts_at) WHERE status = 'open' AND offered_at IS NOT NULL` for "open shifts I could take" |
 | `0018_shift_requests` | `shift_requests` (type swap\|drop\|pickup, status, shift, requester, colleague, optional shift in return, note, responded/decided times, decider, decision note; partial unique indexes: one open request per shift and per shift-in-return; CHECKs: swap ⇔ colleague, not self, open ⇔ undecided; same-org FKs; RLS) |
 | `0017_delivery_reports_and_shift_alerts` | `deliveries.provider_message_id` (unique per channel), `delivered_at`, `read_at`; `shift_alerts` (org, shift, `reminder`\|`missed_clock_in`; same-org FK, cascade; RLS); `SELECT` switches `app.alert_scan` on `organizations` and `app.provider_report` on `deliveries` (ADR 019) |
@@ -697,7 +702,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 | W3 | ~~`time_entries`~~ (0008) |
 | W4 | ~~`notifications`, `deliveries`~~ (0012, 0013), ~~`message_usage`~~ (0016), ~~`shift_alerts`~~ (0017) |
 | W5 | ~~`shift_requests`~~ (0018), `idempotency_keys` |
-| W6 | `pay_rules` (versioned JSON), `pay_periods`, `timesheet_lines` |
+| W6 | ~~`pay_rules`~~ (0021), `pay_periods`, `timesheet_lines` |
 | W7 | `coverage_requirements`; `audit_events` partitioned by month |
 | W8 | `subscriptions`, `billing_profiles`, `invoices`, `invoice_lines`, `invoice_counters`, `coupons`, `coupon_redemptions`, `platform_admins` |
 | Later | `credentials` (licence expiry), kiosk QR secrets on locations |
@@ -780,7 +785,11 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /shift-requests/:id` | token + org | owner, manager (scoped) |
 | `POST /shift-requests/:id/approve` | token + org | owner, manager (scoped, writable); `{ note?, acknowledgeWarnings? }`; 409 `not_eligible` (blocking) / `needs_acknowledgement` (advisories) / `invalid_transition` |
 | `POST /shift-requests/:id/reject` | token + org | owner, manager (scoped); `{ note? }` |
-| `GET /shifts/:id/candidates` | token + org | owner, manager (scoped): everyone at the location with `eligible` and the reasons; 409 `shift.not_open` |
+| `GET /pay-rules` | token + org | owner, manager: every version, newest first, with who wrote it |
+| `GET /pay-rules/in-force?date=` | token + org | owner, manager: the rules for a local date and their version (`null` = plain hourly pay) |
+| `POST /pay-rules` | token + org | owner: a new version `{ effectiveFrom, rules, note? }` → 201; 409 `pay_rules.not_after_latest` |
+| `DELETE /pay-rules/:id` | token + org | owner: withdraws the latest version before it starts → 204; 409 `pay_rules.locked` |
+| `GET /shifts/:id/candidates` | token + org | owner, manager (scoped): everyone at the location with `eligible` and the reasons; 409 `shift.not_open`, `pay_rules.not_found`, `pay_rules.not_after_latest`, `pay_rules.locked` |
 | `POST /shifts/:id/offer` | token + org | owner, manager (scoped, writable): offers an open shift to the eligible staff → `{ offeredTo }` |
 | `GET /me/open-shifts` | token + org | any member: offered open shifts they could take now (never one they dropped) |
 | `POST /me/open-shifts/:id/claim` | token + org + `Idempotency-Key` | any member with a staff profile: takes an offered shift → 200 with the shift; 409 `shift.already_taken` when someone else's update landed first, 409 `shift.not_open` when it was never offered, 400 `idempotency.key_required` without the header |
@@ -934,8 +943,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ☐ | `pay_rules` (versioned JSON with effective dates, Zod-validated) | Rules round-trip through the API |
-| D2 | ☐ | Pure `computePay(entries, rules, timezone)` → line items | Unit tests |
+| D1 | ✅ | `pay_rules` (versioned JSON with effective dates, Zod-validated). **Done 2026-11-17:** `packages/domain/pay/rules.ts` (`PayRules`, `rulesInForce`, `toBasisPoints`), `payRules` Zod in shared, migration `0021`, `PayRulesModule` (4 endpoints, owner writes, managers read) | Rules round-trip through the API: 8 API tests (exact round-trip, versions in order and by date, 400 on nonsense, withdraw only the latest before it starts, UPDATE refused by the database, roles, other org) + 15 unit; mutation check on the ordering rule |
+| D2 | ⏭ | Pure `computePay(entries, rules, timezone)` → line items | Unit tests |
 | D3 | ☐ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check) | Paid minutes never exceed worked minutes, etc. |
 | D4 | ☐ | Pay-period approval; payroll calculation as a worker job | Approve → lines computed |
 | D5 | ☐ | CSV/XLSX export (exceljs, streamed) | 500-employee period exports without memory spikes |

@@ -68,6 +68,11 @@ export const errorCodes = {
   idempotencyKeyReuse: 'idempotency.key_reuse',
   /** Approving would break a rule a manager may overrule: say so with acknowledgeWarnings. */
   shiftRequestNeedsAcknowledgement: 'shift_request.needs_acknowledgement',
+  payRulesNotFound: 'pay_rules.not_found',
+  /** A new version must start after the latest one: versions never overlap or reorder. */
+  payRulesNotAfterLatest: 'pay_rules.not_after_latest',
+  /** Only the latest version, before it starts, can be withdrawn. */
+  payRulesLocked: 'pay_rules.locked',
   /** Only an open shift (nobody on it) can be offered or picked up. */
   shiftNotOpen: 'shift.not_open',
   /** The caller has no staff profile in this organisation, so has no shifts to request about. */

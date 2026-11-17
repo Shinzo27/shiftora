@@ -148,6 +148,13 @@
       "when": 1794847890585,
       "tag": "0020_idempotency_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1794897367981,
+      "tag": "0021_pay_rules",
+      "breakpoints": true
     }
   ]
 }

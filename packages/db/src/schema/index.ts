@@ -21,3 +21,4 @@ export * from './scheduling.js';
 export * from './shifts.js';
 export * from './shift-alerts.js';
 export * from './shift-requests.js';
+export * from './pay-rules.js';
