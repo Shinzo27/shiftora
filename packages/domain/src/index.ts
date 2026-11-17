@@ -84,3 +84,31 @@ export * from './pay/rules.js';
 export * from './pay/compute.js';
 export * from './pay/period.js';
 export * from './pay/projection.js';
+
+// The auto-scheduler's contract and solvers (W7). Pure: no database, no clock of their own.
+export {
+  dateOfWeekday,
+  expandWeek,
+  weekStartFor,
+  type Assignment,
+  type Blocker as SolverBlocker,
+  type BlockerCode,
+  type CoverageRequirement,
+  type CoverageSlot,
+  type LockedShift,
+  type ScheduleProblem,
+  type ScheduleSolution,
+  type SchedulableEmployee,
+  type SolutionScore,
+  type UnfilledSlot,
+} from './scheduling/auto/contract.js';
+export {
+  blockersFor,
+  explain,
+  loadsFor,
+  solveGreedy,
+  weekdayIndex,
+  type GreedyOptions,
+  type Load,
+} from './scheduling/auto/greedy.js';
+export { solve, type SolveOptions } from './scheduling/auto/solve.js';

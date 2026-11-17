@@ -314,6 +314,23 @@ Do this before writing any code, whatever tool or model you are:
   clock. `expandWeek` is the only place `headcount` becomes repetition, and slot ids
   (`requirementId#index`) are stable so a re-run can be compared with the last one.
 
+### The auto-scheduler
+
+- **Postgres `time` comes back as `HH:MM:SS`**, and the domain's `toInstant`/`expandWeek` speak
+  `HH:MM`. Trim with `.slice(0, 5)` when building a `ScheduleProblem`; a stray seconds field
+  fails with `Expected an HH:MM time`.
+- **`solve` is pure and takes its budget as an option**: no database, no ambient clock. The worker
+  owns the transaction; the solver owns the thinking. Tests inject `now` to make the budget
+  deterministic.
+- **A re-run must not double the week.** The handler counts shifts by (local date, local start)
+  and skips slots that are already covered — on insert *and* when reporting unfilled. Filtering
+  only on insert leaves a successful second run looking like a wall of warnings.
+- **Backtracking only undoes "busy"**: moving a shift frees a person; it cannot create a role or
+  cancel leave. Blockers other than `already_working`/`min_rest` are left alone.
+- **Job progress goes over `shiftora:job-events`** (worker publishes, API re-emits to the org
+  room). The channel name is duplicated in `apps/worker/src/queues.ts` and
+  `apps/api/src/modules/realtime/job-events.service.ts` — change both or the bar stops.
+
 ### Claims, requests and idempotency
 
 - **A claim is a conditional UPDATE, never a read-then-write.** `ShiftsRepository.claim` matches

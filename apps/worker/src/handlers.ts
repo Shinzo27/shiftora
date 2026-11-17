@@ -4,6 +4,7 @@ import { deliveryReportedEvent } from '@shiftora/shared';
 import type { Queue } from 'bullmq';
 
 import { handleMissedClockIn, handleShiftReminder } from './alerts/handlers.js';
+import { runAutofill } from './autofill.js';
 import { calculatePayroll } from './payroll/calculate.js';
 import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
@@ -33,6 +34,8 @@ export interface NotificationHandlerDeps {
   mailer: Mailer;
   /** Channels this worker can actually send on, so routing never offers one it cannot deliver. */
   usable: ChannelPolicy;
+  /** Tells the API about long-running work, which forwards it to the manager’s socket. */
+  announce?: (event: { orgId: string; scheduleId: string; runId: string; status: string }) => void;
 }
 
 export async function handleNotificationJob(
@@ -126,6 +129,16 @@ export async function handleNotificationJob(
         console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
+    }
+    // The auto-scheduler asked to fill a week (W7 D3): a job, not a request, because filling a
+    // week is allowed to take a second and the manager is watching a screen.
+    case 'schedule.autofill_requested': {
+      await runAutofill(
+        db,
+        { orgId: job.orgId, payload: job.payload },
+        { ...(deps.announce ? { announce: deps.announce } : {}) },
+      );
+      return { notifications: 0, deliveries: 0, deliveryIds: [] };
     }
     // Someone took an open shift (W5 D4): the managers hear about it; the claimer already knows.
     case 'shift.claimed': {

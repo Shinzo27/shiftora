@@ -27,6 +27,8 @@ export interface PipelineOptions {
   /** The alert scan's interval; null leaves the scheduler off (a test runs scans itself). */
   alertScanIntervalMs: number | null;
   /** Retry delay for sends; tests pass a fast one. Defaults to the jittered production backoff. */
+  /** Tells the API about long jobs (the auto-scheduler); the API forwards it to sockets. */
+  announce?: (event: { orgId: string; scheduleId: string; runId: string; status: string }) => void;
   backoff?: (attemptsMade: number) => number;
   log?: Pick<Console, 'info' | 'error'>;
 }
@@ -69,7 +71,13 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
     async (job) =>
       handleNotificationJob(
         db,
-        { deliveries, appUrl: options.appUrl, mailer: adapters.mailer, usable },
+        {
+          deliveries,
+          appUrl: options.appUrl,
+          mailer: adapters.mailer,
+          usable,
+          ...(options.announce ? { announce: options.announce } : {}),
+        },
         job.data,
       ),
     { connection, concurrency: options.concurrency },

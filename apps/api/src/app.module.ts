@@ -5,6 +5,7 @@ import { ConfigModule } from './config/config.module.js';
 import { CoverageModule } from './modules/coverage/coverage.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AttendanceModule } from './modules/attendance/attendance.module.js';
+import { AutofillModule } from './modules/autofill/autofill.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { EmployeesModule } from './modules/employees/employees.module.js';
 import { IdempotencyModule } from './modules/idempotency/idempotency.module.js';
@@ -40,7 +41,8 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
     PayRulesModule, // versioned pay rules (W6)
     PayPeriodsModule, // pay periods, approval, payroll (W6)
     WebhooksModule, // provider delivery reports, signature-verified
-    AttendanceModule, // clock-in/out: geofenced, idempotent
+    AttendanceModule,
+    AutofillModule, // clock-in/out: geofenced, idempotent
     RealtimeModule, // sockets: a change on one screen reaches the others
     HealthModule,
   ],

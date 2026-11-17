@@ -7,6 +7,7 @@ import { FakeMessageSender } from './notifications/fake-sender.js';
 import { createFakeWebhookReporter } from './notifications/fake-webhook.js';
 import { createWebPushSender } from './notifications/push.js';
 import { startPipeline } from './pipeline.js';
+import { JOB_EVENTS_CHANNEL } from './queues.js';
 import { connectionOptions, createRedis } from './queues.js';
 
 /**
@@ -75,10 +76,22 @@ async function main(): Promise<void> {
     );
   }
 
+  // Job events cross the process boundary on Redis: the API subscribes and forwards them to the
+  // manager's socket. A publish that fails is a lost progress bar, never a lost run.
+  const announce = (event: {
+    orgId: string;
+    scheduleId: string;
+    runId: string;
+    status: string;
+  }) => {
+    void redis.publish(JOB_EVENTS_CHANNEL, JSON.stringify(event)).catch(() => undefined);
+  };
+
   const pipeline = await startPipeline({
     db: connection.db,
     connection: options,
     adapters,
+    announce,
     appUrl: env.APP_URL,
     concurrency: env.WORKER_CONCURRENCY,
     relayBatch: env.RELAY_BATCH,

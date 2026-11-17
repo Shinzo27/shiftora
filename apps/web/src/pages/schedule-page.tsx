@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { ErrorState, PageHeader } from '@/components/page';
 import { PublishDialog } from '@/components/schedule/publish-dialog';
 import { ShiftSheet } from '@/components/schedule/shift-sheet';
+import { AutofillPanel } from '@/components/schedule/autofill-panel';
 import { WeekBoard } from '@/components/schedule/week-board';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -357,6 +358,7 @@ export function SchedulePage() {
               </span>
             ) : null}
           </div>
+          <AutofillPanel orgId={orgId} scheduleId={schedule.id} />
           <WeekBoard
             weekStart={weekStart}
             today={today}

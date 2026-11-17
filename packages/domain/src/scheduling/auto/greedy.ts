@@ -62,19 +62,19 @@ function overlaps(a: Span, b: Span): boolean {
   return earlier.end > MINUTES_PER_DAY && later.start < earlier.end - MINUTES_PER_DAY;
 }
 
-function dayIndex(date: string): number {
+export function dayIndex(date: string): number {
   // Enough for ordering and adjacency: days since the epoch, in UTC, no clock maths.
   return Math.floor(Date.parse(`${date}T00:00:00Z`) / 86_400_000);
 }
 
-interface Load {
+export interface Load {
   spans: Span[];
   minutes: number;
   nights: number;
   weekendDays: number;
 }
 
-const emptyLoad = (): Load => ({ spans: [], minutes: 0, nights: 0, weekendDays: 0 });
+export const emptyLoad = (): Load => ({ spans: [], minutes: 0, nights: 0, weekendDays: 0 });
 
 function isNight(slot: { startLocal: string; endLocal: string }): boolean {
   const start = minutesOf(slot.startLocal);
@@ -83,7 +83,7 @@ function isNight(slot: { startLocal: string; endLocal: string }): boolean {
   return start >= 22 * 60 || end <= 6 * 60;
 }
 
-function addTo(
+export function addTo(
   load: Load,
   slot: { date: string; startLocal: string; endLocal: string },
   weekday: number,
@@ -235,6 +235,33 @@ function scoreCandidate(
   return cost + fairness + preference + balance;
 }
 
+/** ISO weekday (1–7) of a date inside the week that starts at `weekStart`. */
+export function weekdayIndex(weekStart: string, date: string): number {
+  return ((((dayIndex(date) - dayIndex(weekStart)) % 7) + 7) % 7) + 1;
+}
+
+/**
+ * The load each person carries, from hand-placed shifts plus whatever has been assigned. Shared
+ * with the backtracking solver so there is one definition of "how busy is this person".
+ */
+export function loadsFor(problem: ScheduleProblem, assignments: Assignment[]): Map<string, Load> {
+  const load = new Map<string, Load>(
+    problem.employees.map((employee) => [employee.id, emptyLoad()]),
+  );
+  const slots = new Map(expandWeek(problem).map((slot) => [slot.id, slot]));
+
+  for (const locked of problem.locked) {
+    const owner = load.get(locked.employeeId);
+    if (owner) addTo(owner, locked, weekdayIndex(problem.weekStart, locked.date));
+  }
+  for (const assignment of assignments) {
+    const slot = slots.get(assignment.slotId);
+    const owner = load.get(assignment.employeeId);
+    if (slot && owner) addTo(owner, slot, weekdayIndex(problem.weekStart, slot.date));
+  }
+  return load;
+}
+
 /** One sentence a manager can read without opening anything else. */
 export function explain(slot: CoverageSlot, blockers: Blocker[], employees: number): string {
   const when = `${slot.date} ${slot.startLocal}–${slot.endLocal}`;
@@ -347,7 +374,7 @@ export function solveGreedy(
   };
 }
 
-function scoreSolution(
+export function scoreSolution(
   problem: ScheduleProblem,
   assignments: Assignment[],
   unfilled: UnfilledSlot[],

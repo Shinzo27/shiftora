@@ -1,7 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Server } from 'socket.io';
 
-import { SCHEDULE_CHANGED, orgRoom, type ScheduleChangedEvent } from './realtime.events.js';
+import {
+  AUTOFILL_UPDATED,
+  SCHEDULE_CHANGED,
+  orgRoom,
+  type AutofillProgressEvent,
+  type ScheduleChangedEvent,
+} from './realtime.events.js';
 
 /**
  * Publishes board changes to whoever is looking at them.
@@ -22,6 +28,16 @@ export class RealtimeService {
   /** Called by the gateway once Socket.IO is up. */
   attach(server: Server): void {
     this.server = server;
+  }
+
+  /** Progress from the worker's long jobs; the page refetches the run when it hears this. */
+  autofillProgress(event: AutofillProgressEvent): void {
+    if (!this.server) return;
+    try {
+      this.server.to(orgRoom(event.orgId)).emit(AUTOFILL_UPDATED, event);
+    } catch (error) {
+      this.logger.warn(`Could not emit ${AUTOFILL_UPDATED}: ${(error as Error).message}`);
+    }
   }
 
   scheduleChanged(event: ScheduleChangedEvent): void {

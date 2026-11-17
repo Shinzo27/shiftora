@@ -4,6 +4,9 @@ import { Redis } from 'ioredis';
 /** The queue the relay fills and the notification worker drains. */
 export const NOTIFICATIONS_QUEUE = 'notifications';
 export const DELIVERIES_QUEUE = 'deliveries';
+/** Redis pub/sub channel for job progress: the worker publishes, the API forwards to sockets. */
+export const JOB_EVENTS_CHANNEL = 'shiftora:job-events';
+
 /** One repeatable job: the shift-reminder / missed clock-in scan. */
 export const ALERTS_QUEUE = 'alerts';
 export const ALERT_SCAN_SCHEDULER = 'shift-alerts';

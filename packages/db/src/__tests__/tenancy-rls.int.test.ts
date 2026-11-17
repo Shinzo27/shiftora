@@ -111,12 +111,13 @@ describe('every tenant table is protected', () => {
     // Adding a tenant table? Add it here too, after giving it RLS in its migration.
     expect(tables.map((t) => t.table)).toEqual([
       'audit_events',
+      'autofill_runs',
       'availability',
+      'coverage_requirements',
       'deliveries',
       'departments',
       'employee_job_roles',
       'employee_locations',
-      'coverage_requirements',
       'employees',
       'idempotency_keys',
       'invites',

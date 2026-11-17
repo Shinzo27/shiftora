@@ -1,5 +1,7 @@
 import type {
   Attendance,
+  AutofillRequestResult,
+  AutofillRunView,
   AuthResponse,
   AuthUser,
   ClaimOpenShiftResult,
@@ -241,6 +243,14 @@ export const openShiftsApi = {
     }),
   candidates: (orgId: string, shiftId: string) =>
     api.get<ShiftCandidates>(`/shifts/${shiftId}/candidates`, { orgId }),
+};
+
+export const autofillApi = {
+  /** Asks the worker to fill the week; answers with the run to watch. */
+  start: (orgId: string, scheduleId: string) =>
+    api.post<AutofillRequestResult>(`/schedules/${scheduleId}/autofill`, { orgId }),
+  latest: (orgId: string, scheduleId: string) =>
+    api.get<AutofillRunView | null>(`/schedules/${scheduleId}/autofill`, { orgId }),
 };
 
 export const coverageApi = {

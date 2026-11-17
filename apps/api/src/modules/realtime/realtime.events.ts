@@ -14,3 +14,14 @@ export function orgRoom(orgId: string): string {
 }
 
 export const SCHEDULE_CHANGED = 'schedule.changed';
+
+/** What the worker reports about a long job (the auto-scheduler). */
+export interface AutofillProgressEvent {
+  orgId: string;
+  scheduleId: string;
+  runId: string;
+  /** 'solving' while it thinks, 'succeeded' when the draft is written. */
+  status: string;
+}
+
+export const AUTOFILL_UPDATED = 'schedule.autofill';
