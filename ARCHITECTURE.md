@@ -652,6 +652,12 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   minutes in time order — daily overtime beyond the day's threshold, weekly overtime beyond the
   week's threshold counting only non-daily-overtime minutes, so a minute is overtime once at most.
   Property-tested with fast-check (8 properties, 400 cases each, four zones and DST).
+- **Pay periods and payroll (W6 D4, implemented):** an owner approves a period (refused while
+  punches are open or flagged-and-unreviewed); the API records the decision and writes
+  `pay_period.approved`; the worker's `calculatePayroll` loads the closed, undisputed punches from
+  the day before the period's first week (`payWindow`), runs `computePay` per person and keeps the
+  lines dated inside the period (`linesInPeriod`), so each minute is paid in exactly one period.
+  `PayLocksModule` refuses punch corrections and backdated pay rules inside a paid period.
 - Rules are versioned JSON validated by a Zod schema, e.g.:
   ```json
   {

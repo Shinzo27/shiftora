@@ -5,6 +5,7 @@ import { AuditModule } from '../audit/audit.module.js';
 import { EmployeesModule } from '../employees/employees.module.js';
 import { LocationsModule } from '../locations/locations.module.js';
 import { OrgsModule } from '../orgs/orgs.module.js';
+import { PayLocksModule } from '../pay-periods/pay-locks.module.js';
 import { SchedulingModule } from '../scheduling/scheduling.module.js';
 import { AttendanceController } from './attendance.controller.js';
 import { AttendanceService } from './attendance.service.js';
@@ -23,6 +24,7 @@ import { TimeEntriesRepository } from './time-entries.repository.js';
     EmployeesModule,
     LocationsModule,
     OrgsModule,
+    PayLocksModule,
     SchedulingModule,
   ],
   controllers: [AttendanceController],

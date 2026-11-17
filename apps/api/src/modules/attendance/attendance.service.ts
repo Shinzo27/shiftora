@@ -30,6 +30,7 @@ import { AppException } from '../../common/app-exception.js';
 import { uniqueViolation } from '../../common/db-errors.js';
 import { RequestContext } from '../../database/request-context.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PayLocksService } from '../pay-periods/pay-locks.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { EmployeeRecord } from '../employees/employees.repository.js';
 import { LocationAccess } from '../locations/location-access.service.js';
@@ -81,6 +82,7 @@ export class AttendanceService {
     private readonly access: LocationAccess,
     private readonly context: RequestContext,
     private readonly audit: AuditService,
+    private readonly payLocks: PayLocksService,
   ) {}
 
   async clockIn(input: ClockInRequest, idempotencyKey?: string): Promise<ClockResult> {
@@ -289,6 +291,9 @@ export class AttendanceService {
     const day = body.date ?? current.date;
     const inTime = body.clockInTime ?? current.time;
     const clockInAt = toInstant(day, inTime, zone);
+    // A punch in an approved pay period has been paid: neither its old day nor its new one may
+    // change under the payroll that was computed from it.
+    await this.payLocks.assertDatesOpen([current.date, day]);
 
     // "Out at 06:00" after starting at 22:00 means the next morning, not minus sixteen hours.
     const outDay = body.clockOutTime && body.clockOutTime < inTime ? addDays(day, 1) : day;
@@ -624,6 +629,11 @@ export class AttendanceService {
       earlyMinutes: against?.earlyMinutes ?? 0,
       state: against?.state ?? 'unscheduled',
     };
+  }
+
+  /** Open, unreviewed-flagged and disputed punches in a pay period (payroll's readiness). */
+  periodReadiness(startsOn: string, endsOn: string) {
+    return this.entries.periodReadiness(startsOn, endsOn);
   }
 }
 

@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-17 (Week 6, Day 3 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-17 (Week 6, Day 4 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W6 D4 | Pay periods (`0022`: dates a manager picks, ≤ 31 days, no overlap by exclusion constraint) and `timesheet_lines`; approval (owner only) refused while punches are open or flagged-and-unreviewed, then `pay_period.approved` → the worker runs `computePay` per person (weekly overtime counted from the week before the period, lines kept inside it, disputed punches left out) → `approved` with totals; approved periods lock punch corrections and backdated pay rules | ✅ Done | see `git log` |
 | W6 D3 | Overtime (daily and weekly, each minute at most once: the weekly threshold counts only minutes that were not daily overtime), the night premium split at the window's edges on each local day, premiums adding on base (1 + 0.5 + 0.25 = 1.75×); 8 fast-check properties × 400 random timesheets and rule sets | ✅ Done | see `git log` |
 | W6 D2 | Pure `computePay(periods, versions, rate)` in `packages/domain/pay`: rules in force on the day the work started, punches rounded on the location's wall clock, the unpaid break taken from the middle of a stretch, pieces cut at local midnight (DST-correct), one priced line per day, integer money (basis points, half-up per line) | ✅ Done | see `git log` |
 | W6 D1 | `pay_rules` (`0021`, RLS, **immutable**: UPDATE revoked): dated versions per organisation, Zod-validated (overtime per day/week, night window, breaks, rounding), `rulesInForce` picks the version for a date; `GET /pay-rules`, `GET /pay-rules/in-force?date=`, `POST /pay-rules` (owner), `DELETE /pay-rules/:id` (latest, not started) | ✅ Done | see `git log` |
@@ -100,8 +101,8 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 22 migrations, 762 automated tests (384 unit, 378 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 94 API endpoints, a React web app on shadcn/ui
+Numbers today: 23 migrations, 779 automated tests (388 unit, 391 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 100 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
@@ -285,6 +286,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | **Pay rules are org-wide, start empty, and premiums add** (owner's decisions, W6): one versioned rule set per organisation (per-location overrides later, without touching old periods); a new organisation is on plain hourly pay until the owner writes rules — Shiftora never assumes a labour-law rule on a clinic's behalf; overtime and night premiums add on base (1 + 0.5 + 0.25 = 1.75×, not 1.875× or the higher one) | 2026-11-17 |
+| — | **Payroll rules** (owner's decisions, W6 D4): a pay period is dates a manager picks (≤ 31 days, never overlapping); approval is refused while a punch in it is open or flagged-and-unreviewed; punches a manager **disputed** are left out of pay; only an **owner** approves and sees payroll; once approved, the period's punches cannot be corrected and pay rules cannot start inside it. Each minute is paid in exactly one period (lines are kept by date; weekly overtime counts the days of the week that fell in the previous period) | 2026-11-17 |
 | — | **Overtime is counted once, minute by minute** (W6 D3): beyond the daily threshold is daily overtime; the weekly threshold counts only the minutes that were *not* daily overtime (so six 10-hour days at 9 h/day and 48 h/week is 12 h of overtime, not 16); a week uses the threshold in force on its Monday; the night window and daily rules are those of the day each minute falls on. Premiums add on base | 2026-11-17 |
 | — | **How time becomes pay** (W6 D2): the rules in force on the day a stretch of work **started** apply to all of it; punches round on the location's wall clock (a 30-minute grid is :00/:30 local); without a rounding rule punches round to the nearest whole minute; an unpaid break comes out of the **middle** of the stretch (the first and last hours stay as worked, so early-morning night minutes are not the ones lost); money is priced once per line (day × kind × rate), half up, in integer paise | 2026-11-17 |
 | — | **A pay rules version never changes**: UPDATE is revoked at the database; a change is a new version starting after the latest; only the latest, not yet started (Asia/Kolkata calendar), can be withdrawn. Multipliers carry at most two decimals so the engine works in exact basis points | 2026-11-17 |
@@ -631,7 +633,7 @@ Fastify
 
 ## 10. Data model
 
-### 10.1 Implemented (migrations 0000–0021)
+### 10.1 Implemented (migrations 0000–0022)
 
 | Migration | Contents |
 |---|---|
@@ -651,6 +653,7 @@ Fastify
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
+| `0022_payroll` | `pay_periods` (org, `starts_on`/`ends_on` ≤ 31 days, status open → calculating → approved, approver, totals; **EXCLUDE** overlapping date ranges per org; RLS) and `timesheet_lines` (period, employee, date, category, night, minutes, multiplier bp, rate, amount, currency; same-org FKs; RLS) |
 | `0021_pay_rules` | `pay_rules` (org, version, `effective_from` local date, `rules` jsonb, note, created by/at; unique per org by version and by start date; **UPDATE revoked from `app_user`** so a version never changes; RLS) |
 | `0020_idempotency_keys` | `idempotency_keys` (org, route, key, request hash, stored response; RLS) for the open-shift claim (W5 D4, ADR 020) |
 | `0019_open_shift_offers` | `shifts.offered_at` and a partial index `(org_id, location_id, starts_at) WHERE status = 'open' AND offered_at IS NOT NULL` for "open shifts I could take" |
@@ -726,7 +729,7 @@ IDs are UUIDv7 generated in the app (`newId()` in `packages/db`).
 | W3 | ~~`time_entries`~~ (0008) |
 | W4 | ~~`notifications`, `deliveries`~~ (0012, 0013), ~~`message_usage`~~ (0016), ~~`shift_alerts`~~ (0017) |
 | W5 | ~~`shift_requests`~~ (0018), `idempotency_keys` |
-| W6 | ~~`pay_rules`~~ (0021), `pay_periods`, `timesheet_lines` |
+| W6 | ~~`pay_rules`~~ (0021), ~~`pay_periods`, `timesheet_lines`~~ (0022) |
 | W7 | `coverage_requirements`; `audit_events` partitioned by month |
 | W8 | `subscriptions`, `billing_profiles`, `invoices`, `invoice_lines`, `invoice_counters`, `coupons`, `coupon_redemptions`, `platform_admins` |
 | Later | `credentials` (licence expiry), kiosk QR secrets on locations |
@@ -809,11 +812,17 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /shift-requests/:id` | token + org | owner, manager (scoped) |
 | `POST /shift-requests/:id/approve` | token + org | owner, manager (scoped, writable); `{ note?, acknowledgeWarnings? }`; 409 `not_eligible` (blocking) / `needs_acknowledgement` (advisories) / `invalid_transition` |
 | `POST /shift-requests/:id/reject` | token + org | owner, manager (scoped); `{ note? }` |
+| `GET /pay-periods` \| `POST /pay-periods` | token + org | owner, manager: list (with readiness while open) / create `{ startsOn, endsOn }`; 409 `pay_period.overlap` |
+| `GET /pay-periods/:id` \| `DELETE /pay-periods/:id` | token + org | owner, manager: one period (open, calculating or approved with totals) / delete an open one |
+| `POST /pay-periods/:id/approve` | token + org | owner: 409 `pay_period.not_ready` (open punches, unreviewed flags) or `not_open`; → `calculating`, worker writes the lines |
+| `GET /pay-periods/:id/payroll` | token + org | owner: each person's totals and lines; 409 `pay_period.not_calculated` until the worker is done |
 | `GET /pay-rules` | token + org | owner, manager: every version, newest first, with who wrote it |
 | `GET /pay-rules/in-force?date=` | token + org | owner, manager: the rules for a local date and their version (`null` = plain hourly pay) |
 | `POST /pay-rules` | token + org | owner: a new version `{ effectiveFrom, rules, note? }` → 201; 409 `pay_rules.not_after_latest` |
 | `DELETE /pay-rules/:id` | token + org | owner: withdraws the latest version before it starts → 204; 409 `pay_rules.locked` |
-| `GET /shifts/:id/candidates` | token + org | owner, manager (scoped): everyone at the location with `eligible` and the reasons; 409 `shift.not_open`, `pay_rules.not_found`, `pay_rules.not_after_latest`, `pay_rules.locked` |
+| `GET /shifts/:id/candidates` | token + org | owner, manager (scoped): everyone at the location with `eligible` and the reasons; 409 `shift.not_open`, `pay_rules.not_found`, `pay_rules.not_after_latest`, `pay_rules.locked`, `pay_rules.period_approved`,
+`pay_period.not_found`, `pay_period.overlap`, `pay_period.not_ready`, `pay_period.not_open`,
+`pay_period.not_calculated`, `time_entry.period_locked` |
 | `POST /shifts/:id/offer` | token + org | owner, manager (scoped, writable): offers an open shift to the eligible staff → `{ offeredTo }` |
 | `GET /me/open-shifts` | token + org | any member: offered open shifts they could take now (never one they dropped) |
 | `POST /me/open-shifts/:id/claim` | token + org + `Idempotency-Key` | any member with a staff profile: takes an offered shift → 200 with the shift; 409 `shift.already_taken` when someone else's update landed first, 409 `shift.not_open` when it was never offered, 400 `idempotency.key_required` without the header |
@@ -970,8 +979,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D1 | ✅ | `pay_rules` (versioned JSON with effective dates, Zod-validated). **Done 2026-11-17:** `packages/domain/pay/rules.ts` (`PayRules`, `rulesInForce`, `toBasisPoints`), `payRules` Zod in shared, migration `0021`, `PayRulesModule` (4 endpoints, owner writes, managers read) | Rules round-trip through the API: 8 API tests (exact round-trip, versions in order and by date, 400 on nonsense, withdraw only the latest before it starts, UPDATE refused by the database, roles, other org) + 15 unit; mutation check on the ordering rule |
 | D2 | ✅ | Pure `computePay(entries, rules, timezone)` → line items. **Done 2026-11-17:** `pay/compute.ts` — `paidPieces` (rules by start date → `roundPunch` on the wall clock → `breakFor`/`withoutBreak` → `splitAtLocalMidnight`), `summarise`/`price` (lines per day and rate, integer paise) | Unit tests: 17 (midnight split, wall-clock rounding incl. Nepal +05:45, breaks, versions by date, a London DST night of 9 h, money rounding); mutation check: rounding in UTC turns the Nepal test red |
 | D3 | ✅ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check). **Done 2026-11-17:** `splitAtNight` (wrapping windows are two stretches of each day) and `classify` (minute by minute in time order; weekly counts only non-daily-overtime minutes; weekly threshold from the week's Monday) in `pay/compute.ts`; `fast-check` added to `packages/domain` (dev) | Paid minutes never exceed worked minutes, etc.: 8 properties × 400 cases across four zones and DST (paid = worked − breaks; lines add up; nothing below base; order-independent; splitting an entry at any minute changes nothing; no rules = all base; raising a threshold never adds overtime; a night premium never lowers pay) + 10 examples (six 10-hour days at 9 h/48 h = 12 h overtime, not 16); mutation checks: double-counting and weekly-counts-overtime each turn tests red |
-| D4 | ⏭ | Pay-period approval; payroll calculation as a worker job | Approve → lines computed |
-| D5 | ☐ | CSV/XLSX export (exceljs, streamed) | 500-employee period exports without memory spikes |
+| D4 | ✅ | Pay-period approval; payroll calculation as a worker job. **Done 2026-11-17:** `pay_periods` + `timesheet_lines` (`0022`), `PayPeriodsModule` (create/list/get/delete, approve, payroll), `PayLocksModule` (punch corrections and pay rules refused inside a paid period), `periodReadiness` in attendance, `calculatePayroll` in the worker, `payWindow`/`linesInPeriod` in the domain | Approve → lines computed: 6 worker tests (lines and totals per person at their own rate, disputed left out, an overnight shift split between two periods, weekly overtime counting the days before the period, replay is a no-op, other org untouched), 7 API tests, 4 unit; mutation check: loading from the period start breaks the week and edge tests |
+| D5 | ⏭ | CSV/XLSX export (exceljs, streamed) | 500-employee period exports without memory spikes |
 | D6 | ☐ | Labour-cost projection for a schedule (basis for A6) | Draft schedule shows projected cost |
 
 ### Week 7: Auto-scheduler v1, audit UI, observability

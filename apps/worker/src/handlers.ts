@@ -4,6 +4,7 @@ import { deliveryReportedEvent } from '@shiftora/shared';
 import type { Queue } from 'bullmq';
 
 import { handleMissedClockIn, handleShiftReminder } from './alerts/handlers.js';
+import { calculatePayroll } from './payroll/calculate.js';
 import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
@@ -151,6 +152,21 @@ export async function handleNotificationJob(
         console.info(`notifications: shift.offered → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
+    }
+    // An owner approved a pay period (W6 D4): compute and store its lines.
+    case 'pay_period.approved': {
+      const result = await calculatePayroll(db, {
+        id: job.outboxId,
+        orgId: job.orgId,
+        topic: job.topic,
+        payload: job.payload,
+      });
+      if (result.calculated) {
+        console.info(
+          `payroll: ${result.employees} employee(s), ${result.lines} line(s) calculated`,
+        );
+      }
+      return { notifications: 0, deliveries: 0, deliveryIds: [] };
     }
     // A provider's delivery reports, verified by the API's webhook and written as a platform
     // event (no org: the report only names the provider's message id). A late failure falls

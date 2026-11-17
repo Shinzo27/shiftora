@@ -68,6 +68,19 @@ export const errorCodes = {
   idempotencyKeyReuse: 'idempotency.key_reuse',
   /** Approving would break a rule a manager may overrule: say so with acknowledgeWarnings. */
   shiftRequestNeedsAcknowledgement: 'shift_request.needs_acknowledgement',
+  payPeriodNotFound: 'pay_period.not_found',
+  /** Two periods of one organisation cannot share a day. */
+  payPeriodOverlap: 'pay_period.overlap',
+  /** Open punches or unreviewed flags are left in the period (`errors` says how many). */
+  payPeriodNotReady: 'pay_period.not_ready',
+  /** Already approved (or being calculated): it is not open any more. */
+  payPeriodNotOpen: 'pay_period.not_open',
+  /** The lines are not written yet: the period is still being calculated. */
+  payPeriodNotCalculated: 'pay_period.not_calculated',
+  /** The punch is in an approved pay period: correcting it would change what was paid. */
+  timeEntryPeriodLocked: 'time_entry.period_locked',
+  /** Pay rules cannot start inside a period that has already been approved. */
+  payRulesPeriodApproved: 'pay_rules.period_approved',
   payRulesNotFound: 'pay_rules.not_found',
   /** A new version must start after the latest one: versions never overlap or reorder. */
   payRulesNotAfterLatest: 'pay_rules.not_after_latest',

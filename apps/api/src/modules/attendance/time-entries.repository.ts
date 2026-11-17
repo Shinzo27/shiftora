@@ -214,4 +214,36 @@ export class TimeEntriesRepository {
       .returning();
     return row ?? null;
   }
+
+  /**
+   * What stands between a pay period and its approval: punches whose clock-in falls on these
+   * local dates (each in its own location's zone) that are still open, flagged and unreviewed,
+   * or disputed (left out of pay).
+   */
+  async periodReadiness(
+    startsOn: string,
+    endsOn: string,
+  ): Promise<{ openPunches: number; unreviewedFlags: number; disputed: number }> {
+    const result = await this.context.tx.execute<{
+      open: number;
+      unreviewed: number;
+      disputed: number;
+    }>(sql`
+      select
+        count(*) filter (where te.clock_out_at is null)::int as open,
+        count(*) filter (
+          where te.clock_out_at is not null and cardinality(te.flags) > 0 and te.reviewed_at is null
+        )::int as unreviewed,
+        count(*) filter (where te.review_decision = 'disputed')::int as disputed
+      from time_entries te
+      join locations l on l.org_id = te.org_id and l.id = te.location_id
+      where te.org_id = ${this.context.orgId}
+        and (te.clock_in_at at time zone l.timezone)::date between ${startsOn}::date and ${endsOn}::date`);
+    const row = result.rows[0];
+    return {
+      openPunches: row?.open ?? 0,
+      unreviewedFlags: row?.unreviewed ?? 0,
+      disputed: row?.disputed ?? 0,
+    };
+  }
 }

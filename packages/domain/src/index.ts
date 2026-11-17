@@ -82,3 +82,4 @@ export {
 } from './scheduling/eligibility.js';
 export * from './pay/rules.js';
 export * from './pay/compute.js';
+export * from './pay/period.js';

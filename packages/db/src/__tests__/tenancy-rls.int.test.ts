@@ -127,6 +127,7 @@ describe('every tenant table is protected', () => {
       'notifications',
       'organizations',
       'outbox',
+      'pay_periods',
       'pay_rules',
       'push_subscriptions',
       'schedule_publications',
@@ -137,6 +138,7 @@ describe('every tenant table is protected', () => {
       'shifts',
       'time_entries',
       'time_off',
+      'timesheet_lines',
     ]);
     for (const t of tables) {
       expect(t, t.table).toMatchObject({ enabled: true, forced: true });

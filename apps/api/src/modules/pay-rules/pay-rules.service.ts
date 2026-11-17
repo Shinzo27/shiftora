@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  addDays,
   BILLING_TIME_ZONE,
   rulesInForce,
   toLocal,
@@ -17,6 +18,7 @@ import { AppException } from '../../common/app-exception.js';
 import { CLOCK } from '../../common/clock.js';
 import { uniqueViolation } from '../../common/db-errors.js';
 import { AuditService } from '../audit/audit.service.js';
+import { PayLocksService } from '../pay-periods/pay-locks.service.js';
 import { PayRulesRepository, type PayRulesRecord } from './pay-rules.repository.js';
 
 function toView(row: PayRulesRecord): PayRulesVersionView {
@@ -41,6 +43,7 @@ export class PayRulesService {
   constructor(
     private readonly payRules: PayRulesRepository,
     private readonly audit: AuditService,
+    private readonly payLocks: PayLocksService,
     @Inject(CLOCK) private readonly clock: Clock,
   ) {}
 
@@ -72,6 +75,16 @@ export class PayRulesService {
         409,
         errorCodes.payRulesNotAfterLatest,
         `A new version must start after ${latest.effectiveFrom}, when version ${latest.version} starts.`,
+      );
+    }
+
+    // Rules starting inside a period already paid would change that pay after the fact.
+    const paidThrough = await this.payLocks.paidThrough();
+    if (paidThrough && body.effectiveFrom <= paidThrough) {
+      throw new AppException(
+        409,
+        errorCodes.payRulesPeriodApproved,
+        `Pay is approved up to ${paidThrough}: new rules can start on ${addDays(paidThrough, 1)} at the earliest.`,
       );
     }
 
