@@ -32,6 +32,11 @@ export interface WorkedPeriod {
   startsAt: Date;
   endsAt: Date;
   timezone: string;
+  /**
+   * A break already known for this stretch — a planned shift's unpaid break — used instead of
+   * the rules' automatic deduction. Punches leave it unset: their break comes from the rules.
+   */
+  breakMinutes?: number;
 }
 
 export interface PayInput {
@@ -95,7 +100,10 @@ export function paidPieces(input: PayInput): {
     if (end.getTime() <= start.getTime()) continue;
 
     const minutes = (end.getTime() - start.getTime()) / MINUTE;
-    const deducted = breakFor(minutes, rules.breaks);
+    const deducted =
+      period.breakMinutes !== undefined
+        ? Math.min(period.breakMinutes, minutes)
+        : breakFor(minutes, rules.breaks);
     workedMinutes += minutes;
     breakMinutes += deducted;
 

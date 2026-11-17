@@ -81,3 +81,24 @@ export const payrollExportQuery = z.object({
   view: z.enum(['summary', 'lines']).default('summary'),
 });
 export type PayrollExportQuery = z.output<typeof payrollExportQuery>;
+
+/** What a week's schedule will cost (W6 D6): the extra pay it adds per person, and in total. */
+export const scheduleCost = z.object({
+  scheduleId: z.uuid(),
+  currency: z.string(),
+  costMinor: z.number().int(),
+  paidMinutes: z.number().int(),
+  overtimeMinutes: z.number().int(),
+  /** Shifts with nobody on them yet: not costed (no rate), counted so the number is honest. */
+  openShifts: z.number().int(),
+  people: z.array(
+    z.object({
+      employeeId: z.uuid(),
+      name: z.string(),
+      paidMinutes: z.number().int(),
+      overtimeMinutes: z.number().int(),
+      costMinor: z.number().int(),
+    }),
+  ),
+});
+export type ScheduleCost = z.output<typeof scheduleCost>;

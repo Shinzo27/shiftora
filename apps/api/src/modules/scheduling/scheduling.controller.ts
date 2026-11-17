@@ -23,6 +23,7 @@ import {
   type PublishPreview,
   type PublishResult,
   type Schedule,
+  type ScheduleCost,
   type ScheduleConflicts,
   type ShiftTemplate,
   type UpdateShiftTemplateRequest,
@@ -30,6 +31,7 @@ import {
 
 import { ZodValidationPipe } from '../../common/zod-validation.pipe.js';
 import { Roles } from '../tenancy/decorators.js';
+import { ScheduleCostService } from './schedule-cost.service.js';
 import { SchedulesService } from './schedules.service.js';
 import { ShiftsService } from './shifts.service.js';
 import { ShiftTemplatesService } from './shift-templates.service.js';
@@ -45,6 +47,7 @@ export class SchedulingController {
     private readonly templates: ShiftTemplatesService,
     private readonly schedules: SchedulesService,
     private readonly shifts: ShiftsService,
+    private readonly costs: ScheduleCostService,
   ) {}
 
   @Get('shift-templates')
@@ -95,6 +98,16 @@ export class SchedulingController {
   @Get('schedules/:id/conflicts')
   conflicts(@Param('id', ParseUUIDPipe) id: string): Promise<ScheduleConflicts> {
     return this.shifts.conflicts(id);
+  }
+
+  /**
+   * The week's projected labour cost: the pay engine on the planned shifts, overtime counted
+   * with each person's shifts elsewhere that week (W6 D6).
+   */
+  @Roles('owner', 'manager')
+  @Get('schedules/:id/cost')
+  cost(@Param('id', ParseUUIDPipe) id: string): Promise<ScheduleCost> {
+    return this.costs.cost(id);
   }
 
   /** What publishing would tell staff: the diff against the last publication. */

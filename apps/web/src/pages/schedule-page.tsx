@@ -62,6 +62,13 @@ interface SheetState {
  * place. Conflicts are answered by the API: an overlap is refused, the rest come back as
  * warnings on the shift sheet.
  */
+
+const rupees = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
+
 export function SchedulePage() {
   const { orgId, role, locations, locationId, selectLocation } = useOrg();
   const canManage = role === 'owner' || role === 'manager';
@@ -105,6 +112,14 @@ export function SchedulePage() {
     queryKey: ['conflicts', orgId, schedule?.id],
     queryFn: () => schedulesApi.conflicts(orgId, schedule!.id),
     enabled: Boolean(schedule),
+  });
+
+  // What the week will cost. Keyed on the schedule's version, which every shift edit bumps, so
+  // the figure follows the board without a separate invalidation.
+  const cost = useQuery({
+    queryKey: ['schedule-cost', orgId, schedule?.id, schedule?.version],
+    queryFn: () => schedulesApi.cost(orgId, schedule!.id),
+    enabled: Boolean(schedule) && canManage,
   });
 
   const queryClient = useQueryClient();
@@ -327,6 +342,20 @@ export function SchedulePage() {
               {employees.data?.items.length ?? 0} people
               {employees.data?.nextCursor ? ` (showing the first ${BOARD_LIMIT})` : ''}
             </span>
+            {cost.data ? (
+              <span className="tabular text-xs text-muted-foreground">
+                · Projected{' '}
+                <span className="font-medium text-foreground">
+                  {rupees.format(cost.data.costMinor / 100)}
+                </span>
+                {cost.data.overtimeMinutes > 0
+                  ? ` incl. ${(cost.data.overtimeMinutes / 60).toFixed(1)} h overtime`
+                  : ''}
+                {cost.data.openShifts > 0
+                  ? ` · ${cost.data.openShifts} open shift${cost.data.openShifts === 1 ? '' : 's'} not costed`
+                  : ''}
+              </span>
+            ) : null}
           </div>
           <WeekBoard
             weekStart={weekStart}

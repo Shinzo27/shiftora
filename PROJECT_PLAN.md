@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-17 (Week 6, Day 5 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-17 (Week 6 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W6 D6 | Labour-cost projection: `GET /schedules/:id/cost` prices the week's planned shifts with the pay engine (planned breaks unpaid, overtime counted with the person's shifts at other branches, each shift charged in time order so branches add up), open shifts counted not priced; "Projected ₹…" on the week board, refreshed with every edit | ✅ Done | see `git log` |
 | W6 D5 | Payroll export, streamed in pages of 1 000 rows: `GET /pay-periods/:id/export?format=csv&view=summary\|lines` (BOM, RFC 4180 quoting) or `format=xlsx` (exceljs streaming writer, Summary + Lines sheets), owner only; and the **Payroll page** (periods, what blocks approval, Approve, CSV/XLSX download) replacing the "soon" sidebar item | ✅ Done | see `git log` |
 | W6 D4 | Pay periods (`0022`: dates a manager picks, ≤ 31 days, no overlap by exclusion constraint) and `timesheet_lines`; approval (owner only) refused while punches are open or flagged-and-unreviewed, then `pay_period.approved` → the worker runs `computePay` per person (weekly overtime counted from the week before the period, lines kept inside it, disputed punches left out) → `approved` with totals; approved periods lock punch corrections and backdated pay rules | ✅ Done | see `git log` |
 | W6 D3 | Overtime (daily and weekly, each minute at most once: the weekly threshold counts only minutes that were not daily overtime), the night premium split at the window's edges on each local day, premiums adding on base (1 + 0.5 + 0.25 = 1.75×); 8 fast-check properties × 400 random timesheets and rule sets | ✅ Done | see `git log` |
@@ -102,14 +103,37 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 23 migrations, 785 automated tests (388 unit, 397 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 101 API endpoints, a React web app on shadcn/ui
+Numbers today: 23 migrations, 793 automated tests (392 unit, 401 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 102 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-17 (first dev machine, Claude Code) — W6 D4–D6 done: week 6 is finished.**
+> - **Owner's decisions:** pay periods are dates a manager picks (≤ 31 days, no overlap);
+>   approval is refused while punches are open or flagged-and-unreviewed; **disputed** punches
+>   are not paid; only an **owner** approves, sees payroll and exports. `exceljs` approved
+>   (`apps/api`).
+> - **D4:** `pay_periods` + `timesheet_lines` (`0022`, exclusion constraint on overlapping
+>   dates); `/pay-periods` (create, readiness, approve → `pay_period.approved` → the worker's
+>   `calculatePayroll` → `approved` with totals; `payroll`); `PayLocksModule` refuses punch
+>   corrections and backdated pay rules inside a paid period.
+> - **D5:** streamed export (CSV summary/lines with BOM, XLSX with two sheets) in pages of 1 000;
+>   the **Payroll page** (replaces the "soon" sidebar item) with Approve and downloads.
+> - **D6:** `GET /schedules/:id/cost` + "Projected ₹…" on the week board.
+> - **Verified in Chrome:** demo clinic, 16–30 Nov period → reviewed the seed's flagged punch →
+>   Approve → "Calculating" → ₹14,855.83 for 3 people (CSV adds up the same); Andheri week
+>   "Projected ₹50,117". Lighthouse accessibility 100 on Payroll.
+> - **Local demo data changed:** a 16–30 Nov pay period is now approved (its punches are locked)
+>   and the seed's flagged punch is accepted. `pnpm db:seed` on a fresh database restores the demo.
+> - **Not built:** a pay-rules editor screen (rules are API-only), per-person payroll detail in
+>   the UI (`GET /pay-periods/:id/payroll` exists), budget vs projection (A6 proper).
+> - **Checks:** 392 unit + 401 integration (db 61, worker 74, api 266) + 6 E2E; lint, typecheck,
+>   build. Mutation checks: the pay window (week and edge tests), offering/ordering earlier.
+> - **Next — W7:** auto-scheduler v1, audit UI, observability.
 
 > **2026-11-17 (first dev machine, Claude Code) — W6 D1–D3 done (one commit per day).**
 > - **Owner's decisions:** pay rules are org-wide (no per-location override yet); a new
@@ -287,6 +311,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | **Pay rules are org-wide, start empty, and premiums add** (owner's decisions, W6): one versioned rule set per organisation (per-location overrides later, without touching old periods); a new organisation is on plain hourly pay until the owner writes rules — Shiftora never assumes a labour-law rule on a clinic's behalf; overtime and night premiums add on base (1 + 0.5 + 0.25 = 1.75×, not 1.875× or the higher one) | 2026-11-17 |
+| — | **Projected cost charges each shift what it adds, in time order** (W6 D6): a person's whole week (every branch) is walked chronologically and each shift costs pay(up to it) − pay(before it). Overtime lands on the shift where it happens and the branches' figures add up to the person's real pay; "price the branch as if it came last" was tried first and double-counted overtime across branches. Planned shifts use their own break, not the punch break rule; open shifts are counted, not priced | 2026-11-17 |
 | — | **Payroll rules** (owner's decisions, W6 D4): a pay period is dates a manager picks (≤ 31 days, never overlapping); approval is refused while a punch in it is open or flagged-and-unreviewed; punches a manager **disputed** are left out of pay; only an **owner** approves and sees payroll; once approved, the period's punches cannot be corrected and pay rules cannot start inside it. Each minute is paid in exactly one period (lines are kept by date; weekly overtime counts the days of the week that fell in the previous period) | 2026-11-17 |
 | — | **Overtime is counted once, minute by minute** (W6 D3): beyond the daily threshold is daily overtime; the weekly threshold counts only the minutes that were *not* daily overtime (so six 10-hour days at 9 h/day and 48 h/week is 12 h of overtime, not 16); a week uses the threshold in force on its Monday; the night window and daily rules are those of the day each minute falls on. Premiums add on base | 2026-11-17 |
 | — | **How time becomes pay** (W6 D2): the rules in force on the day a stretch of work **started** apply to all of it; punches round on the location's wall clock (a 30-minute grid is :00/:30 local); without a rounding rule punches round to the nearest whole minute; an unpaid break comes out of the **middle** of the stretch (the first and last hours stay as worked, so early-morning night minutes are not the ones lost); money is priced once per line (day × kind × rate), half up, in integer paise | 2026-11-17 |
@@ -817,6 +842,7 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 | `GET /pay-periods/:id` \| `DELETE /pay-periods/:id` | token + org | owner, manager: one period (open, calculating or approved with totals) / delete an open one |
 | `POST /pay-periods/:id/approve` | token + org | owner: 409 `pay_period.not_ready` (open punches, unreviewed flags) or `not_open`; → `calculating`, worker writes the lines |
 | `GET /pay-periods/:id/payroll` | token + org | owner: each person's totals and lines; 409 `pay_period.not_calculated` until the worker is done |
+| `GET /schedules/:id/cost` | token + org | owner, manager (scoped): the week's projected cost, paid and overtime minutes, open shifts, per person |
 | `GET /pay-periods/:id/export` | token + org | owner: `?format=csv&view=summary\|lines` or `?format=xlsx` (both sheets), streamed; 409 until approved and calculated |
 | `GET /pay-rules` | token + org | owner, manager: every version, newest first, with who wrote it |
 | `GET /pay-rules/in-force?date=` | token + org | owner, manager: the rules for a local date and their version (`null` = plain hourly pay) |
@@ -983,7 +1009,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D3 | ✅ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check). **Done 2026-11-17:** `splitAtNight` (wrapping windows are two stretches of each day) and `classify` (minute by minute in time order; weekly counts only non-daily-overtime minutes; weekly threshold from the week's Monday) in `pay/compute.ts`; `fast-check` added to `packages/domain` (dev) | Paid minutes never exceed worked minutes, etc.: 8 properties × 400 cases across four zones and DST (paid = worked − breaks; lines add up; nothing below base; order-independent; splitting an entry at any minute changes nothing; no rules = all base; raising a threshold never adds overtime; a night premium never lowers pay) + 10 examples (six 10-hour days at 9 h/48 h = 12 h overtime, not 16); mutation checks: double-counting and weekly-counts-overtime each turn tests red |
 | D4 | ✅ | Pay-period approval; payroll calculation as a worker job. **Done 2026-11-17:** `pay_periods` + `timesheet_lines` (`0022`), `PayPeriodsModule` (create/list/get/delete, approve, payroll), `PayLocksModule` (punch corrections and pay rules refused inside a paid period), `periodReadiness` in attendance, `calculatePayroll` in the worker, `payWindow`/`linesInPeriod` in the domain | Approve → lines computed: 6 worker tests (lines and totals per person at their own rate, disputed left out, an overnight shift split between two periods, weekly overtime counting the days before the period, replay is a no-op, other org untouched), 7 API tests, 4 unit; mutation check: loading from the period start breaks the week and edge tests |
 | D5 | ✅ | CSV/XLSX export (exceljs, streamed). **Done 2026-11-17:** `PayrollExportService` (paged repository reads, `drain`-aware writes, exceljs `WorkbookWriter` into the response stream), `api.download()` in the web client, `pages/payroll-page.tsx`; `exceljs` added to `apps/api` (owner-approved) | 500-employee period exports without memory spikes: 6 API tests on a 500-person month (23 000 lines, 23 pages) — CSV summary and lines and XLSX complete and correct, quoting, BOM, owner only, 409 before approval. Verified in Chrome on the demo clinic: period → flag reviewed → Approve → "Calculating" → ₹14,855.83 for 3 people; the CSV adds up to the same; Lighthouse accessibility 100. Memory is bounded by design (one page in memory, back-pressure on the response) rather than by a heap measurement |
-| D6 | ⏭ | Labour-cost projection for a schedule (basis for A6) | Draft schedule shows projected cost |
+| D6 | ✅ | Labour-cost projection for a schedule (basis for A6). **Done 2026-11-17:** `projectCost` in `packages/domain/pay/projection.ts` (each shift charged what it adds, in time order), `WorkedPeriod.breakMinutes` (a planned break overrides the punch rule), `ScheduleCostService` + `GET /schedules/:id/cost`, the board's cost line | Draft schedule shows projected cost: verified in Chrome (Andheri week "Projected ₹50,117"); 4 API tests (planned break unpaid, open shifts not priced, Bandra's 36 h tip Andheri's Friday into 5 h overtime and Bandra is charged none, scope/roles/org) + 4 unit (two branches' shares add up to the person's real pay). First version charged each branch as if it came last and double-counted overtime — caught by the test, fixed |
 
 ### Week 7: Auto-scheduler v1, audit UI, observability
 

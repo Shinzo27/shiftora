@@ -662,6 +662,10 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
   1 000 (stable order) and writes each row to a `PassThrough` already handed to Fastify, waiting
   on `drain` — CSV by hand (BOM, RFC 4180), XLSX through exceljs's streaming `WorkbookWriter`.
   All inside the request's tenant transaction, so RLS applies to every page.
+- **Projection (W6 D6, implemented):** `projectCost` prices planned shifts with `computePay`
+  (each shift's planned break, not the punch rule), walking each person's whole week across
+  branches in time order and charging every shift what it adds, so overtime lands where it
+  happens and branches add up. `GET /schedules/:id/cost` feeds the board's "Projected" line.
 - Rules are versioned JSON validated by a Zod schema, e.g.:
   ```json
   {

@@ -6,10 +6,12 @@ import { EmployeesModule } from '../employees/employees.module.js';
 import { JobRolesModule } from '../job-roles/job-roles.module.js';
 import { LocationsModule } from '../locations/locations.module.js';
 import { OutboxModule } from '../outbox/outbox.module.js';
+import { PayRulesModule } from '../pay-rules/pay-rules.module.js';
 import { RealtimeModule } from '../realtime/realtime.module.js';
 import { OpenShiftsController } from './open-shifts.controller.js';
 import { OpenShiftsService } from './open-shifts.service.js';
 import { PublicationsRepository } from './publications.repository.js';
+import { ScheduleCostService } from './schedule-cost.service.js';
 import { SchedulesRepository } from './schedules.repository.js';
 import { SchedulesService } from './schedules.service.js';
 import { SchedulingController } from './scheduling.controller.js';
@@ -34,6 +36,7 @@ import { ShiftsService } from './shifts.service.js';
     JobRolesModule,
     EmployeesModule,
     OutboxModule,
+    PayRulesModule,
     RealtimeModule,
   ],
   controllers: [
@@ -45,6 +48,7 @@ import { ShiftsService } from './shifts.service.js';
   providers: [
     ShiftTemplatesService,
     SchedulesService,
+    ScheduleCostService,
     ShiftsService,
     ShiftTemplatesRepository,
     SchedulesRepository,

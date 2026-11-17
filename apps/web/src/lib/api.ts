@@ -33,6 +33,7 @@ import type {
   ReplayResult,
   Schedule,
   ScheduleConflicts,
+  ScheduleCost,
   Shift,
   ShiftCandidates,
   ShiftRequestView,
@@ -149,6 +150,8 @@ export const employeesApi = {
 };
 
 export const schedulesApi = {
+  /** The week's projected labour cost (W6 D6): owners and managers. */
+  cost: (orgId: string, id: string) => api.get<ScheduleCost>(`/schedules/${id}/cost`, { orgId }),
   /** One location's schedules; `weekStart` narrows it to a single week. */
   list: (orgId: string, params: { locationId: string; weekStart?: string }) => {
     const query = new URLSearchParams({ locationId: params.locationId });
