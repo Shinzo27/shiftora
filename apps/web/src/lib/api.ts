@@ -3,6 +3,8 @@ import type {
   AuthResponse,
   AuthUser,
   ClaimOpenShiftResult,
+  CoverageRequirementView,
+  CreateCoverageRequirement,
   ClockInRequest,
   ClockOutRequest,
   ClockResult,
@@ -41,6 +43,7 @@ import type {
   SignupRequest,
   TimeEntryWithEdits,
   TimeOff,
+  UpdateCoverageRequirement,
   UpdateEmployeeRequest,
   UpdateLocationRequest,
   UpdateShiftRequest,
@@ -238,6 +241,16 @@ export const openShiftsApi = {
     }),
   candidates: (orgId: string, shiftId: string) =>
     api.get<ShiftCandidates>(`/shifts/${shiftId}/candidates`, { orgId }),
+};
+
+export const coverageApi = {
+  list: (orgId: string, locationId: string) =>
+    api.get<CoverageRequirementView[]>(`/locations/${locationId}/coverage`, { orgId }),
+  create: (orgId: string, locationId: string, body: CreateCoverageRequirement) =>
+    api.post<CoverageRequirementView>(`/locations/${locationId}/coverage`, { orgId, body }),
+  update: (orgId: string, id: string, body: UpdateCoverageRequirement) =>
+    api.patch<CoverageRequirementView>(`/coverage/${id}`, { orgId, body }),
+  remove: (orgId: string, id: string) => api.delete<void>(`/coverage/${id}`, { orgId }),
 };
 
 export const shiftRequestsApi = {

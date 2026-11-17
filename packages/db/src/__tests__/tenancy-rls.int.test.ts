@@ -116,6 +116,7 @@ describe('every tenant table is protected', () => {
       'departments',
       'employee_job_roles',
       'employee_locations',
+      'coverage_requirements',
       'employees',
       'idempotency_keys',
       'invites',

@@ -320,6 +320,9 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **Open shifts are offered, not broadcast**: a manager (or an approved drop) offers an open shift; the API computes who could take it at that moment and names them in the `shift.offered` event, and the worker messages exactly those people. Availability does not exclude anyone (a preference); rest, weekly hours, time off, role, location and overlap do. The person who dropped a shift is never offered it back | 2026-11-16 |
 | — | **An approved swap or drop is published on its own** (`recordToldChange` + a patched publication): the people involved were told by the request messages, so the schedule's published version moves with the change when there were no other drafts, and the latest publication carries the new assignee — reminders follow the new person and the next publish does not re-announce it | 2026-11-16 |
 | — | **Only published shifts can be swapped or dropped** (in the latest publication, with the requester on it); a draft is the manager's to change directly. A swap needs a colleague with a login (they must accept); an owner with no staff profile cannot ask (403) | 2026-11-16 |
+| — | **Coverage is a weekly template, not dated rows** (W7 D1): "every Monday, two nurses" is how a clinic is staffed; a date-specific override is a later feature that would not change what the row means. `headcount` is the only multiplicity — the solver expands it into that many independent slots, because two nurses may well be two different people | 2026-11-17 |
+| — | **A coverage requirement may have no role** ("anyone at the branch"), because small clinics staff a location rather than a profession. The duplicate check needs a **partial** unique index for that case: Postgres treats NULLs as distinct, so the plain index would let two identical "anyone" rows through (the same lesson as the invite email index) | 2026-11-17 |
+| — | **The solver contract is pure and lives in the domain package** (`ScheduleProblem` in, `ScheduleSolution` out): the API maps rows to it, the worker runs it, and fixtures test it without Postgres. The explanation of an unfilled slot is part of the solution, not a log line | 2026-11-17 |
 | — | **The UI offers only the moves the server allows**: `ShiftRequestView.actions` decides which buttons render, so a screen can never ask for a transition the state machine refuses | 2026-11-16 |
 | — | **A claim's `Idempotency-Key` is generated per tap** (`crypto.randomUUID()` at click time), so a retry of that tap reuses it while a second tap is honestly a new request | 2026-11-16 |
 | — | **Requests are for published weeks only**: an unpublished shift is still a draft a manager can edit directly, and the app shows the server's sentence (`shift_request.not_published`) rather than pre-hiding the button — the rule lives in one place | 2026-11-16 |
@@ -678,6 +681,8 @@ Fastify
 | `0013_invite_email` | `notifications.employee_id` nullable + `recipient_email` + CHECK one is set + unique `(outbox_id, recipient_email)` (plain index: `ON CONFLICT` cannot infer a partial one) |
 | `0014_platform_tokens` | `one_time_tokens` (hash, expiry, `used_at`, platform table); `outbox.org_id` nullable + `outbox_platform_insert` policy (ADR 018) |
 | `0015_push_subscriptions` | `push_subscriptions` (endpoint unique, same-org FK to employees, RLS) |
+| `0023_coverage_requirements` | `coverage_requirements` (branch, weekday 1–7, nullable role, local start/end, headcount 1–20; same-org FKs; unique per branch/weekday/start/role; RLS) |
+| `0024_coverage_any_role` | partial unique index for the role-less case — NULLs are distinct, so the plain index cannot stop two identical "anyone" rows |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
 | `0022_payroll` | `pay_periods` (org, `starts_on`/`ends_on` ≤ 31 days, status open → calculating → approved, approver, totals; **EXCLUDE** overlapping date ranges per org; RLS) and `timesheet_lines` (period, employee, date, category, night, minutes, multiplier bp, rate, amount, currency; same-org FKs; RLS) |
 | `0021_pay_rules` | `pay_rules` (org, version, `effective_from` local date, `rules` jsonb, note, created by/at; unique per org by version and by start date; **UPDATE revoked from `app_user`** so a version never changes; RLS) |
@@ -732,6 +737,9 @@ deliveries     (id, org_id, notification_id, channel email|whatsapp|sms|push, ad
 one_time_tokens (id, user_id, purpose verify_email|reset_password, token_hash unique,
                 expires_at, used_at?, created_at)      platform table, no RLS, hash only
 push_subscriptions (id, org_id, employee_id, endpoint unique, p256dh, auth, created_at)
+coverage_requirements (id, org_id, location_id, weekday 1–7, job_role_id?, start_local,
+                end_local, headcount 1–20)   RLS, FK (org_id, location_id) → locations,
+                FK (org_id, job_role_id) → job_roles, unique (location, weekday, start, role)
                                         RLS, FK (org_id, employee_id) → employees
 schedule_publications (id, org_id, schedule_id, version, shifts jsonb (what was sent),
                 affected_employee_ids uuid[], published_by?, published_at)
@@ -853,6 +861,10 @@ Org-scoped routes need `Authorization: Bearer <token>` **and** `X-Org-Id: <org u
 `pay_period.not_calculated`, `time_entry.period_locked` |
 | `POST /shifts/:id/offer` | token + org | owner, manager (scoped, writable): offers an open shift to the eligible staff → `{ offeredTo }` |
 | `GET /me/open-shifts` | token + org | any member: offered open shifts they could take now (never one they dropped) |
+| `GET /locations/:id/coverage` | token + org | owner, manager (scoped): the branch's standing coverage, with role names |
+| `POST /locations/:id/coverage` | token + org | owner, manager (scoped, writable): one weekday requirement → 201; 409 `coverage.already_exists` for a duplicate |
+| `PATCH /coverage/:id` | token + org | owner, manager (scoped, writable): change hours, headcount or role |
+| `DELETE /coverage/:id` | token + org | owner, manager (scoped, writable): 204 |
 | `POST /me/open-shifts/:id/claim` | token + org + `Idempotency-Key` | any member with a staff profile: takes an offered shift → 200 with the shift; 409 `shift.already_taken` when someone else's update landed first, 409 `shift.not_open` when it was never offered, 400 `idempotency.key_required` without the header |
 | `POST /schedules/:id/publish` | token + org | owner, manager (in scope), writable location; 200 with `{ schedule, publication }`; one `schedule.published` outbox row + one audit row in the same transaction |
 
@@ -1015,7 +1027,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 
 | Day | Status | Tasks | Done when |
 |---|---|---|---|
-| D1 | ☐ | `coverage_requirements` + UI; auto-scheduler input/output contracts in `packages/domain` | Contract types + fixtures |
+| D1 | ✅ | **Done 2026-11-17:** `coverage_requirements` (`0023`, RLS, same-org FKs, weekday 1–7, nullable role = "anyone at the branch", headcount 1–20, one row per branch/weekday/start/role), CRUD API scoped by `LocationAccess`, the **solver contract** in `packages/domain/scheduling/auto` (`CoverageSlot`, `SchedulableEmployee`, `ScheduleProblem`, `ScheduleSolution`, `expandWeek` turning headcount into slots) and a Coverage dialog per branch on the Locations page | Contract types + fixtures: 5 domain tests on `expandWeek` (stable ids, headcount repeats, per-weekday placement) and 8 API tests (round-trip, duplicate refused with a sentence, same-time refused, edit, delete, branches kept separate, employee 403) |
 | D2 | ☐ | Greedy assignment: hardest slots first; score = cost + fairness + preference + weekend/night balance | Fills a simple week |
 | D3 | ☐ | Bounded backtracking (time budget ~2 s); explain unfilled slots; runs as a worker job with progress over Socket.IO | "No Nurse available Tue 22:00: 2 over max hours" style explanations |
 | D4 | ☐ | Audit log UI for owners; monthly partitioning of `audit_events` | Owner filters history by entity |

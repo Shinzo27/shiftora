@@ -1,7 +1,16 @@
 import { normalizeTimeZone } from '@shiftora/domain';
 import { createLocationRequest, updateLocationRequest, type Location } from '@shiftora/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Clock, Crosshair, MapPin, MoreHorizontal, Pencil, Plus, Radius } from 'lucide-react';
+import {
+  CalendarClock,
+  Clock,
+  Crosshair,
+  MapPin,
+  MoreHorizontal,
+  Pencil,
+  Plus,
+  Radius,
+} from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
@@ -50,6 +59,7 @@ import {
 } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { locationsApi } from '@/lib/api';
+import { CoverageDialog } from '@/components/locations/coverage-dialog';
 import { apiFieldErrors, errorMessage, text, zodFieldErrors, type FieldErrors } from '@/lib/forms';
 import { useOrg } from '@/lib/org-context';
 
@@ -58,7 +68,8 @@ type Editing = null | 'new' | Location;
 
 export function LocationsPage() {
   // OrgLayout has already loaded the locations; they live in the org context.
-  const { role, locations } = useOrg();
+  const { orgId, role, locations } = useOrg();
+  const [coverageFor, setCoverageFor] = useState<{ id: string; name: string } | null>(null);
   const isOwner = role === 'owner';
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<Editing>(null);
@@ -93,6 +104,9 @@ export function LocationsPage() {
               <LocationCard
                 location={location}
                 {...(isOwner ? { onEdit: () => openSheet(location) } : {})}
+                {...(isOwner
+                  ? { onCoverage: () => setCoverageFor({ id: location.id, name: location.name }) }
+                  : {})}
               />
             </li>
           ))}
@@ -131,11 +145,20 @@ export function LocationsPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+      <CoverageDialog orgId={orgId} location={coverageFor} onClose={() => setCoverageFor(null)} />
     </>
   );
 }
 
-function LocationCard({ location, onEdit }: { location: Location; onEdit?: () => void }) {
+function LocationCard({
+  location,
+  onEdit,
+  onCoverage,
+}: {
+  location: Location;
+  onEdit?: () => void;
+  onCoverage?: () => void;
+}) {
   const readOnly = location.status === 'read_only';
   return (
     <Card className="h-full transition hover:shadow-md">
@@ -159,6 +182,11 @@ function LocationCard({ location, onEdit }: { location: Location; onEdit?: () =>
                 <DropdownMenuItem onSelect={onEdit}>
                   <Pencil /> Edit
                 </DropdownMenuItem>
+                {onCoverage ? (
+                  <DropdownMenuItem onSelect={onCoverage}>
+                    <CalendarClock /> Coverage
+                  </DropdownMenuItem>
+                ) : null}
               </DropdownMenuContent>
             </DropdownMenu>
           </CardAction>

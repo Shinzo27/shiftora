@@ -162,6 +162,20 @@
       "when": 1794911659950,
       "tag": "0022_payroll",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1794930969246,
+      "tag": "0023_coverage_requirements",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1794931314595,
+      "tag": "0024_coverage_any_role",
+      "breakpoints": true
     }
   ]
 }

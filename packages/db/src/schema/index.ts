@@ -1,4 +1,5 @@
 export * from './audit-events.js';
+export * from './coverage-requirements.js';
 export * from './departments.js';
 export * from './employees.js';
 export * from './idempotency-keys.js';

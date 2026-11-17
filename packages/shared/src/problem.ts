@@ -62,6 +62,9 @@ export const errorCodes = {
   shiftRequestNotEligible: 'shift_request.not_eligible',
   /** The claim lost the race: someone else's update landed first. */
   shiftAlreadyTaken: 'shift.already_taken',
+  /** Coverage requirements: a duplicate row, or one that does not exist. */
+  coverageAlreadyExists: 'coverage.already_exists',
+  coverageNotFound: 'coverage.not_found',
   /** A write that must be safe to retry arrived without its key. */
   idempotencyKeyRequired: 'idempotency.key_required',
   /** The same key was used for a different body: not a retry, a mistake. */

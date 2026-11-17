@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { CommonModule } from './common/common.module.js';
 import { ConfigModule } from './config/config.module.js';
+import { CoverageModule } from './modules/coverage/coverage.module.js';
 import { HealthModule } from './health/health.module.js';
 import { AttendanceModule } from './modules/attendance/attendance.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
@@ -27,6 +28,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
     AuthModule, // global JwtAuthGuard: who is calling
     TenancyModule, // global TenancyInterceptor: which org, what role, one transaction
     OrgsModule,
+    CoverageModule,
     PushModule,
     IdempotencyModule,
     InvitesModule,

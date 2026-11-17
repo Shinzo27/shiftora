@@ -301,6 +301,19 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Non-negotiable rules
 
+### Coverage and the auto-scheduler
+
+- **A role-less coverage requirement needs its own uniqueness.** `coverage_requirements` has a
+  plain unique index on (branch, weekday, start, role) **and** a partial one
+  `WHERE job_role_id IS NULL` (`0024`): Postgres treats NULLs as distinct, so the plain index
+  alone lets two identical "anyone at the branch" rows through. The same trap as the invite email
+  index — prefer a partial index plus a caught `23505` over `ON CONFLICT`.
+- **A unique violation here is a 409, not a 500.** `coverage.service.ts` catches `23505` through
+  the cause chain (drizzle wraps query errors) and answers `coverage.already_exists`.
+- **The solver contract lives in `packages/domain/scheduling/auto`** and is pure: no database, no
+  clock. `expandWeek` is the only place `headcount` becomes repetition, and slot ids
+  (`requirementId#index`) are stable so a re-run can be compared with the last one.
+
 ### Claims, requests and idempotency
 
 - **A claim is a conditional UPDATE, never a read-then-write.** `ShiftsRepository.claim` matches
