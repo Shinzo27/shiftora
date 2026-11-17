@@ -644,6 +644,9 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
 - **Stored (W6 D1, implemented):** `pay_rules` holds immutable, dated versions per organisation
   (UPDATE revoked; a change is a new version from a later date). No version = plain hourly pay.
   Owner's decisions: org-wide rules, no defaults, premiums add on base.
+- **Computed (W6 D2, implemented):** `computePay` in `packages/domain/pay/compute.ts` — rules by
+  the day a stretch started → punches rounded on the wall clock → unpaid break from the middle →
+  pieces cut at local midnight → lines per day and rate, priced once in integer paise.
 - Rules are versioned JSON validated by a Zod schema, e.g.:
   ```json
   {

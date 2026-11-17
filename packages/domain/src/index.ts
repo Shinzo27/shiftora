@@ -81,3 +81,4 @@ export {
   needsAcknowledgement,
 } from './scheduling/eligibility.js';
 export * from './pay/rules.js';
+export * from './pay/compute.js';
