@@ -415,7 +415,7 @@ not a cached GET. Every route is `lazy()`-loaded, so the entry chunk is the shel
 page (130 kB gzip) instead of the whole app (339 kB before).
 
 ### 7.4 Open shifts and swaps: concurrency
-- **Claiming an open shift (implemented, W5 D4; ADR 019):**
+- **Claiming an open shift (implemented, W5 D4; ADR 020):**
   ```sql
   UPDATE shifts SET employee_id = $emp, status = 'assigned', version = version + 1
   WHERE id = $shift AND status = 'open' AND version = $expectedVersion
@@ -809,3 +809,4 @@ GET  /audit?entity=shift&entityId=
 | 017 | The outbox relay reads across tenants through a transaction-local switch (`app.outbox_relay`) and two policies on `outbox` only; no BYPASSRLS role | Accepted (W4 D1) |
 | 018 | Account mail (verification, reset) is a platform outbox event with `org_id IS NULL`, sent directly by the worker | Accepted (W4 D3) |
 | 019 | The alert scan (`app.alert_scan` on `organizations`) and delivery reports (`app.provider_report` on `deliveries`) get the same kind of switch: `SELECT`-only, one query wide; the webhook only writes a platform event | Accepted (2026-11-16) |
+| 020 | Claiming an open shift is one conditional UPDATE (`status = 'open' AND employee_id IS NULL AND version = <read>`), not a lock or a queue; retries are keyed by `Idempotency-Key` in `idempotency_keys`, reserved before the work, so a retry returns the first answer and never claims twice | Accepted (W5 D4) |

@@ -1,4 +1,4 @@
-# ADR 019 — The claim is a conditional update, and retries are keyed
+# ADR 020 — The claim is a conditional update, and retries are keyed
 
 **Status:** accepted (week 5, D4)
 **Context:** building the open-shift marketplace; two nurses, one shift, the same second.

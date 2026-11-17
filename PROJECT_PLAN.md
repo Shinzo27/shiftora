@@ -115,14 +115,14 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   work, so a retry returns the first answer byte for byte and never claims twice; the same key on
 >   a different shift is `idempotency.key_reuse`. The claim audits before/after, writes one
 >   `shift.claimed` event (managers only — the claimer pressed the button), and patches the
->   publication so reminders follow the new person. ADR 019 records the reasoning.
+>   publication so reminders follow the new person. ADR 020 records the reasoning.
 > - **D5 — the screens.** Staff: "Open shifts you can take" (claim with a key minted per tap, and a
 >   plain "someone else took it" when the race is lost), "Your requests" (waiting on you / yours,
 >   with withdraw and the manager's note), and the two asks in the shift drawer ("Ask a colleague",
 >   "I cannot work this shift"). Manager: a **Requests** inbox at `/o/:orgId/requests` with
 >   approve/reject, in the sidebar. Buttons come from the server's `actions`, so the UI cannot offer
 >   a transition the state machine refuses.
-> - **D6 — the writing.** ADR 019 and `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md`:
+> - **D6 — the writing.** ADR 020 and `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md`:
 >   the naive read-then-write, why a lock and a queue are both wrong here, the actual statement, the
 >   retry problem and where the idempotency row has to be written, and the parallel test.
 > - **Verified in the browser end to end:** Asha claimed an offered shift (it left the open list and
@@ -928,7 +928,7 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D3 | ✅ | Open shifts: post, eligibility query (job role, location, hours, rest), notify eligible staff. **Done 2026-11-16:** `OpenShiftsService` (`candidates`, `offer`/`offerShift`, `mine`) on the shared `assessMany` + `canTakeOpenShift`, migration `0019` (`offered_at` + partial index), `handleShiftOffered` in the worker | Only eligible staff are notified: 5 API tests (of five people only the free nurse at the branch is offered it and sees it; a drop's freed shift goes to the others, not the dropper), 2 worker tests, 1 template test; mutation check: offering to everyone at the location turns the test red |
 | D4 | ✅ | Race-safe claim (conditional UPDATE + version) + `idempotency_keys`. **Done 2026-11-16:** `POST /me/open-shifts/:id/claim` (`ShiftsRepository.claim` updates only while `status = open`, `employee_id is null` **and** `version` is the one it read), `idempotency_keys` (`0020`, RLS, unique per org + route + key, request hash, stored response), `IdempotencyService` (reserve → run → store; the reservation is the lock, the unique index is the serialization point), audit `shift.claimed` + `shift.claimed` event (managers only — the claimer pressed the button), `recordToldChange` so reminders follow the new person, realtime hint | Three claims at the same instant → exactly one 200 and two 409s with the winner on the row; a retry with the same key returns the first answer byte for byte and claims once; the same key on a different shift is refused (`idempotency.key_reuse`); 8 integration tests |
 | D5 | ✅ | **Done 2026-11-16:** staff app gains "Open shifts you can take" (claim, with a per-tap `Idempotency-Key` and a plain "someone else took it" when the race is lost) and "Your requests" (what I asked for, what is waiting on my answer, withdraw), plus "Ask a colleague to take it" / "I cannot work this shift" in the shift drawer; manager gains a **Requests** inbox (`/o/:orgId/requests`) with approve/reject, wired into the sidebar for managers. Buttons come from the server's `actions`, so the UI cannot offer a move the state machine would refuse | Full loop in the browser: Asha claimed an offered shift (it left the open list and appeared in her week), asked to give it up (request showed "Waiting on a manager"), Priya approved it from the inbox (inbox emptied, the shift left Asha's week and returned to open) |
-| D6 | ✅ | **Done 2026-11-16:** ADR 019 (why a conditional update beats a lock or a queue, and why the idempotency row must be written before the work) and the blog draft `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md` — the naive read-then-write, the three fixes that do not work, the real statement, the retry problem, and the parallel test that makes the whole thing credible | Draft in `docs/blog/`; week 5 is finished (D1–D6) |
+| D6 | ✅ | **Done 2026-11-16:** ADR 020 (why a conditional update beats a lock or a queue, and why the idempotency row must be written before the work) and the blog draft `docs/blog/how-i-stop-two-nurses-taking-the-same-shift.md` — the naive read-then-write, the three fixes that do not work, the real statement, the retry problem, and the parallel test that makes the whole thing credible | Draft in `docs/blog/`; week 5 is finished (D1–D6) |
 
 ### Week 6: Pay rules, overtime, payroll export
 
