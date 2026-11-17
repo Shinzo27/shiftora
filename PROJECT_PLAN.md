@@ -4,7 +4,7 @@
 > what we're building and why, every decision made so far, the tech stack, how the code is
 > organised, what's done, and the day-by-day plan to launch.
 >
-> Last updated: 2026-11-17 (Week 6, Day 2 done) · Owner: Pratham (GitHub: Shinzo27)
+> Last updated: 2026-11-17 (Week 6, Day 3 done) · Owner: Pratham (GitHub: Shinzo27)
 >
 > Deeper references: [PRD.md](PRD.md) (product detail), [ARCHITECTURE.md](ARCHITECTURE.md)
 > (design detail), [AGENTS.md](AGENTS.md) (rules for coding agents), [docs/adr/](docs/adr/).
@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W6 D3 | Overtime (daily and weekly, each minute at most once: the weekly threshold counts only minutes that were not daily overtime), the night premium split at the window's edges on each local day, premiums adding on base (1 + 0.5 + 0.25 = 1.75×); 8 fast-check properties × 400 random timesheets and rule sets | ✅ Done | see `git log` |
 | W6 D2 | Pure `computePay(periods, versions, rate)` in `packages/domain/pay`: rules in force on the day the work started, punches rounded on the location's wall clock, the unpaid break taken from the middle of a stretch, pieces cut at local midnight (DST-correct), one priced line per day, integer money (basis points, half-up per line) | ✅ Done | see `git log` |
 | W6 D1 | `pay_rules` (`0021`, RLS, **immutable**: UPDATE revoked): dated versions per organisation, Zod-validated (overtime per day/week, night window, breaks, rounding), `rulesInForce` picks the version for a date; `GET /pay-rules`, `GET /pay-rules/in-force?date=`, `POST /pay-rules` (owner), `DELETE /pay-rules/:id` (latest, not started) | ✅ Done | see `git log` |
 | W5 D3 | Open shifts: `GET /shifts/:id/candidates` (everyone at the location, eligible first, with reasons), `POST /shifts/:id/offer` (`shifts.offered_at`, `0019`; one `shift.offered` event naming only the eligible), `GET /me/open-shifts`; an approved drop offers the freed shift automatically, never back to the person who dropped it | ✅ Done | see `git log` |
@@ -99,7 +100,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 22 migrations, 744 automated tests (366 unit, 378 integration against real
+Numbers today: 22 migrations, 762 automated tests (384 unit, 378 integration against real
 Postgres and Redis) plus 6 Playwright end-to-end tests, 94 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
@@ -107,6 +108,26 @@ staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-17 (first dev machine, Claude Code) — W6 D1–D3 done (one commit per day).**
+> - **Owner's decisions:** pay rules are org-wide (no per-location override yet); a new
+>   organisation starts with **no** rules (plain hourly pay — Shiftora never assumes a labour-law
+>   rule); premiums **add** on base (1 + 0.5 + 0.25 = 1.75×). `fast-check` approved and added to
+>   `packages/domain` as a dev dependency.
+> - **D1:** `pay_rules` (`0021`, RLS, UPDATE revoked — versions are immutable), `PayRules` +
+>   `rulesInForce` in the domain, `payRules` Zod in shared, `/pay-rules` (owners write, managers
+>   read; a new version starts after the latest; only the latest, not yet started, is withdrawn).
+> - **D2:** `computePay` in `packages/domain/pay/compute.ts` — rules by the day a stretch started,
+>   punches rounded on the wall clock, unpaid break from the middle, pieces at local midnight,
+>   lines per day and rate in integer paise.
+> - **D3:** night premium (`splitAtNight`) and overtime (`classify`, each minute at most once);
+>   8 property tests × 400 random cases, 10 worked examples.
+> - **Not built yet:** using any of this — pay periods, approval and the payroll job (D4), the
+>   CSV/XLSX export (D5), and the labour-cost projection (D6). No UI for pay rules yet.
+> - **Also fixed on pull:** two ADRs were both 019; the race-safe claim is now ADR 020.
+> - **Checks:** 384 unit + 378 integration + 6 E2E; lint, typecheck, build.
+> - **Next — W6 D4:** pay-period approval and payroll as a worker job, fed by `computePay`
+>   (time entries → `WorkedPeriod` with the location's zone; `PayRulesService.versions()`).
 
 > **2026-11-16 (second dev machine, Hermes) — W5 D4–D6 done: week 5 is finished.**
 >
@@ -264,6 +285,7 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | TypeScript pinned to 6.0.x (typescript-eslint doesn't support TS 7 yet) | 2026-11-03 |
 | — | Rate limiting with `@nestjs/throttler` (not `@fastify/rate-limit`) so 429s use our error format | 2026-11-05 |
 | — | **Pay rules are org-wide, start empty, and premiums add** (owner's decisions, W6): one versioned rule set per organisation (per-location overrides later, without touching old periods); a new organisation is on plain hourly pay until the owner writes rules — Shiftora never assumes a labour-law rule on a clinic's behalf; overtime and night premiums add on base (1 + 0.5 + 0.25 = 1.75×, not 1.875× or the higher one) | 2026-11-17 |
+| — | **Overtime is counted once, minute by minute** (W6 D3): beyond the daily threshold is daily overtime; the weekly threshold counts only the minutes that were *not* daily overtime (so six 10-hour days at 9 h/day and 48 h/week is 12 h of overtime, not 16); a week uses the threshold in force on its Monday; the night window and daily rules are those of the day each minute falls on. Premiums add on base | 2026-11-17 |
 | — | **How time becomes pay** (W6 D2): the rules in force on the day a stretch of work **started** apply to all of it; punches round on the location's wall clock (a 30-minute grid is :00/:30 local); without a rounding rule punches round to the nearest whole minute; an unpaid break comes out of the **middle** of the stretch (the first and last hours stay as worked, so early-morning night minutes are not the ones lost); money is priced once per line (day × kind × rate), half up, in integer paise | 2026-11-17 |
 | — | **A pay rules version never changes**: UPDATE is revoked at the database; a change is a new version starting after the latest; only the latest, not yet started (Asia/Kolkata calendar), can be withdrawn. Multipliers carry at most two decimals so the engine works in exact basis points | 2026-11-17 |
 | — | **WhatsApp/SMS: a fake provider first, Meta next** (owner's choice). The whole delivery pipeline (quota, retries, dead letters, fallback, replay) is built and tested against `FakeMessageSender`, which can fail permanently, transiently or with a 429 on demand; the Meta Cloud API adapter replaces it behind `MessageSender`. Provider errors are classified by the adapter (`SendError.kind`): permanent → fall back now, transient → retry with jittered exponential backoff (5 s → 30 min cap), 429 → pause the queue without spending an attempt. After the last attempt the delivery is **dead-lettered in the database** (`dead_lettered_at`) and falls back to the next free rung; paid channels are never a fallback. The quota (1,000 WhatsApp + 200 SMS per active location per Indian calendar month, until billing) is reserved with one conditional upsert before sending and released if the provider refuses. The dead-letter page and Replay are owner-only; Replay goes through the outbox like every other side effect | 2026-11-16 |
@@ -947,8 +969,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 |---|---|---|---|
 | D1 | ✅ | `pay_rules` (versioned JSON with effective dates, Zod-validated). **Done 2026-11-17:** `packages/domain/pay/rules.ts` (`PayRules`, `rulesInForce`, `toBasisPoints`), `payRules` Zod in shared, migration `0021`, `PayRulesModule` (4 endpoints, owner writes, managers read) | Rules round-trip through the API: 8 API tests (exact round-trip, versions in order and by date, 400 on nonsense, withdraw only the latest before it starts, UPDATE refused by the database, roles, other org) + 15 unit; mutation check on the ordering rule |
 | D2 | ✅ | Pure `computePay(entries, rules, timezone)` → line items. **Done 2026-11-17:** `pay/compute.ts` — `paidPieces` (rules by start date → `roundPunch` on the wall clock → `breakFor`/`withoutBreak` → `splitAtLocalMidnight`), `summarise`/`price` (lines per day and rate, integer paise) | Unit tests: 17 (midnight split, wall-clock rounding incl. Nepal +05:45, breaks, versions by date, a London DST night of 9 h, money rounding); mutation check: rounding in UTC turns the Nepal test red |
-| D3 | ⏭ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check) | Paid minutes never exceed worked minutes, etc. |
-| D4 | ☐ | Pay-period approval; payroll calculation as a worker job | Approve → lines computed |
+| D3 | ✅ | Overtime (daily/weekly, no double counting), night premium across midnight, break deduction, rounding; property tests (fast-check). **Done 2026-11-17:** `splitAtNight` (wrapping windows are two stretches of each day) and `classify` (minute by minute in time order; weekly counts only non-daily-overtime minutes; weekly threshold from the week's Monday) in `pay/compute.ts`; `fast-check` added to `packages/domain` (dev) | Paid minutes never exceed worked minutes, etc.: 8 properties × 400 cases across four zones and DST (paid = worked − breaks; lines add up; nothing below base; order-independent; splitting an entry at any minute changes nothing; no rules = all base; raising a threshold never adds overtime; a night premium never lowers pay) + 10 examples (six 10-hour days at 9 h/48 h = 12 h overtime, not 16); mutation checks: double-counting and weekly-counts-overtime each turn tests red |
+| D4 | ⏭ | Pay-period approval; payroll calculation as a worker job | Approve → lines computed |
 | D5 | ☐ | CSV/XLSX export (exceljs, streamed) | 500-employee period exports without memory spikes |
 | D6 | ☐ | Labour-cost projection for a schedule (basis for A6) | Draft schedule shows projected cost |
 

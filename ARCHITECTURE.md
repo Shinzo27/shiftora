@@ -647,6 +647,11 @@ domain txn ──writes──▶ outbox ──relay (poll, FOR UPDATE SKIP LOCKE
 - **Computed (W6 D2, implemented):** `computePay` in `packages/domain/pay/compute.ts` — rules by
   the day a stretch started → punches rounded on the wall clock → unpaid break from the middle →
   pieces cut at local midnight → lines per day and rate, priced once in integer paise.
+- **Overtime and night (W6 D3, implemented):** `splitAtNight` cuts pieces at the window's edges
+  (a wrapping window is the small hours and the late evening of each day); `classify` walks the
+  minutes in time order — daily overtime beyond the day's threshold, weekly overtime beyond the
+  week's threshold counting only non-daily-overtime minutes, so a minute is overtime once at most.
+  Property-tested with fast-check (8 properties, 400 cases each, four zones and DST).
 - Rules are versioned JSON validated by a Zod schema, e.g.:
   ```json
   {

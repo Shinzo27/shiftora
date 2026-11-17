@@ -1,5 +1,12 @@
-import { localDayBounds, toLocal, type LocalDate } from '../time/zoned.js';
-import { rulesInForce, type BreakRule, type PayRulesVersion, type RoundingRule } from './rules.js';
+import { localDayBounds, startOfWeek, toInstant, toLocal, type LocalDate } from '../time/zoned.js';
+import {
+  rulesInForce,
+  toBasisPoints,
+  type BreakRule,
+  type NightPremium,
+  type PayRulesVersion,
+  type RoundingRule,
+} from './rules.js';
 
 /**
  * `computePay` — worked time in, priced line items out (ARCHITECTURE §7.8). Pure and
@@ -11,7 +18,10 @@ import { rulesInForce, type BreakRule, type PayRulesVersion, type RoundingRule }
  *   2. round the punches to the rule's grid, on the location's wall clock;
  *   3. take the unpaid break out of the middle of a long stretch;
  *   4. cut what is left at local midnight, so every minute belongs to one calendar day;
- *   5. classify and price the minutes, and add them up per day.
+ *   5. cut at the night window's edges, so a minute is either night or not;
+ *   6. classify each minute — regular, daily overtime or weekly overtime, **never two** — and
+ *      price it, premiums adding on base (owner's decision: 1 + 0.5 + 0.25 = 1.75×);
+ *   7. add it all up per day and rate.
  *
  * Money is integer minor units (paise) and multipliers are basis points: nothing is ever a float.
  */
@@ -97,18 +107,16 @@ export function paidPieces(input: PayInput): {
 }
 
 /**
- * Prices worked time. D2: every paid minute at base rate, per local day. Overtime and the night
- * premium (W6 D3) refine the same pieces.
+ * Prices worked time: every paid minute once, as regular or overtime, with the night premium on
+ * top where it applies. Which rules a minute follows:
+ *   - rounding and breaks: the rules of the day its stretch **started** (a stretch is one unit);
+ *   - night window, daily overtime and multipliers: the rules of the day the minute falls on;
+ *   - weekly overtime: the rules in force on that week's Monday (one threshold per week).
  */
 export function computePay(input: PayInput): PayResult {
   const { pieces, workedMinutes, breakMinutes } = paidPieces(input);
-  const priced = pieces.map((piece) => ({
-    date: piece.date,
-    category: 'regular' as const,
-    night: false,
-    minutes: minutesOf(piece),
-    multiplierBp: BASE_BP,
-  }));
+  const atoms = pieces.flatMap((piece) => splitAtNight(piece, input.versions));
+  const priced = classify(atoms, input.versions);
   return summarise(priced, input.hourlyRateMinor, workedMinutes, breakMinutes);
 }
 
@@ -184,6 +192,129 @@ export function splitAtLocalMidnight(start: Date, end: Date, timezone: string): 
 
 export function minutesOf(piece: { start: Date; end: Date }): number {
   return Math.round((piece.end.getTime() - piece.start.getTime()) / MINUTE);
+}
+
+/** A piece that is wholly inside or wholly outside the night window. */
+export interface Atom extends Piece {
+  night: boolean;
+}
+
+/**
+ * Step 5: cuts a piece at the night window's edges, using the window of the piece's own day. A
+ * window that wraps (22:00–06:00) is two stretches of the day: its small hours and its late
+ * evening — the next morning's small hours belong to the next day's piece.
+ */
+export function splitAtNight(piece: Piece, versions: readonly PayRulesVersion[]): Atom[] {
+  const night = rulesInForce(versions, piece.date).nightPremium;
+  if (!night) return [{ ...piece, night: false }];
+
+  const windows = nightWindows(piece.date, piece.timezone, night);
+  const cuts = new Set<number>([piece.start.getTime(), piece.end.getTime()]);
+  for (const window of windows) {
+    for (const edge of [window.start.getTime(), window.end.getTime()]) {
+      if (edge > piece.start.getTime() && edge < piece.end.getTime()) cuts.add(edge);
+    }
+  }
+  const edges = [...cuts].sort((a, b) => a - b);
+  const atoms: Atom[] = [];
+  for (let i = 0; i < edges.length - 1; i += 1) {
+    const start = new Date(edges[i]!);
+    const end = new Date(edges[i + 1]!);
+    atoms.push({
+      ...piece,
+      start,
+      end,
+      night: windows.some(
+        (window) =>
+          start.getTime() >= window.start.getTime() && end.getTime() <= window.end.getTime(),
+      ),
+    });
+  }
+  return atoms;
+}
+
+/** The parts of a local day that are inside the night window, as instants. */
+function nightWindows(
+  date: LocalDate,
+  timezone: string,
+  night: NightPremium,
+): { start: Date; end: Date }[] {
+  const day = localDayBounds(date, timezone);
+  const from = toInstant(date, night.startLocal, timezone);
+  const to = toInstant(date, night.endLocal, timezone);
+  return night.startLocal < night.endLocal
+    ? [{ start: from, end: to }]
+    : [
+        { start: day.start, end: to },
+        { start: from, end: day.end },
+      ];
+}
+
+/**
+ * Step 6: regular or overtime, minute by minute in time order, with **no double counting**:
+ *   - minutes beyond the daily threshold on a local day are daily overtime;
+ *   - the weekly threshold counts only the minutes that were *not* daily overtime, and those
+ *     beyond it are weekly overtime.
+ * So a minute is overtime once at most, under one rule. (Six 10-hour days at 9 h/day and
+ * 48 h/week: 6 h daily overtime, and the 54 regular hours exceed 48 by 6 more — 12 h, not 16.)
+ */
+export function classify(
+  atoms: readonly Atom[],
+  versions: readonly PayRulesVersion[],
+): PricedMinutes[] {
+  const dayTotals = new Map<LocalDate, number>();
+  const weekRegular = new Map<LocalDate, number>();
+  const priced: PricedMinutes[] = [];
+
+  for (const atom of atoms) {
+    const minutes = minutesOf(atom);
+    if (minutes <= 0) continue;
+    const rules = rulesInForce(versions, atom.date);
+    const week = startOfWeek(atom.date);
+    const daily = rules.overtime.find((rule) => rule.period === 'day');
+    const weekly = rulesInForce(versions, week).overtime.find((rule) => rule.period === 'week');
+
+    const dayBefore = dayTotals.get(atom.date) ?? 0;
+    dayTotals.set(atom.date, dayBefore + minutes);
+    const underDay = daily
+      ? Math.max(0, Math.min(minutes, daily.thresholdMinutes - dayBefore))
+      : minutes;
+    const dailyOvertime = minutes - underDay;
+
+    const weekBefore = weekRegular.get(week) ?? 0;
+    const regular = weekly
+      ? Math.max(0, Math.min(underDay, weekly.thresholdMinutes - weekBefore))
+      : underDay;
+    const weeklyOvertime = underDay - regular;
+    weekRegular.set(week, weekBefore + regular);
+
+    const nightExtra =
+      atom.night && rules.nightPremium ? toBasisPoints(rules.nightPremium.multiplier) - BASE_BP : 0;
+    const base = { date: atom.date, night: atom.night && nightExtra > 0 };
+    priced.push({
+      ...base,
+      category: 'regular',
+      minutes: regular,
+      multiplierBp: BASE_BP + nightExtra,
+    });
+    if (weekly && weeklyOvertime > 0) {
+      priced.push({
+        ...base,
+        category: 'overtime',
+        minutes: weeklyOvertime,
+        multiplierBp: toBasisPoints(weekly.multiplier) + nightExtra,
+      });
+    }
+    if (daily && dailyOvertime > 0) {
+      priced.push({
+        ...base,
+        category: 'overtime',
+        minutes: dailyOvertime,
+        multiplierBp: toBasisPoints(daily.multiplier) + nightExtra,
+      });
+    }
+  }
+  return priced;
 }
 
 // ------------------------------------------------------------------------------- pricing
