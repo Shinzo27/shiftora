@@ -78,9 +78,38 @@ describe('auto-fill', () => {
     expect(res.json<{ status: string }>().status).toBe('queued');
   });
 
+  it('refuses a second run while one is still queued', async () => {
+    // Two clicks on a slow network would otherwise queue two solvers, and the second would report
+    // "nothing to do" over a week the first had just filled.
+    const res = await owner.call('POST', `/schedules/${scheduleId}/autofill`, { org: orgId });
+    expect(res.status).toBe(409);
+    expect(res.json<{ code: string }>().code).toBe('autofill.already_running');
+
+    const runs = await t.queryAs({ userId: owner.id, orgId }, (tx) =>
+      tx.select().from(schema.autofillRuns).where(eq(schema.autofillRuns.scheduleId, scheduleId)),
+    );
+    expect(runs).toHaveLength(1);
+  });
+
   it('refuses an employee', async () => {
     const employee = await addMember(t.app, owner, orgId, 'employee');
     const res = await employee.call('POST', `/schedules/${scheduleId}/autofill`, { org: orgId });
     expect(res.status).toBe(403);
+  });
+
+  it('records who asked in the audit trail', async () => {
+    const rows = await t.queryAs({ userId: owner.id, orgId }, (tx) =>
+      tx
+        .select()
+        .from(schema.auditEvents)
+        .where(
+          and(
+            eq(schema.auditEvents.orgId, orgId),
+            eq(schema.auditEvents.action, 'schedule.autofill_requested'),
+          ),
+        ),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.entityId).toBe(scheduleId);
   });
 });

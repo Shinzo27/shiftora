@@ -99,7 +99,6 @@ export function blockersFor(
   employee: SchedulableEmployee,
   slot: CoverageSlot,
   load: Load,
-  weekday: number,
 ): Blocker[] {
   const blockers: Blocker[] = [];
   const name = employee.name;
@@ -160,7 +159,6 @@ export function blockersFor(
     });
   }
 
-  void weekday;
   return blockers;
 }
 
@@ -200,6 +198,9 @@ function gapMinutes(a: Span, b: Span): number | null {
  */
 const WEIGHT = { cost: 1, fairness: 0.5, preference: 0.4, balance: 0.3 } as const;
 
+/** One fairness unit: how many minutes of work count as "a fair amount already". */
+const FAIRNESS_UNIT_MINUTES = 600;
+
 function normalisedCost(
   employee: SchedulableEmployee,
   slot: CoverageSlot,
@@ -218,8 +219,8 @@ function scoreCandidate(
 ): number {
   const cost = WEIGHT.cost * normalisedCost(employee, slot, maxCostMinor);
 
-  // Ten hours already on the rota is half a unit: a light day-more than a heavy one.
-  const fairness = WEIGHT.fairness * (load.minutes / 600);
+  // Ten hours already on the rota is half a unit: a light day more than a heavy one.
+  const fairness = WEIGHT.fairness * (load.minutes / FAIRNESS_UNIT_MINUTES);
 
   const preferred = employee.availability.some(
     (window) =>
@@ -312,8 +313,7 @@ export function solveGreedy(
     .map((slot) => ({
       slot,
       candidates: employees.filter(
-        (employee) =>
-          blockersFor(employee, slot, load.get(employee.id)!, weekdayOf(slot.date)).length === 0,
+        (employee) => blockersFor(employee, slot, load.get(employee.id)!).length === 0,
       ).length,
     }))
     .sort(
@@ -347,7 +347,7 @@ export function solveGreedy(
 
     for (const employee of employees) {
       const personLoad = load.get(employee.id)!;
-      const reasons = blockersFor(employee, slot, personLoad, weekday);
+      const reasons = blockersFor(employee, slot, personLoad);
       if (reasons.length > 0) {
         blockers.push(...reasons);
         continue;

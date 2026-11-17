@@ -65,6 +65,8 @@ export const errorCodes = {
   /** Coverage requirements: a duplicate row, or one that does not exist. */
   coverageAlreadyExists: 'coverage.already_exists',
   coverageNotFound: 'coverage.not_found',
+  /** A run is already queued or working for this week; wait for it instead of stacking another. */
+  autofillAlreadyRunning: 'autofill.already_running',
   /** A write that must be safe to retry arrived without its key. */
   idempotencyKeyRequired: 'idempotency.key_required',
   /** The same key was used for a different body: not a retry, a mistake. */

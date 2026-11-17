@@ -1,4 +1,5 @@
-import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { AutofillRequestResult, AutofillRunView } from '@shiftora/shared';
 
 import { CurrentMember, Roles } from '../tenancy/decorators.js';
@@ -16,6 +17,9 @@ export class AutofillController {
   constructor(private readonly autofill: AutofillService) {}
 
   @Roles('owner', 'manager')
+  // Starting a solver is the most expensive thing a manager can press, so it is rate-limited on
+  // the shared store as well as refused while a run is in flight.
+  @UseGuards(ThrottlerGuard)
   @Post('schedules/:id/autofill')
   @HttpCode(202)
   request(

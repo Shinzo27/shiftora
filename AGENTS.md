@@ -327,6 +327,13 @@ Do this before writing any code, whatever tool or model you are:
   only on insert leaves a successful second run looking like a wall of warnings.
 - **Backtracking only undoes "busy"**: moving a shift frees a person; it cannot create a role or
   cancel leave. Blockers other than `already_working`/`min_rest` are left alone.
+- **Only one run at a time per week.** The API refuses a second request while one is
+  `queued`/`running` (`409 autofill.already_running`) instead of queueing two solvers that would
+  both write shifts; the second would report a confusing "nothing to do".
+- **The autofill route is throttled per *person*, not per IP** (`getTracker: trackerByUser`): a
+  clinic shares one office address, so an IP key would let one busy manager lock out the rest. The
+  throttler's tracker signature is `(request, context)`, not `(context)` — the other order makes
+  every request 500 inside the guard.
 - **Job progress goes over `shiftora:job-events`** (worker publishes, API re-emits to the org
   room). The channel name is duplicated in `apps/worker/src/queues.ts` and
   `apps/api/src/modules/realtime/job-events.service.ts` — change both or the bar stops.

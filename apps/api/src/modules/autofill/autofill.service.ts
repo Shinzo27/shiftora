@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, desc, eq, schema } from '@shiftora/db';
+import { and, desc, eq, inArray, schema } from '@shiftora/db';
 import {
   errorCodes,
   type AutofillRequestResult,
@@ -9,6 +9,7 @@ import {
 
 import { AppException } from '../../common/app-exception.js';
 import { RequestContext } from '../../database/request-context.js';
+import { AuditService } from '../audit/audit.service.js';
 import { LocationAccess } from '../locations/location-access.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { SchedulesRepository } from '../scheduling/schedules.repository.js';
@@ -29,6 +30,7 @@ export class AutofillService {
     private readonly schedules: SchedulesRepository,
     private readonly access: LocationAccess,
     private readonly outbox: OutboxService,
+    private readonly audit: AuditService,
   ) {}
 
   async request(scheduleId: string, userId: string): Promise<AutofillRequestResult> {
@@ -37,6 +39,28 @@ export class AutofillService {
       throw new AppException(404, errorCodes.scheduleNotFound, 'No such schedule.');
     }
     this.access.assertWritable(await this.access.assertAccess(schedule.locationId));
+
+    // One run at a time per week. Two clicks, or two managers, would otherwise queue two solvers
+    // that each write shifts; the second would find the slots taken and report a confusing
+    // "nothing to do". A refusal that names the running one is more useful than a silent merge.
+    const [inFlight] = await this.context.tx
+      .select({ id: autofillRuns.id })
+      .from(autofillRuns)
+      .where(
+        and(
+          eq(autofillRuns.orgId, this.context.orgId),
+          eq(autofillRuns.scheduleId, scheduleId),
+          inArray(autofillRuns.status, ['queued', 'running']),
+        ),
+      )
+      .limit(1);
+    if (inFlight) {
+      throw new AppException(
+        409,
+        errorCodes.autofillAlreadyRunning,
+        'This week is already being filled. Wait for the run to finish.',
+      );
+    }
 
     const [run] = await this.context.tx
       .insert(autofillRuns)
@@ -47,6 +71,13 @@ export class AutofillService {
         createdBy: userId,
       })
       .returning();
+
+    await this.audit.record({
+      action: 'schedule.autofill_requested',
+      entity: 'schedule',
+      entityId: scheduleId,
+      after: { runId: run!.id },
+    });
 
     await this.outbox.record('schedule.autofill_requested', {
       runId: run!.id,

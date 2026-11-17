@@ -4,6 +4,9 @@ node_modules/
 # build and tool output
 dist/
 coverage/
+# ...but not the API's coverage module: it is source, not a report, and ignoring it kept the whole
+# feature out of git. The negation works because the parent directory is not ignored.
+!apps/api/src/modules/coverage/
 .turbo/
 *.tsbuildinfo
 playwright-report/
