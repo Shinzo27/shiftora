@@ -202,12 +202,15 @@ describe('POST /auth/login', () => {
     expect(wrongPassword.json()).toMatchObject({ code: 'auth.invalid_credentials' });
   });
 
-  it('rate-limits the 11th attempt in a minute from one IP with 429', async () => {
+  it('rate-limits the 11th attempt in a minute against one account with 429', async () => {
     const browser = client();
+    // A fresh address per run: the budget belongs to the account, so reusing a shared one would
+    // import another test's attempts.
+    const email = `nobody-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.com`;
     const statuses: number[] = [];
     for (let i = 0; i < 11; i += 1) {
       const { res } = await browser.post('/auth/login', {
-        body: { email: 'nobody@example.com', password: 'guess' },
+        body: { email, password: 'guess' },
       });
       statuses.push(res.statusCode);
     }

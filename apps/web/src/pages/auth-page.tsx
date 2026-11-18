@@ -1,7 +1,7 @@
 import { loginRequest, signupRequest } from '@shiftora/shared';
 import { BellRing, CalendarCheck2, MapPinCheck } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
-import { Link, Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 
 import { Logo } from '@/components/logo';
 import { FormAlert } from '@/components/page';
@@ -12,20 +12,33 @@ import { Spinner } from '@/components/ui/spinner';
 import { apiFieldErrors, errorMessage, zodFieldErrors, type FieldErrors } from '@/lib/forms';
 import { useLogin, useSession, useSignup } from '@/lib/session';
 
+/**
+ * Where to go after signing in: `?next=` when it is a path inside this app.
+ *
+ * Only a same-origin path is honoured — two leading slashes (`//evil.test`) is a protocol-relative
+ * URL, not a path, and would turn a sign-in link into an open redirect.
+ */
+function safeNext(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return '/orgs';
+  return value;
+}
+
 export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
   const session = useSession();
   const login = useLogin();
   const signup = useSignup();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get('next'));
   const [errors, setErrors] = useState<FieldErrors>({});
   const mutation = mode === 'login' ? login : signup;
 
-  if (session.data) return <Navigate to="/orgs" replace />;
+  if (session.data) return <Navigate to={next} replace />;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const values = Object.fromEntries(new FormData(event.currentTarget));
-    const onSuccess = () => void navigate('/orgs');
+    const onSuccess = () => void navigate(next);
     const onError = (error: unknown) => setErrors(apiFieldErrors(error));
 
     if (mode === 'login') {

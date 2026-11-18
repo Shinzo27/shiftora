@@ -3,7 +3,7 @@ import { ThrottlerModule, type ThrottlerStorage } from '@nestjs/throttler';
 
 import { DatabaseModule } from '../../database/database.module.js';
 import { RATE_LIMIT_STORAGE, RateLimitModule } from '../../common/rate-limit/rate-limit.module.js';
-import { trackerByUser } from '../../common/rate-limit/tracker-by-user.js';
+import { trackerByUser } from '../../common/rate-limit/trackers.js';
 import { AuditModule } from '../audit/audit.module.js';
 import { LocationsModule } from '../locations/locations.module.js';
 import { OutboxModule } from '../outbox/outbox.module.js';

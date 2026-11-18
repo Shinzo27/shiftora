@@ -42,6 +42,10 @@ const AuditPage = lazy(async () => ({
 const PayrollPage = lazy(async () => ({
   default: (await import('@/pages/payroll-page')).PayrollPage,
 }));
+const TeamPage = lazy(async () => ({ default: (await import('@/pages/team-page')).TeamPage }));
+const AcceptInvitePage = lazy(async () => ({
+  default: (await import('@/pages/accept-invite-page')).AcceptInvitePage,
+}));
 const MessagesPage = lazy(async () => ({
   default: (await import('@/pages/messages-page')).MessagesPage,
 }));
@@ -103,6 +107,9 @@ export const router = createBrowserRouter([
       { path: '/forgot-password', element: <ForgotPasswordPage /> },
       { path: '/reset-password', element: <ResetPasswordPage /> },
       { path: '/verify-email', element: <VerifyEmailPage /> },
+      // Outside the auth gate on purpose: the person clicking an invitation may have no account
+      // yet, and the page carries the code through sign-in.
+      { path: '/invite/:code', element: <AcceptInvitePage /> },
       {
         element: <RequireAuth />,
         children: [
@@ -121,6 +128,7 @@ export const router = createBrowserRouter([
                   { path: 'timesheets', element: <AttendancePage /> },
                   { path: 'locations', element: <LocationsPage /> },
                   { path: 'employees', element: <EmployeesPage /> },
+                  { path: 'team', element: <TeamPage /> },
                   { path: 'messages', element: <MessagesPage /> },
                   { path: 'payroll', element: <PayrollPage /> },
                   { path: 'audit', element: <AuditPage /> },

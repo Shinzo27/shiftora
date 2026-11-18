@@ -1,7 +1,11 @@
 import type {
   Attendance,
   AuditPage,
+  CreateInviteRequest,
+  CreateInviteResponse,
+  Invite,
   Member,
+  MemberLocations,
   AutofillRequestResult,
   AutofillRunView,
   AuthResponse,
@@ -52,6 +56,8 @@ import type {
   UpdateLocationRequest,
   UpdateShiftRequest,
 } from '@shiftora/shared';
+
+import type { AssignableRole } from '@shiftora/domain';
 
 import { ApiClient } from './api-client.js';
 
@@ -127,6 +133,27 @@ export const orgsApi = {
   list: () => api.get<OrgSummary[]>('/orgs'),
   create: (body: CreateOrgRequest) => api.post<OrgSummary>('/orgs', { body }),
   current: (orgId: string) => api.get<OrgSummary>('/org', { orgId }),
+};
+
+export const membersApi = {
+  list: (orgId: string) => api.get<Member[]>('/members', { orgId }),
+  /** Owner-only: the server refuses a role the caller may not assign, with a sentence. */
+  changeRole: (orgId: string, userId: string, role: AssignableRole) =>
+    api.patch<Member>(`/members/${userId}`, { orgId, body: { role } }),
+  remove: (orgId: string, userId: string) => api.delete<void>(`/members/${userId}`, { orgId }),
+  locations: (orgId: string, userId: string) =>
+    api.get<MemberLocations>(`/members/${userId}/locations`, { orgId }),
+  setLocations: (orgId: string, userId: string, locationIds: string[]) =>
+    api.put<MemberLocations>(`/members/${userId}/locations`, { orgId, body: { locationIds } }),
+};
+
+export const invitesApi = {
+  list: (orgId: string) => api.get<Invite[]>('/invites', { orgId }),
+  create: (orgId: string, body: CreateInviteRequest) =>
+    api.post<CreateInviteResponse>('/invites', { orgId, body }),
+  revoke: (orgId: string, id: string) => api.delete<void>(`/invites/${id}`, { orgId }),
+  /** No organisation header: the invite carries the org the person is joining. */
+  accept: (code: string) => api.post<OrgSummary>('/invites/accept', { body: { code } }),
 };
 
 export const locationsApi = {

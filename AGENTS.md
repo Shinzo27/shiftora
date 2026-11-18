@@ -361,6 +361,25 @@ Do this before writing any code, whatever tool or model you are:
   room). The channel name is duplicated in `apps/worker/src/queues.ts` and
   `apps/api/src/modules/realtime/job-events.service.ts` — change both or the bar stops.
 
+### Team, invites and rate limits
+
+- **A throttler's own `getTracker` beats the guard's override.** Putting a tracker in
+  `ThrottlerModule` options silently replaced `RefreshThrottlerGuard`'s per-session key with an
+  address key, and the eleventh page load logged people out. Keep trackers in guards
+  (`LoginThrottlerGuard`, `RefreshThrottlerGuard`) and the module config plain.
+- **Login is limited per account, not per address** (`LoginThrottlerGuard`): a password is guessed
+  for one account, and a clinic's twenty staff share one office IP at shift change. Signup keeps
+  an address key with a higher limit, because there is no account to key on yet.
+- **The invite link exists only in the response that created it** (only the code's hash is
+  stored), so the UI shows it once with a Copy button and offers "Show a fresh link" — a revoke
+  plus re-issue — for a pending invitation. Never imply an old link can be recovered.
+- **`?next=` is honoured only for a same-origin path** (`safeNext`): `//evil.test` is a
+  protocol-relative URL, not a path, and honouring it would be an open redirect.
+- **A branch outside a member's scope answers 404**, not 403, so the response never confirms which
+  branches exist. The Team page's test asserts 404 for that reason.
+- **Losing the membership is a redirect to `/orgs`**, not an error with a retry: `GET /org`
+  answering 403/404 means the organisation is gone from this person's side.
+
 ### Claims, requests and idempotency
 
 - **A claim is a conditional UPDATE, never a read-then-write.** `ShiftsRepository.claim` matches

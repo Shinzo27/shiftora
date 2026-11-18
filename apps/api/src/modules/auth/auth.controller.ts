@@ -1,5 +1,5 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
-import { ThrottlerGuard } from '@nestjs/throttler';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import {
   forgotPasswordRequest,
   loginRequest,
@@ -26,6 +26,7 @@ import type { AuthenticatedUser } from './authenticated-user.js';
 import { CurrentUser } from './current-user.decorator.js';
 import { Public } from './public.decorator.js';
 import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from './refresh-cookie.js';
+import { LoginThrottlerGuard } from './login-throttler.guard.js';
 import { RefreshThrottlerGuard } from './refresh-throttler.guard.js';
 
 function requestMeta(request: FastifyRequest): RequestMeta {
@@ -40,7 +41,10 @@ export class AuthController {
   ) {}
 
   @Public()
+  // Signup has no account yet, so the key is the address; the limit is higher than login's
+  // because a clinic onboards a handful of people at once.
   @UseGuards(ThrottlerGuard)
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('signup')
   @HttpCode(201)
   async signup(
@@ -67,7 +71,7 @@ export class AuthController {
    * endpoint that answers "who works here?".
    */
   @Public()
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(LoginThrottlerGuard)
   @Post('password/forgot')
   @HttpCode(202)
   async forgotPassword(
@@ -88,7 +92,7 @@ export class AuthController {
   }
 
   @Public()
-  @UseGuards(ThrottlerGuard)
+  @UseGuards(LoginThrottlerGuard)
   @Post('login')
   @HttpCode(200)
   async login(

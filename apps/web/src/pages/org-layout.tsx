@@ -9,11 +9,12 @@ import {
   ArrowLeftRight,
   MessagesSquare,
   Plus,
+  UserCog,
   Users,
   type LucideIcon,
 } from 'lucide-react';
 import { useState } from 'react';
-import { Link, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
+import { Link, Navigate, NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router';
 
 import { CommandMenu } from '@/components/command-menu';
 import { LogoMark } from '@/components/logo';
@@ -64,6 +65,12 @@ export function OrgLayout() {
   return <OrgShell key={orgId} orgId={orgId} />;
 }
 
+/** 403/404 on the organisation itself: they are not a member (any more). */
+function isAccessDenied(error: unknown): boolean {
+  const status = (error as { status?: number } | null)?.status;
+  return status === 403 || status === 404;
+}
+
 function OrgShell({ orgId }: { orgId: string }) {
   const org = useQuery({ queryKey: ['org', orgId], queryFn: () => orgsApi.current(orgId) });
   const locations = useQuery({
@@ -72,6 +79,11 @@ function OrgShell({ orgId }: { orgId: string }) {
     enabled: org.isSuccess,
   });
   const [stored, setStored] = useState(() => readStoredLocation(orgId));
+
+  // Losing the membership is not a load failure to retry: the organisation is gone from this
+  // person's side, so send them where their organisations are listed. A 500 stays an error with
+  // a retry button, because that one may well work in a moment.
+  if (org.isError && isAccessDenied(org.error)) return <Navigate to="/orgs" replace />;
 
   const failed = org.isError ? org : locations.isError ? locations : null;
   if (failed) {
@@ -147,6 +159,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Schedule', to: 'schedule', icon: CalendarDays, managersOnly: true },
   { label: 'Employees', to: 'employees', icon: Users, managersOnly: true },
+  { label: 'Team', to: 'team', icon: UserCog, managersOnly: true },
   { label: 'Locations', to: 'locations', icon: MapPin },
   { label: 'Timesheets', to: 'timesheets', icon: Clock, managersOnly: true },
   { label: 'Requests', to: 'requests', icon: ArrowLeftRight, managersOnly: true },
