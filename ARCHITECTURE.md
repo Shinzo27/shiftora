@@ -43,6 +43,7 @@
 | Exports | exceljs (streamed XLSX), csv-stringify | Payroll export |
 | Auto-scheduler v2 (optional) | Python + Google OR-Tools CP-SAT, consumed as a BullMQ job | Proper solver once the heuristic hits limits |
 | Observability | pino JSON logs with one W3C trace id carried API → outbox → worker → provider (built W7 D5); OpenTelemetry → Grafana and Sentry later | Traces across API → queue → worker |
+| UI/UX standard | `ui-ux-pro-max` Claude Code skill (UX, accessibility and shadcn/React guidelines) consulted for every screen; the shadcn tokens remain the design system | Keeps the UI at current market standards without ad-hoc restyling |
 | Testing | Vitest (unit), Testcontainers Postgres (integration), Playwright (E2E), fast-check (property tests) | |
 | Deploy | Docker images; Fly.io/Render/Railway for API + worker; managed Postgres (Neon/Supabase/RDS) and Redis (Upstash) | Low ops for a solo dev |
 | CI | GitHub Actions: lint, typecheck, test, build, migrate | |

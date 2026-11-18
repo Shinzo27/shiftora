@@ -132,6 +132,11 @@ Do this before writing any code, whatever tool or model you are:
    validation errors, light and dark mode, a 390 px phone width, no console errors, and a
    Lighthouse accessibility score ≥ 95. If your tool has no browser, list what the owner
    should click through.
+   **A feature is not done until it has a screen** (owner's rule, 2026-11-18): a new endpoint
+   ships with the UI that calls it in the same day, or with a line in `docs/ui-coverage.md`
+   saying why it is API-only (a webhook, a token refresh) — the UI coverage check fails CI
+   otherwise (from W7½ UI3). Also check the role gating: a page an employee or manager must not
+   see is hidden in the sidebar **and** answers with a clear empty state if opened by URL.
 6. Run everything: `pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int
    && pnpm build`. Report failures honestly.
 7. Update the docs in the same change: `PROJECT_PLAN.md` (§2 status table and handoff note and "Numbers
@@ -508,6 +513,21 @@ Do this before writing any code, whatever tool or model you are:
 - Approved UI libraries (no need to ask): shadcn/ui and its Radix deps, lucide-react, sonner,
   cmdk, @tanstack/react-table, react-day-picker, vaul, motion, @dnd-kit/*, recharts,
   @fontsource-variable/inter, react-hook-form, @hookform/resolvers. Anything else: ask.
+- **UI/UX skill: use `ui-ux-pro-max` for every UI task** (owner's decision, 2026-11-18;
+  <https://github.com/nextlevelbuilder/ui-ux-pro-max-skill>, MIT, a Claude Code plugin installed
+  per machine — see `PROJECT_PLAN.md` §8.1). Before building or changing a screen, consult it for
+  the **shadcn/ui + React** stack and its UX guidelines (layout, forms, tables, states,
+  accessibility, motion, charts), and use its checklist again when reviewing the screen. Its
+  local search, from the plugin's `.claude/skills/ui-ux-pro-max` folder:
+  `python3 -I scripts/search.py "<what you are building>" --stack shadcn` (stack guidance),
+  `--domain ux` (UX rules), `--domain chart` (dashboards).
+  **How to apply it:** the skill is the reference for *current market standards*, not a licence
+  to restyle. Shiftora's design system — the shadcn tokens in `src/index.css`, Inter, lucide —
+  stays the source of truth. A recommendation that changes the look (a new palette, a style such
+  as neumorphism, a new font) is **proposed to the owner with a screenshot, never applied
+  silently**; anything it flags as an accessibility or usability problem is fixed. Its optional
+  sub-skills that call image APIs or run `npx` (`design` logo/icon generation, `shadcn_add.py`)
+  are not used here; add shadcn components the documented way.
 - Adding a shadcn component: `pnpm dlx shadcn@latest add <name>` from `apps/web`, then
   `pnpm format`. Colours come from the tokens in `src/index.css` (`primary`, `muted`,
   `brand`, `success`, `warning`, `chart-1..5`…); never hard-code a Tailwind palette colour.

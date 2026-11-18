@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W7½ UI1–UI3 | UI catch-up (Team and invites, offers, pay rules, the partial screens) and **UI policing** (route-coverage check in CI, a dated sweep of every page, axe on every route, role-gating smoke test) | Planned | |
 | W7 D5 | Observability, lighter version: pino JSON logs; one W3C trace id from the API request (`x-trace-id`) through `outbox.trace_id` (`0027`) to the relay, fan-out and provider send in the worker; redaction of secrets and contact details | ✅ Done | see `git log` |
 | W7 D4 | Audit log: `audit_events` partitioned by month (worker keeps three months ready; ADR 021), `GET /audit-events` for owners with filters and a microsecond-exact cursor, the Audit log page with per-entity history | ✅ Done | see `git log` |
 | W6 D6 | Labour-cost projection: `GET /schedules/:id/cost` prices the week's planned shifts with the pay engine (planned breaks unpaid, overtime counted with the person's shifts at other branches, each shift charged in time order so branches add up), open shifts counted not priced; "Projected ₹…" on the week board, refreshed with every edit | ✅ Done | see `git log` |
@@ -137,6 +138,12 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 >   inside the JSON). Mutation checks: partition revoke, advisory lock, cursor tie-break, the
 >   migration's RLS guard, the request trace scope, delivery jobs inheriting the trace.
 > - **Next — W7 D6:** benchmark the auto-scheduler (50 employees × 7 days), numbers in the README.
+>   Then **W7½ UI1–UI3** (owner's decision, 2026-11-18): the missing screens and UI policing
+>   before W8, because a pilot clinic cannot invite its staff without them.
+> - **New tooling:** the `ui-ux-pro-max` Claude Code plugin (v2.15.0) is installed on this machine
+>   (user scope) and is now the UI standard (AGENTS.md → Conventions). **Install it on the second
+>   machine too** (§8.1). Its own pick for "clinic SaaS" was neumorphism + cyan — a generic guess
+>   that is not adopted; use its UX/accessibility/shadcn guidance, keep our tokens.
 
 > **2026-11-17 (first dev machine, Claude Code) — W6 D4–D6 done: week 6 is finished.**
 > - **Owner's decisions:** pay periods are dates a manager picks (≤ 31 days, no overlap);
@@ -346,6 +353,8 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **Open shifts are offered, not broadcast**: a manager (or an approved drop) offers an open shift; the API computes who could take it at that moment and names them in the `shift.offered` event, and the worker messages exactly those people. Availability does not exclude anyone (a preference); rest, weekly hours, time off, role, location and overlap do. The person who dropped a shift is never offered it back | 2026-11-16 |
 | — | **An approved swap or drop is published on its own** (`recordToldChange` + a patched publication): the people involved were told by the request messages, so the schedule's published version moves with the change when there were no other drafts, and the latest publication carries the new assignee — reminders follow the new person and the next publish does not re-announce it | 2026-11-16 |
 | — | **Only published shifts can be swapped or dropped** (in the latest publication, with the requester on it); a draft is the manager's to change directly. A swap needs a colleague with a login (they must accept); an owner with no staff profile cannot ask (403) | 2026-11-16 |
+| — | **UI work uses the `ui-ux-pro-max` skill as its standard** (owner, 2026-11-18): consulted before building a screen and when reviewing it, so the UI keeps up with current UX and accessibility practice. The existing shadcn design system stays; a recommendation that changes the look is shown to the owner first, an accessibility or usability finding is simply fixed. Installed per machine as a user-level Claude Code plugin (v2.15.0 at install, `f2cc365`) | 2026-11-18 |
+| — | **A feature is not done until it has a screen, or a written reason why not** (owner, 2026-11-18): the W7 check found invites, members, offers and pay rules API-only. W7½ adds the missing screens and a CI check of routes against the web client's calls, with `docs/ui-coverage.md` as the allowlist and the record of each page's last sweep | 2026-11-18 |
 | — | **One trace id, carried by the outbox, before any tracing backend** (W7 D5, owner's go for the lighter version): the API's request id is a W3C trace id, written on each outbox row and continued by every job; logs are pino JSON. OpenTelemetry, Grafana and Sentry wait until there is somewhere to send data — the id is already the shape they use | 2026-11-18 |
 | — | **Logs name the route, not the URL** (W7 D5): `/api/v1/auth/verify-email?token=…` would put a one-time token in the log; the route pattern says the same thing about traffic | 2026-11-18 |
 | — | **The audit log is partitioned by UTC month and only the parent is granted** (W7 D4, ADR 021): a partition named directly would skip RLS, so app_user has no rights on any partition; months are made ahead by a SECURITY DEFINER function the worker calls daily — app_user gains exactly that one capability, not DDL | 2026-11-18 |
@@ -484,6 +493,7 @@ version younger than 7 days) and `allowBuilds` (install scripts denied for esbui
 | Billing | Razorpay Subscriptions; PDF invoices (pdfkit / react-pdf) | Week 8 |
 | Observability | OpenTelemetry → Grafana (Tempo/Loki/Prometheus), pino JSON logs, Sentry | Week 7 |
 | E2E tests | Playwright | Week 2+ |
+| UI/UX guidance (AI skill) | [`ui-ux-pro-max`](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill) Claude Code plugin (MIT; local, searchable UX/accessibility/stack guidelines) — consulted for every UI task; shadcn tokens stay the design system (AGENTS.md) | From W7½ |
 | Property tests | fast-check (pay rules, scheduler) | Week 6–7 |
 | Deploy | Docker images on Fly.io/Render/Railway; managed Postgres (Neon/Supabase/RDS) + Redis (Upstash) | Week 8 |
 | Solver (later) | Python + OR-Tools CP-SAT worker | After launch |
@@ -549,6 +559,14 @@ docker context use default      # if the CLI points at a Docker Desktop that isn
 git clone git@github-personal:Shinzo27/shiftora.git && cd shiftora
 git config user.name "Shinzo27"
 git config user.email "20bmiit031@gmail.com"     # repo-local, never --global
+
+# AI tooling (user-level, once per machine): the UI/UX skill every UI task uses (AGENTS.md).
+# In Claude Code: /plugin marketplace add nextlevelbuilder/ui-ux-pro-max-skill
+#                 /plugin install ui-ux-pro-max@ui-ux-pro-max-skill
+# or from a shell:
+claude plugin marketplace add nextlevelbuilder/ui-ux-pro-max-skill
+claude plugin install ui-ux-pro-max@ui-ux-pro-max-skill --scope user
+# Python 3 is needed for its local search script (standard library only).
 
 pnpm install
 cp .env.example .env
@@ -1083,6 +1101,19 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D5 | ✅ | **Done 2026-11-18 (the agreed lighter version):** pino JSON logs in the API and the worker (Nest's `Logger` writes through it); the request id **is** a W3C trace id (the caller's `traceparent` or a new one), answered in `x-trace-id`, held in an `AsyncLocalStorage` scope from Fastify's `onRequest`, stamped on every log line and on every outbox row (`outbox.trace_id`, `0027`); the worker continues it relay → notification job → delivery jobs (`inJob`, `traced()`); one request line per call with the route pattern, never the raw URL; secrets, cookies, phones and recipients redacted. **Not built:** OpenTelemetry spans, Grafana, Sentry (§18) | One trace spans publish → outbox → worker → provider: the pipeline test follows one id through `relay: queued` → `notifications: handled` → two `delivery: sent`, every line with the org; the API test shows a caller's `traceparent` reaching the outbox row and the request line; mutation checks on the request scope and on delivery jobs inheriting the trace |
 | D6 | ⏭ | Benchmark auto-scheduler (50 employees × 7 days); record numbers for the README | Numbers in README |
 
+### Week 7½: UI catch-up and UI policing
+
+Added 2026-11-18 at the owner's request. A route-by-route check of the API against
+`apps/web/src/lib/api.ts` showed that whole features exist only in the API: a clinic cannot
+invite its own staff from the app. These days come **after W7 D6 and before W8**, because a
+pilot clinic (W8 D5) cannot be onboarded without them.
+
+| Day | Status | Tasks | Done when |
+|---|---|---|---|
+| UI1 | ☐ | **Team and access.** Designed with the `ui-ux-pro-max` skill (shadcn stack + UX rules) before building. A **Team** page (owners; managers read-only): members with role and branches; invite by email with a role (`POST /invites`), pending invites with copy-link and revoke (`GET`/`DELETE /invites`); change role (`PATCH /members/:id`, last-owner guard shown as the server's sentence); limit to branches (`GET`/`PUT /members/:id/locations`); remove (`DELETE /members/:id`). An **accept-invite** screen (`/invite/:code` → `POST /invites/accept`) reachable from the invite email and from the orgs page. Sidebar item "Team" | An owner invites a manager, the manager accepts in a second browser, is limited to one branch and sees only it; removing them takes effect on their next request. Playwright test for invite → accept |
+| UI2 | ☐ | **Scheduling and pay gaps.** "Offer" on an open shift in the shift sheet: candidates with reasons, eligible first (`GET /shifts/:id/candidates`, `POST /shifts/:id/offer`). A **pay rules** form on the Payroll page (owners): versions with effective dates, overtime per day/week, night window, breaks, rounding; withdraw the latest unstarted version. Per-person payroll detail (`GET /pay-periods/:id/payroll`). Manager-side availability and time off on an employee (`/employees/:id/availability`, `/employees/:id/time-off`). Job roles rename/delete; departments and shift templates create/edit/delete on the Locations page | A manager offers an open shift and the eligible nurse gets it in her app; an owner adds "overtime after 40 h at 1.5×" and the next approved period shows overtime lines; every route in the gap list has a screen or a line in the allowlist |
+| UI3 | ☐ | **Policing the UI.** (1) **Coverage check in CI:** a script lists every API route from the controllers and every call in `apps/web/src/lib/api.ts`, and fails when a route has neither a caller nor an entry in `docs/ui-coverage.md` saying why it is API-only (webhooks, `/auth/refresh`…). (2) **Every page swept** in Chrome with the AGENTS.md UI checklist — happy path, validation and error states, empty and loading states, light and dark, 390 px, keyboard only, no console errors, Lighthouse accessibility ≥ 95 — results recorded in `docs/ui-coverage.md` with the date. (3) **Automated accessibility:** `@axe-core/playwright` (ask first) on every route in one Playwright spec, so a regression fails CI. (4) A Playwright smoke test that opens every sidebar page as owner, manager and employee and checks role gating (owner-only pages hidden and refused). (5) **A UI/UX review of every page with the `ui-ux-pro-max` skill** (its UX and accessibility guidelines for shadcn/React): problems fixed, look-changing suggestions listed for the owner with screenshots, and the skill's version recorded in `docs/ui-coverage.md`. (6) Fix everything found | CI fails on a route with no screen and no reason; every page has a dated row in `docs/ui-coverage.md`, all green; the axe spec passes on every route |
+
 ### Week 8: Launch
 
 | Day | Status | Tasks | Done when |
@@ -1163,6 +1194,8 @@ invoice format sign-off with a CA (values are config, not code).
 | ~~Audit log partitioning and owner UI~~ Done (ADR 021) | ✅ W7 D4 |
 | OpenTelemetry spans (HTTP, pg, ioredis, BullMQ) on the existing trace id, exported to Grafana (Tempo/Loki/Prometheus), and Sentry for errors — new dependencies and a hosted backend, so with the deploy | W8 D1 |
 | Audit log retention (detach and archive months older than N years) once the owner decides N | After launch |
+| Screens missing for API features (invites, members, offers, pay rules, availability/time off for managers, departments, shift templates, payroll detail, job-role edits) | W7½ UI1–UI2 |
+| No automated guard that an endpoint has a screen, and no recorded sweep of every page | W7½ UI3 |
 | `auth.int.test.ts` could reuse `src/testing/test-app.ts` | Any time |
 | Web bundle is 1,093 kB / 339 kB gzip (one chunk, now including the schedule page, dnd-kit and Motion): split per route with React Router `lazy` | W3 D1 (PWA) |
 | Employee search filters only the pages already loaded; add server-side `q` to `GET /employees` when lists get long (the board shows the first 100 of a location) | W3+ |
