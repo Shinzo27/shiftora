@@ -37,6 +37,8 @@ import type {
   OrgSummary,
   Page,
   PayPeriodView,
+  CreatePayRulesVersion,
+  PayRulesVersionView,
   PublishPreview,
   PublishResult,
   RecentMessage,
@@ -322,6 +324,14 @@ export const messagesApi = {
 };
 
 /** Pay periods and payroll (W6): managers set periods up; owners approve, read and export. */
+export const payRulesApi = {
+  list: (orgId: string) => api.get<PayRulesVersionView[]>('/pay-rules', { orgId }),
+  /** Owner-only: a pay rule is a decision about the clinic's money. */
+  create: (orgId: string, body: CreatePayRulesVersion) =>
+    api.post<PayRulesVersionView>('/pay-rules', { orgId, body }),
+  withdraw: (orgId: string, id: string) => api.delete<void>(`/pay-rules/${id}`, { orgId }),
+};
+
 export const payrollApi = {
   periods: (orgId: string) => api.get<PayPeriodView[]>('/pay-periods', { orgId }),
   create: (orgId: string, body: CreatePayPeriod) =>

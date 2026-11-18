@@ -18,6 +18,8 @@ the design system; a recommendation that changes the look is shown to the owner 
 |---|---|---|---|
 | `/o/:orgId/team` | Team (owners edit, managers read-only) | `GET /members`, `PATCH /members/:id`, `DELETE /members/:id`, `GET`/`PUT /members/:id/locations`, `GET`/`POST /invites`, `DELETE /invites/:id` | 2026-11-18 |
 | `/invite/:code` | Accept an invitation (works signed out) | `POST /invites/accept` | 2026-11-18 |
+| `/o/:orgId/payroll` | Payroll: pay rules (versions, owners edit), pay periods, approval, files | `GET`/`POST`/`DELETE /pay-rules`, `/pay-periods*` | 2026-11-18 |
+| `/o/:orgId/audit` | Audit log (owners) | `GET /audit-events` | 2026-11-18 |
 
 ## API-only routes and why
 

@@ -26,6 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { PayRulesPanel } from '@/components/payroll/pay-rules-panel';
 import { payrollApi } from '@/lib/api';
 import { errorMessage } from '@/lib/forms';
 import { useOrg } from '@/lib/org-context';
@@ -76,6 +77,7 @@ export function PayrollPage() {
         title="Payroll"
         description="Pay periods, what still needs reviewing, and the files for your accountant."
       />
+      <PayRulesPanel />
       <NewPeriod />
       <section aria-labelledby="periods-heading" className="space-y-3">
         <h2 id="periods-heading" className="text-lg font-semibold tracking-tight">
