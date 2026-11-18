@@ -1,6 +1,7 @@
 import { renderResetPassword, renderVerifyEmail } from '@shiftora/domain';
 
 import type { Mailer } from './mailer.js';
+import { log } from './logging.js';
 import type { NotificationJob } from './queues.js';
 
 interface AccountPayload {
@@ -39,7 +40,7 @@ export async function sendAccountMail(
       subject: message.subject,
       body: message.body,
     });
-    console.info(`notifications: ${job.topic} → ${email} (${messageId})`);
+    log().info({ topic: job.topic, messageId }, 'notifications: account email sent');
     return { sent: true };
   } catch (error) {
     // Throwing is what asks the queue for a retry; the message is still in the outbox row.

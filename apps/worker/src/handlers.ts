@@ -10,9 +10,11 @@ import type { Mailer } from './mailer.js';
 import { fanOutSchedulePublished, type FanOutResult } from './notifications/fan-out.js';
 import { handleInviteCreated } from './notifications/invite.js';
 import { applyDeliveryReports } from './notifications/reports.js';
+import { log, traced } from './logging.js';
 import { handleShiftClaimed } from './notifications/claims.js';
 import { handleShiftOffered, handleShiftRequestEvent } from './notifications/shift-requests.js';
 import { sendAccountMail } from './platform-mail.js';
+
 import type { DeliveryJobData, NotificationJob } from './queues.js';
 
 /**
@@ -60,13 +62,13 @@ export async function handleNotificationJob(
       for (const deliveryId of result.deliveryIds) {
         await deps.deliveries.add(
           'delivery',
-          { deliveryId, orgId: job.orgId },
+          { deliveryId, orgId: job.orgId, ...traced() },
           { jobId: deliveryId },
         );
       }
 
       if (result.notifications > 0) {
-        console.info(
+        log().info(
           `notifications: ${job.topic} → ${result.notifications} message(s), ${result.deliveries} delivery(ies) queued`,
         );
       }
@@ -87,12 +89,12 @@ export async function handleNotificationJob(
       for (const deliveryId of result.deliveryIds) {
         await deps.deliveries.add(
           'delivery',
-          { deliveryId, orgId: job.orgId },
+          { deliveryId, orgId: job.orgId, ...traced() },
           { jobId: deliveryId },
         );
       }
       if (result.notifications > 0) {
-        console.info(`notifications: invite.created → emailed ${result.deliveries} invite(s)`);
+        log().info(`notifications: invite.created → emailed ${result.deliveries} invite(s)`);
       }
       return result;
     }
@@ -108,7 +110,7 @@ export async function handleNotificationJob(
           : await handleMissedClockIn(db, event, alertDeps);
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
-        console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
+        log().info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
     }
@@ -126,7 +128,7 @@ export async function handleNotificationJob(
       );
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
-        console.info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
+        log().info(`notifications: ${job.topic} → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
     }
@@ -149,7 +151,7 @@ export async function handleNotificationJob(
       );
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
-        console.info(`notifications: shift.claimed → ${result.deliveries} delivery(ies) queued`);
+        log().info(`notifications: shift.claimed → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
     }
@@ -162,7 +164,7 @@ export async function handleNotificationJob(
       );
       await queueDeliveries(deps.deliveries, job.orgId, result.deliveryIds);
       if (result.notifications > 0) {
-        console.info(`notifications: shift.offered → ${result.deliveries} delivery(ies) queued`);
+        log().info(`notifications: shift.offered → ${result.deliveries} delivery(ies) queued`);
       }
       return result;
     }
@@ -175,9 +177,7 @@ export async function handleNotificationJob(
         payload: job.payload,
       });
       if (result.calculated) {
-        console.info(
-          `payroll: ${result.employees} employee(s), ${result.lines} line(s) calculated`,
-        );
+        log().info(`payroll: ${result.employees} employee(s), ${result.lines} line(s) calculated`);
       }
       return { notifications: 0, deliveries: 0, deliveryIds: [] };
     }
@@ -187,14 +187,14 @@ export async function handleNotificationJob(
     case 'delivery.reported': {
       const parsed = deliveryReportedEvent.safeParse(job.payload);
       if (!parsed.success) {
-        console.warn(`notifications: malformed delivery.reported (job ${job.outboxId})`);
+        log().warn(`notifications: malformed delivery.reported (job ${job.outboxId})`);
         return { notifications: 0, deliveries: 0, deliveryIds: [] };
       }
       const outcome = await applyDeliveryReports(db, parsed.data, deps.usable);
       for (const fallback of outcome.fallbacks) {
         await queueDeliveries(deps.deliveries, fallback.orgId, [fallback.deliveryId]);
       }
-      console.info(
+      log().info(
         `notifications: ${parsed.data.channel} reports → ${outcome.applied} applied, ${outcome.ignored} ignored, ${outcome.unknown} unknown`,
       );
       // A report can beat the worker's own write of the provider's message id (a fast provider,
@@ -228,14 +228,14 @@ export async function handleNotificationJob(
       if (!payload.deliveryId) return { notifications: 0, deliveries: 0, deliveryIds: [] };
       await deps.deliveries.add(
         'delivery',
-        { deliveryId: payload.deliveryId, orgId: job.orgId },
+        { deliveryId: payload.deliveryId, orgId: job.orgId, ...traced() },
         { jobId: `${payload.deliveryId}-replay-${payload.replays ?? 0}` },
       );
-      console.info(`notifications: replaying delivery ${payload.deliveryId}`);
+      log().info(`notifications: replaying delivery ${payload.deliveryId}`);
       return { notifications: 0, deliveries: 1, deliveryIds: [] };
     }
     default:
-      console.warn(`notifications: no handler for topic '${job.topic}' (job ${job.outboxId})`);
+      log().warn(`notifications: no handler for topic '${job.topic}' (job ${job.outboxId})`);
       return { notifications: 0, deliveries: 0, deliveryIds: [] };
   }
 }
@@ -247,6 +247,6 @@ async function queueDeliveries(
   deliveryIds: string[],
 ): Promise<void> {
   for (const deliveryId of deliveryIds) {
-    await queue.add('delivery', { deliveryId, orgId }, { jobId: deliveryId });
+    await queue.add('delivery', { deliveryId, orgId, ...traced() }, { jobId: deliveryId });
   }
 }

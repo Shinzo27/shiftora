@@ -89,6 +89,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W3 D5 | Manager corrections in the location’s wall clock with a required reason, audited before/after, `GET`/`PATCH /time-entries/:id`, and the correction sheet with its history on the Timesheets page | ✅ Done | `b37a06a` |
 | W3 D6 | Flag review queue (`0010` + partial index), `GET /attendance/flags` + `POST /time-entries/:id/review`, CSV export of the week with totals, and `pnpm db:seed` for a demo clinic with logins, a published week and three punches | ✅ Done | `a869c80` |
 | W4 D1 | ✅ `apps/worker` + BullMQ, the outbox relay (claim with `FOR UPDATE SKIP LOCKED`, enqueue, then mark published; job id = outbox id), the relay GUC + policies (`0011`, ADR 017), and `pnpm dev` running the worker beside the API and web | ✅ Done | `4725c4f` |
+| W7 D5 | Observability, lighter version: pino JSON logs; one W3C trace id from the API request (`x-trace-id`) through `outbox.trace_id` (`0027`) to the relay, fan-out and provider send in the worker; redaction of secrets and contact details | ✅ Done | see `git log` |
 | W7 D4 | Audit log: `audit_events` partitioned by month (worker keeps three months ready; ADR 021), `GET /audit-events` for owners with filters and a microsecond-exact cursor, the Audit log page with per-entity history | ✅ Done | see `git log` |
 | W6 D6 | Labour-cost projection: `GET /schedules/:id/cost` prices the week's planned shifts with the pay engine (planned breaks unpaid, overtime counted with the person's shifts at other branches, each shift charged in time order so branches add up), open shifts counted not priced; "Projected ₹…" on the week board, refreshed with every edit | ✅ Done | see `git log` |
 | W6 D5 | Payroll export, streamed in pages of 1 000 rows: `GET /pay-periods/:id/export?format=csv&view=summary\|lines` (BOM, RFC 4180 quoting) or `format=xlsx` (exceljs streaming writer, Summary + Lines sheets), owner only; and the **Payroll page** (periods, what blocks approval, Approve, CSV/XLSX download) replacing the "soon" sidebar item | ✅ Done | see `git log` |
@@ -104,14 +105,38 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 26 migrations, 835 automated tests (416 unit, 419 integration against real
-Postgres and Redis) plus 6 Playwright end-to-end tests, 109 API endpoints, a React web app on shadcn/ui
+Numbers today: 28 migrations, 867 automated tests (431 unit, 436 integration against real
+Postgres and Redis) plus 6 Playwright end-to-end tests, 110 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-18 (first dev machine, Claude Code) — W7 D4 and D5 done (one commit per day).**
+> - **Owner's go:** "Go with W7 d4 5" — D5 as the agreed lighter version (pino approved; it was
+>   already in the tree under Fastify, now a direct dependency of `apps/api` and `apps/worker`
+>   at the same 10.4.0).
+> - **D4:** `audit_events` partitioned by UTC month (`0026`, ADR 021) — parent-only grants,
+>   partitions revoked from app_user, default partition, `ensure_audit_partitions()` run by the
+>   worker on boot and daily; `GET /audit-events` (owner); the **Audit log** page with per-entity
+>   History. Found on a scratch database: the first migration draft copied **zero** rows (FORCEd
+>   RLS binds the owner) and dropped the table — now guarded by `row_security = off` + counts
+>   (AGENTS.md gotcha).
+> - **D5:** pino JSON logs everywhere (no `console` left in the worker); W3C trace id per request
+>   (`x-trace-id`), stored on `outbox.trace_id` (`0027`), continued by relay → fan-out → delivery
+>   jobs. Verified live: one id on the API request, `relay: queued`, `notifications: handled` and
+>   `delivery: sent` for an invite; no address, password or token in the dev log.
+> - **Local demo data:** the dev database was empty on this machine; `pnpm db:seed` re-created the
+>   demo clinic. For the audit screen I made a few real edits: Doctor renamed and back, a
+>   Pharmacist role, and Asha's rate changed ₹450 → ₹320 (left at ₹320; re-seed to reset).
+> - **Not built:** OpenTelemetry spans, Grafana, Sentry (§18, with the deploy); audit retention.
+> - **Checks:** 431 unit + 436 integration (db 64, worker 81, api 291); lint, typecheck, build.
+>   E2E not re-run this session (the worker's readiness line still matches `/worker: relaying/`
+>   inside the JSON). Mutation checks: partition revoke, advisory lock, cursor tie-break, the
+>   migration's RLS guard, the request trace scope, delivery jobs inheriting the trace.
+> - **Next — W7 D6:** benchmark the auto-scheduler (50 employees × 7 days), numbers in the README.
 
 > **2026-11-17 (first dev machine, Claude Code) — W6 D4–D6 done: week 6 is finished.**
 > - **Owner's decisions:** pay periods are dates a manager picks (≤ 31 days, no overlap);
@@ -321,6 +346,8 @@ appraisals) · SSO/SAML · multi-country labour-law packs · microservices.
 | — | **Open shifts are offered, not broadcast**: a manager (or an approved drop) offers an open shift; the API computes who could take it at that moment and names them in the `shift.offered` event, and the worker messages exactly those people. Availability does not exclude anyone (a preference); rest, weekly hours, time off, role, location and overlap do. The person who dropped a shift is never offered it back | 2026-11-16 |
 | — | **An approved swap or drop is published on its own** (`recordToldChange` + a patched publication): the people involved were told by the request messages, so the schedule's published version moves with the change when there were no other drafts, and the latest publication carries the new assignee — reminders follow the new person and the next publish does not re-announce it | 2026-11-16 |
 | — | **Only published shifts can be swapped or dropped** (in the latest publication, with the requester on it); a draft is the manager's to change directly. A swap needs a colleague with a login (they must accept); an owner with no staff profile cannot ask (403) | 2026-11-16 |
+| — | **One trace id, carried by the outbox, before any tracing backend** (W7 D5, owner's go for the lighter version): the API's request id is a W3C trace id, written on each outbox row and continued by every job; logs are pino JSON. OpenTelemetry, Grafana and Sentry wait until there is somewhere to send data — the id is already the shape they use | 2026-11-18 |
+| — | **Logs name the route, not the URL** (W7 D5): `/api/v1/auth/verify-email?token=…` would put a one-time token in the log; the route pattern says the same thing about traffic | 2026-11-18 |
 | — | **The audit log is partitioned by UTC month and only the parent is granted** (W7 D4, ADR 021): a partition named directly would skip RLS, so app_user has no rights on any partition; months are made ahead by a SECURITY DEFINER function the worker calls daily — app_user gains exactly that one capability, not DDL | 2026-11-18 |
 | — | **The audit log is owners-only** (W7 D4): it shows pay, roles and other managers' edits; a manager's own trail is not theirs to browse | 2026-11-18 |
 | — | **The audit cursor carries `created_at::text`, not a JS date**: one transaction writes many rows at the same microsecond and a `Date` keeps only milliseconds, so a page boundary built from it skips or repeats rows; the id breaks ties | 2026-11-18 |
@@ -698,6 +725,7 @@ Fastify
 | `0024_coverage_any_role` | partial unique index for the role-less case — NULLs are distinct, so the plain index cannot stop two identical "anyone" rows |
 | `0025_autofill_runs` | `autofill_runs` (queued → running → succeeded/failed, strategy, assigned, unfilled jsonb, score, error); same-org FK to schedules; RLS |
 | `0026_audit_partitions` | `audit_events` re-created **partitioned by month** on `created_at` (PK `(id, created_at)`), `audit_events_default`, `ensure_audit_partitions()` (SECURITY DEFINER, app_user may call) + `create_audit_partition()` (not callable by app_user); history moved under `row_security = off` with count checks (ADR 021) |
+| `0027_outbox_trace_id` | `outbox.trace_id` (32 hex, checked): the trace of the request or job that wrote the event, continued by the worker |
 | `0016_message_quota_and_dead_letters` | `message_usage` (org, month on the Asia/Kolkata calendar, paid channel → count; RLS) and `deliveries.dead_lettered_at` + `replays` with a partial index for the dead-letter list |
 | `0022_payroll` | `pay_periods` (org, `starts_on`/`ends_on` ≤ 31 days, status open → calculating → approved, approver, totals; **EXCLUDE** overlapping date ranges per org; RLS) and `timesheet_lines` (period, employee, date, category, night, minutes, multiplier bp, rate, amount, currency; same-org FKs; RLS) |
 | `0021_pay_rules` | `pay_rules` (org, version, `effective_from` local date, `rules` jsonb, note, created by/at; unique per org by version and by start date; **UPDATE revoked from `app_user`** so a version never changes; RLS) |
@@ -1052,8 +1080,8 @@ Notion), because the live demo is what recruiters and pilot clinics see first.
 | D2 | ✅ | **Done 2026-11-17:** `solveGreedy` in `packages/domain/scheduling/auto/greedy.ts` — expand, then fill **hardest slots first** (fewest eligible people), scoring candidates on normalised cost + fairness (ten hours already assigned = half a unit) + availability preference + night/weekend load. Hard constraints: branch, role, time off, no overlap, weekly ceiling, minimum rest, and hand-placed locked shifts are routed around rather than overwritten. Overnight slots count as their real length. Unfilled slots carry `blockers` and a sentence | Fills a simple week: 19 solver tests, including cheapest-wins, fairness spreading the week across two people, a weekly ceiling that leaves Tuesday unfilled with "1 person over their weekly hours", time off, overlap, rest, a named role, a locked shift rerouting, a scarce night shift decided before an easy day, and determinism |
 | D3 | ✅ | **Done 2026-11-17:** `solve` = greedy then bounded backtracking (wall-clock budget, default 2 s) that moves the shift of whoever is merely *busy* so a blocked slot can take the person it needs; unfilled slots keep their blockers and a sentence; `autofill_runs` (`0025`, RLS) records each run; `POST /schedules/:id/autofill` → 202 + `schedule.autofill_requested` → the worker loads the week (coverage, staff, availability, leave, hand-placed shifts), solves, writes **draft** shifts, and reports back; progress crosses processes on Redis pub/sub (`shiftora:job-events` → the API re-emits `schedule.autofill` to the org room); the board shows a "Fill from coverage" panel with the count and the reasons | 24 solver tests (including a backtracking case greedy fails and a budget that always returns) + 3 API + 3 worker tests; driven live in Chrome: one click filled a shift, and the second slot came back as "No one free for 2026-11-16 09:00–17:00 — 1 person already working then" |
 | D4 | ✅ | **Done 2026-11-18:** `audit_events` partitioned by UTC month (`0026`, ADR 021): RLS and grants on the parent only, every partition revoked from app_user, a default partition as safety net, `ensure_audit_partitions()` run by the worker on boot and daily (advisory lock); `GET /audit-events` (owner; kind, one row, who, when; keyset cursor exact to the microsecond); the **Audit log** page (filters in the URL, a History button per entry, changed fields only, money in rupees) | Owner filters history by entity: verified in Chrome (History on a job role → its two renames only), 7 API + 3 db + 3 worker + 10 web tests; mutation checks on the partition revoke, the advisory lock (deterministic race), the cursor's id tie-break and the migration's RLS guard (2,000 rows on a scratch database) |
-| D5 | ⏭ | OpenTelemetry (API + worker, trace through the queue), pino JSON logs with traceId/orgId, Grafana dashboards, Sentry | One trace spans publish → outbox → worker → provider |
-| D6 | ☐ | Benchmark auto-scheduler (50 employees × 7 days); record numbers for the README | Numbers in README |
+| D5 | ✅ | **Done 2026-11-18 (the agreed lighter version):** pino JSON logs in the API and the worker (Nest's `Logger` writes through it); the request id **is** a W3C trace id (the caller's `traceparent` or a new one), answered in `x-trace-id`, held in an `AsyncLocalStorage` scope from Fastify's `onRequest`, stamped on every log line and on every outbox row (`outbox.trace_id`, `0027`); the worker continues it relay → notification job → delivery jobs (`inJob`, `traced()`); one request line per call with the route pattern, never the raw URL; secrets, cookies, phones and recipients redacted. **Not built:** OpenTelemetry spans, Grafana, Sentry (§18) | One trace spans publish → outbox → worker → provider: the pipeline test follows one id through `relay: queued` → `notifications: handled` → two `delivery: sent`, every line with the org; the API test shows a caller's `traceparent` reaching the outbox row and the request line; mutation checks on the request scope and on delivery jobs inheriting the trace |
+| D6 | ⏭ | Benchmark auto-scheduler (50 employees × 7 days); record numbers for the README | Numbers in README |
 
 ### Week 8: Launch
 
@@ -1132,7 +1160,9 @@ invoice format sign-off with a CA (values are config, not code).
 | Email verification, password reset, invite emails (codes are returned in the API response until then) | W4 D3 |
 | ~~Move rate-limit storage to Redis (multiple API instances)~~ Done: `RedisThrottlerStorage` | ✅ W4 D5 |
 | Enable Fastify `trustProxy` behind the load balancer (or every request shares one IP for rate limits) | W8 D1 |
-| Audit log partitioning and owner UI | W7 D4 |
+| ~~Audit log partitioning and owner UI~~ Done (ADR 021) | ✅ W7 D4 |
+| OpenTelemetry spans (HTTP, pg, ioredis, BullMQ) on the existing trace id, exported to Grafana (Tempo/Loki/Prometheus), and Sentry for errors — new dependencies and a hosted backend, so with the deploy | W8 D1 |
+| Audit log retention (detach and archive months older than N years) once the owner decides N | After launch |
 | `auth.int.test.ts` could reuse `src/testing/test-app.ts` | Any time |
 | Web bundle is 1,093 kB / 339 kB gzip (one chunk, now including the schedule page, dnd-kit and Motion): split per route with React Router `lazy` | W3 D1 (PWA) |
 | Employee search filters only the pages already loaded; add server-side `q` to `GET /employees` when lists get long (the board shows the first 100 of a location) | W3+ |

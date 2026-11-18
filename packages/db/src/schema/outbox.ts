@@ -24,9 +24,16 @@ export const outbox = pgTable(
     createdAt: timestamptz().notNull().defaultNow(),
     /** Null while the event waits for the relay. */
     publishedAt: timestamptz(),
+    /**
+     * The W3C trace id (32 hex) of the request or job that caused this event (W7 D5). The relay
+     * hands it to the jobs it creates, so one id follows a change from the click to the provider.
+     * Null for rows written before 0027, or outside any request.
+     */
+    traceId: text(),
   },
   (t) => [
     check('outbox_topic_format', sql`${t.topic} ~ '^[a-z_]+\\.[a-z_]+$'`),
+    check('outbox_trace_id_format', sql`${t.traceId} ~ '^[0-9a-f]{32}$'`),
     index('outbox_org_created_idx').on(t.orgId, t.createdAt),
     // The relay's query: the oldest events still waiting. Partial, so it stays small.
     index('outbox_pending_idx')

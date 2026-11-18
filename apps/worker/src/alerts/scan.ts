@@ -2,6 +2,7 @@ import { schema, sql, type Database } from '@shiftora/db';
 import { EARLY_CLOCK_IN_MINUTES, missedClockInWindow, reminderWindow } from '@shiftora/domain';
 
 import { setOrg } from '../notifications/fan-out.js';
+import { currentTraceId } from '../logging.js';
 
 export interface ScanResult {
   /** Organisations looked at. */
@@ -153,9 +154,15 @@ async function raise(
     .returning({ shiftId: schema.shiftAlerts.shiftId });
   if (alerted.length === 0) return 0;
 
-  await tx
-    .insert(schema.outbox)
-    .values(alerted.map(({ shiftId }) => ({ orgId, topic, payload: { shiftId } })));
+  await tx.insert(schema.outbox).values(
+    alerted.map(({ shiftId }) => ({
+      orgId,
+      topic,
+      payload: { shiftId },
+      // The scan's own trace: the reminder's fan-out and sends log under it.
+      traceId: currentTraceId(),
+    })),
+  );
   return alerted.length;
 }
 

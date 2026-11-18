@@ -42,7 +42,7 @@
 | Push | Web Push (VAPID) | Free channel for free tier |
 | Exports | exceljs (streamed XLSX), csv-stringify | Payroll export |
 | Auto-scheduler v2 (optional) | Python + Google OR-Tools CP-SAT, consumed as a BullMQ job | Proper solver once the heuristic hits limits |
-| Observability | OpenTelemetry SDK → Grafana (Tempo/Loki/Prometheus); pino JSON logs; Sentry for errors | Traces across API → queue → worker |
+| Observability | pino JSON logs with one W3C trace id carried API → outbox → worker → provider (built W7 D5); OpenTelemetry → Grafana and Sentry later | Traces across API → queue → worker |
 | Testing | Vitest (unit), Testcontainers Postgres (integration), Playwright (E2E), fast-check (property tests) | |
 | Deploy | Docker images; Fly.io/Render/Railway for API + worker; managed Postgres (Neon/Supabase/RDS) and Redis (Upstash) | Low ops for a solo dev |
 | CI | GitHub Actions: lint, typecheck, test, build, migrate | |
@@ -785,9 +785,26 @@ GET  /audit?entity=shift&entityId=
 
 ## 10. Observability
 
-- OpenTelemetry auto-instrumentation (HTTP, pg, ioredis, BullMQ) with trace context propagated
-  into job data, so one trace spans "publish → outbox → worker → WhatsApp API".
-- pino JSON logs with `traceId`, `orgId`, `userId`.
+**Built (W7 D5): one trace id from the click to the provider, in structured logs.**
+
+- The API and the worker log JSON through **pino** (`apps/api/src/common/logging.ts`,
+  `apps/worker/src/logging.ts`); Nest's `Logger` writes through the same pino.
+- **The request id is the trace id**: a valid W3C `traceparent` from the caller is continued,
+  otherwise a new 32-hex id is made (`traceIdFrom`). The API answers it in `x-trace-id` and keeps it
+  in an `AsyncLocalStorage` scope opened in Fastify's `onRequest` hook, so every log line (pino
+  `mixin`) and every **outbox row** (`outbox.trace_id`, `0027`) written during the request
+  carries it; the tenancy interceptor adds the `orgId`.
+- The worker continues it: the relay copies `trace_id` onto the notification job, the fan-out
+  copies it onto each delivery job (`traced()`), and every job runs in `inJob(...)` with a child
+  logger tagged `traceId`, `orgId`, `queue`, `jobId`. Scheduled work (the alert scan) starts its
+  own trace, which its reminders carry.
+- One request log line per call: method, **route pattern** (never the raw URL — a query can hold a
+  one-time token), status, ms. Credentials, cookies, phone numbers and recipients are redacted by
+  path.
+
+**Still planned** (needs an OK for new dependencies and somewhere to send data): OpenTelemetry
+spans (HTTP, pg, ioredis, BullMQ) on the same trace id, Grafana (Tempo/Loki/Prometheus) and
+Sentry. The trace id is already W3C-shaped, so spans can adopt it without changing the logs.
 - Dashboards: API p50/p95 by route, error rate, queue depth/age per queue, delivery success
   rate by provider, auto-scheduler runtime, clock-in flag rate.
 - Alerts: DLQ growth, delivery success < 98%, outbox lag > 1 min.

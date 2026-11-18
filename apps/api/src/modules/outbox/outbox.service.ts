@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { schema, type DatabaseConnection } from '@shiftora/db';
 
+import { currentTraceId } from '../../common/logging.js';
 import { DATABASE } from '../../database/database.module.js';
 import { RequestContext } from '../../database/request-context.js';
 
@@ -26,6 +27,7 @@ export class OutboxService {
       orgId: this.context.orgId,
       topic,
       payload,
+      traceId: currentTraceId(),
     });
   }
 
@@ -38,6 +40,8 @@ export class OutboxService {
     // Its own transaction, because auth routes have none: signup and password reset are not
     // tenant requests, so there is no request transaction to join. A lost event here costs one
     // email, and the resend endpoint exists for exactly that.
-    await this.database.db.insert(schema.outbox).values({ orgId: null, topic, payload });
+    await this.database.db
+      .insert(schema.outbox)
+      .values({ orgId: null, topic, payload, traceId: currentTraceId() });
   }
 }

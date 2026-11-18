@@ -6,6 +6,8 @@ export interface OutboxEvent {
   orgId: string;
   topic: string;
   payload: unknown;
+  /** The trace of the request that wrote the row, if it was written inside one. */
+  traceId?: string | null;
 }
 
 export type Enqueue = (event: OutboxEvent) => void | Promise<void>;
@@ -45,8 +47,9 @@ export async function relayOnce({ db, enqueue, batch = 50 }: RelayOptions): Prom
       org_id: string;
       topic: string;
       payload: unknown;
+      trace_id: string | null;
     }>(sql`
-      select id, org_id, topic, payload
+      select id, org_id, topic, payload, trace_id
       from outbox
       where published_at is null
       order by created_at
@@ -62,6 +65,7 @@ export async function relayOnce({ db, enqueue, batch = 50 }: RelayOptions): Prom
         orgId: row.org_id,
         topic: row.topic,
         payload: row.payload,
+        traceId: row.trace_id,
       });
     }
 

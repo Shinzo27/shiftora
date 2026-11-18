@@ -1,9 +1,11 @@
 import type { Database } from '@shiftora/db';
 import { Worker, type ConnectionOptions, type Queue } from 'bullmq';
+import type { Logger } from 'pino';
 
 import { scanShiftAlerts, type ScanResult } from './alerts/scan.js';
 import { createDeliveryWorker } from './delivery-worker.js';
 import { handleNotificationJob } from './handlers.js';
+import { createLogger, inJob, log as current } from './logging.js';
 import { ensureAuditPartitions } from './maintenance/audit-partitions.js';
 import { sendableChannels, type Adapters } from './notifications/dispatch.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
@@ -32,7 +34,8 @@ export interface PipelineOptions {
   /** Tells the API about long jobs (the auto-scheduler); the API forwards it to sockets. */
   announce?: (event: { orgId: string; scheduleId: string; runId: string; status: string }) => void;
   backoff?: (attemptsMade: number) => number;
-  log?: Pick<Console, 'info' | 'error'>;
+  /** JSON logs (W7 D5); every job logs through a child of this, tagged with its trace. */
+  logger?: Logger;
 }
 
 export interface Pipeline {
@@ -54,38 +57,67 @@ export interface Pipeline {
  * starts exactly this, so what it proves is what production runs.
  */
 export async function startPipeline(options: PipelineOptions): Promise<Pipeline> {
-  const { db, connection, adapters, log = console } = options;
+  const { db, connection, adapters } = options;
+  const log = options.logger ?? createLogger();
   const notifications = notificationsQueue(connection);
   const deliveries = deliveriesQueue(connection);
   const usable = sendableChannels(adapters);
 
-  const enqueue: Enqueue = async (event) => {
-    await notifications.add(
-      event.topic,
-      { outboxId: event.id, orgId: event.orgId, topic: event.topic, payload: event.payload },
-      // The outbox row id as the job id: re-relaying after a crash cannot double-send.
-      { jobId: event.id },
-    );
-  };
+  // The relay step of the trace: the outbox row's trace id moves onto the job.
+  const enqueue: Enqueue = (event) =>
+    inJob(log, { traceId: event.traceId, orgId: event.orgId, queue: 'outbox' }, async () => {
+      await notifications.add(
+        event.topic,
+        {
+          outboxId: event.id,
+          orgId: event.orgId,
+          topic: event.topic,
+          payload: event.payload,
+          ...(event.traceId ? { traceId: event.traceId } : {}),
+        },
+        // The outbox row id as the job id: re-relaying after a crash cannot double-send.
+        { jobId: event.id },
+      );
+      current().info({ outboxId: event.id, topic: event.topic }, 'relay: queued');
+    });
 
   const consumer = new Worker<NotificationJob>(
     NOTIFICATIONS_QUEUE,
     async (job) =>
-      handleNotificationJob(
-        db,
+      inJob(
+        log,
         {
-          deliveries,
-          appUrl: options.appUrl,
-          mailer: adapters.mailer,
-          usable,
-          ...(options.announce ? { announce: options.announce } : {}),
+          traceId: job.data.traceId,
+          orgId: job.data.orgId,
+          queue: NOTIFICATIONS_QUEUE,
+          jobId: job.id,
         },
-        job.data,
+        async () => {
+          const result = await handleNotificationJob(
+            db,
+            {
+              deliveries,
+              appUrl: options.appUrl,
+              mailer: adapters.mailer,
+              usable,
+              ...(options.announce ? { announce: options.announce } : {}),
+            },
+            job.data,
+          );
+          current().info(
+            { topic: job.data.topic, deliveries: result.deliveries },
+            'notifications: handled',
+          );
+          return result;
+        },
       ),
     { connection, concurrency: options.concurrency },
   );
   consumer.on('failed', (job, error) => {
-    log.error(`notifications: job ${job?.id ?? '?'} failed`, error.message);
+    log.error(
+      { jobId: job?.id, traceId: job?.data.traceId, err: error.message },
+      'notifications: job failed',
+    );
   });
 
   const sender = createDeliveryWorker({
@@ -94,10 +126,14 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
     queue: deliveries,
     connection,
     concurrency: options.concurrency,
+    logger: log,
     ...(options.backoff ? { backoff: options.backoff } : {}),
   });
   sender.on('failed', (job, error) => {
-    log.error(`deliveries: job ${job?.id ?? '?'} failed`, error.message);
+    log.error(
+      { jobId: job?.id, traceId: job?.data.traceId, err: error.message },
+      'deliveries: job failed',
+    );
   });
 
   // Shift reminders and missed clock-ins: one repeatable scan job, scheduled in Redis so that
@@ -108,7 +144,7 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
   // The audit log's monthly partitions (W7 D4): checked once on boot, so a fresh deploy never
   // waits a day for next month's table, then daily on the same Redis-held schedule.
   const created = await ensureAuditPartitions(db);
-  if (created > 0) log.info(`audit: created ${created} monthly partition(s)`);
+  if (created > 0) log.info({ created }, 'audit: monthly partitions created');
 
   let scanner: Worker | null = null;
   if (options.alertScanIntervalMs !== null) {
@@ -124,24 +160,25 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
     );
     scanner = new Worker(
       ALERTS_QUEUE,
-      async (job) => {
-        if (job.name === 'audit-partitions') {
-          const made = await ensureAuditPartitions(db);
-          if (made > 0) log.info(`audit: created ${made} monthly partition(s)`);
-          return { created: made };
-        }
-        const result = await scanShiftAlerts(db);
-        if (result.reminders + result.missed + result.expired > 0) {
-          log.info(
-            `alerts: ${result.reminders} reminder(s), ${result.missed} missed clock-in(s) raised, ${result.expired} request(s) expired`,
-          );
-        }
-        return result;
-      },
+      async (job) =>
+        // Scheduled work no request caused: each run starts its own trace, and the reminders it
+        // raises carry it through the outbox like any other event.
+        inJob(log, { queue: ALERTS_QUEUE, jobId: job.id }, async () => {
+          if (job.name === 'audit-partitions') {
+            const made = await ensureAuditPartitions(db);
+            if (made > 0) current().info({ created: made }, 'audit: monthly partitions created');
+            return { created: made };
+          }
+          const result = await scanShiftAlerts(db);
+          if (result.reminders + result.missed + result.expired > 0) {
+            current().info({ ...result }, 'alerts: scan raised work');
+          }
+          return result;
+        }),
       { connection, concurrency: 1 },
     );
     scanner.on('failed', (job, error) => {
-      log.error(`alerts: ${job?.name ?? 'job'} failed`, error.message);
+      log.error({ job: job?.name, err: error.message }, 'alerts: job failed');
     });
   }
 

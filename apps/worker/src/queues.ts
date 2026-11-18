@@ -19,6 +19,8 @@ export interface NotificationJob {
   orgId: string;
   topic: string;
   payload: unknown;
+  /** The trace of the request that wrote the outbox row (W7 D5); absent for older rows. */
+  traceId?: string;
 }
 
 /**
@@ -39,6 +41,8 @@ export function connectionOptions(redis: Redis): ConnectionOptions {
 export interface DeliveryJobData {
   deliveryId: string;
   orgId: string;
+  /** Carried from the notification job that queued it, so the send logs under the same trace. */
+  traceId?: string;
 }
 
 export function deliveriesQueue(connection: ConnectionOptions): Queue<DeliveryJobData> {

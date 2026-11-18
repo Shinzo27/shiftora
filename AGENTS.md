@@ -287,6 +287,15 @@ Do this before writing any code, whatever tool or model you are:
 - **Reminders and missed clock-ins come from one repeatable job** (`alerts` queue, job scheduler
   `shift-alerts`, every `ALERT_SCAN_INTERVAL_MS`). Only shifts in the schedule's latest
   publication count: to see a reminder locally, publish a week with a shift starting within 2 h.
+- **Logging is pino JSON, never `console`** (W7 D5). In the API use Nest's `Logger` (it writes
+  through pino) or let the request line do it; in the worker call `log()` from
+  `apps/worker/src/logging.ts`, which returns the current job's logger with `traceId`/`orgId`.
+  A new consumer runs its processor inside `inJob(...)`; a job queued from inside another spreads
+  `...traced()` into its data, or the trace stops there. Log the route pattern, ids and counts —
+  never a URL with its query, an address, a token or a phone number.
+- **The request id is the trace id.** `fastifyOptions()` makes Fastify's `genReqId` read
+  `traceparent`; `configureApp` opens the trace scope in `onRequest`. `startTestApp({ logger })`
+  takes a capturing logger when a test needs to read log lines; otherwise tests log nothing.
 - **A data migration on a FORCEd-RLS table reads nothing — and says nothing.** The owner is bound
   by `FORCE ROW LEVEL SECURITY` too, so `INSERT … SELECT * FROM old_table` copies zero rows with no
   error (0026's first draft then dropped the full table). Before moving rows, `ALTER TABLE …

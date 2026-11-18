@@ -15,6 +15,7 @@ import { z } from 'zod';
 
 import { AppException } from '../../common/app-exception.js';
 import { DATABASE } from '../../database/database.module.js';
+import { annotateTrace } from '../../common/logging.js';
 import { RequestContext } from '../../database/request-context.js';
 import { IS_PUBLIC } from '../auth/public.decorator.js';
 import { MembershipsRepository } from '../orgs/memberships.repository.js';
@@ -84,6 +85,7 @@ export class TenancyInterceptor implements NestInterceptor {
             );
           }
           request.member = { userId: user.id, orgId, role };
+          annotateTrace({ orgId }); // every log line from here on names the organisation
         }
 
         return this.context.run({ tx, userId: user.id, orgId, role }, () =>

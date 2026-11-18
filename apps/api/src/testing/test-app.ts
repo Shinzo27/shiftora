@@ -1,5 +1,6 @@
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
+import type { Logger } from 'pino';
 import {
   createDatabaseConnection,
   setTenantContext,
@@ -11,7 +12,8 @@ import { startTestDatabase, type TestDatabase } from '@shiftora/db/testing';
 import { AppModule } from '../app.module.js';
 import { AppConfig } from '../config/app-config.js';
 import { parseEnv } from '../config/env.js';
-import { configureApp } from '../configure-app.js';
+import { createLogger, PinoNestLogger } from '../common/logging.js';
+import { configureApp, fastifyOptions } from '../configure-app.js';
 
 /**
  * The whole API (every module, guard, interceptor and filter) on a throwaway Postgres.
@@ -34,6 +36,8 @@ export interface TestAppOptions {
   env?: Record<string, string>;
   /** Share a database with another test app (two API instances), instead of starting one. */
   database?: TestDatabase;
+  /** Where the app logs; tests that read log lines pass a capturing logger. Silent otherwise. */
+  logger?: Logger;
 }
 
 export async function startTestApp(options: TestAppOptions = {}): Promise<TestApp> {
@@ -51,9 +55,11 @@ export async function startTestApp(options: TestAppOptions = {}): Promise<TestAp
     .overrideProvider(AppConfig)
     .useValue(config)
     .compile();
-  const app = moduleRef.createNestApplication<NestFastifyApplication>(new FastifyAdapter(), {
-    rawBody: true,
-  });
+  const logger = options.logger ?? createLogger({ level: 'silent' });
+  const app = moduleRef.createNestApplication<NestFastifyApplication>(
+    new FastifyAdapter(fastifyOptions(logger)),
+    { rawBody: true, logger: new PinoNestLogger(logger) },
+  );
   await configureApp(app, config);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

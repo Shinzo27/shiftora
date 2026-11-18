@@ -1,6 +1,7 @@
 import { createDatabaseConnection } from '@shiftora/db';
 
 import { parseWorkerEnv } from './env.js';
+import { createLogger, log } from './logging.js';
 import { createMailer } from './mailer.js';
 import { sendableChannels, type Adapters, type MessageSender } from './notifications/dispatch.js';
 import { FakeMessageSender } from './notifications/fake-sender.js';
@@ -17,6 +18,8 @@ import { connectionOptions, createRedis } from './queues.js';
  * One tick at a time, and one job per record: the relay is cheap (an indexed query every couple
  * of seconds), the consumer is where the work is.
  */
+const logger = createLogger();
+
 async function main(): Promise<void> {
   const env = parseWorkerEnv(process.env);
   const connection = createDatabaseConnection(env.DATABASE_URL);
@@ -38,7 +41,7 @@ async function main(): Promise<void> {
           subject: env.VAPID_SUBJECT,
         })
       : null;
-  if (!push) console.warn('worker: Web Push is not configured (no VAPID keys) — push is skipped');
+  if (!push) logger.warn('worker: Web Push is not configured (no VAPID keys) — push is skipped');
 
   // A sender is what makes a channel real. With `none`, `sendableChannels` reports the channel as
   // unusable and routing quietly moves a person who chose WhatsApp down the ladder to email.
@@ -52,14 +55,15 @@ async function main(): Promise<void> {
       ? createFakeWebhookReporter({
           url: env.FAKE_PROVIDER_REPORT_URL,
           secret: env.WHATSAPP_APP_SECRET,
-          log: (line) => console.warn(line),
+          log: (line) => log().warn(line),
         })
       : null;
   const fake = (channel: 'whatsapp' | 'sms'): MessageSender =>
     new FakeMessageSender(
       channel,
       env.FAKE_PROVIDER_FAILURE,
-      (line) => console.info(line),
+      // Inside a delivery job, so the fake provider's lines carry that job's trace.
+      (line) => log().info(line),
       channel === 'whatsapp' ? reporter : null,
     );
   const adapters: Adapters = {
@@ -71,7 +75,7 @@ async function main(): Promise<void> {
   const usable = sendableChannels(adapters);
   const missing = (['whatsapp', 'sms'] as const).filter((channel) => !usable[channel]);
   if (missing.length > 0) {
-    console.warn(
+    logger.warn(
       `worker: no ${missing.join(' or ')} sender configured — staff who chose it are reached by email`,
     );
   }
@@ -96,6 +100,7 @@ async function main(): Promise<void> {
     concurrency: env.WORKER_CONCURRENCY,
     relayBatch: env.RELAY_BATCH,
     alertScanIntervalMs: env.ALERT_SCAN_INTERVAL_MS,
+    logger,
   });
 
   let ticking = false;
@@ -106,17 +111,17 @@ async function main(): Promise<void> {
     ticking = true;
     try {
       const claimed = await pipeline.relay();
-      if (claimed > 0) console.info(`relay: queued ${claimed} event(s)`);
+      if (claimed > 0) logger.debug({ claimed }, 'relay: tick');
     } catch (error) {
       // A failed tick is not fatal: the rows are still pending, and the next tick retries.
-      console.error('relay: tick failed', error);
+      logger.error({ err: error }, 'relay: tick failed');
     } finally {
       ticking = false;
     }
   };
 
   const timer = setInterval(() => void tick(), env.RELAY_INTERVAL_MS);
-  console.info(
+  logger.info(
     `worker: relaying every ${env.RELAY_INTERVAL_MS} ms (batch ${env.RELAY_BATCH}), consuming with concurrency ${env.WORKER_CONCURRENCY}`,
   );
   await tick();
@@ -125,7 +130,7 @@ async function main(): Promise<void> {
     if (stopping) return;
     stopping = true;
     clearInterval(timer);
-    console.info(`worker: ${signal}, closing`);
+    logger.info(`worker: ${signal}, closing`);
     await pipeline.close();
     mailer.close();
     await redis.quit();
@@ -139,6 +144,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error('worker: failed to start', error);
+  logger.error({ err: error }, 'worker: failed to start');
   process.exit(1);
 });

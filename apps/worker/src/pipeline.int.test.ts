@@ -10,6 +10,7 @@ import type { Redis } from 'ioredis';
 import { GenericContainer, type StartedTestContainer } from 'testcontainers';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { createLogger } from './logging.js';
 import type { Mailer } from './mailer.js';
 import { FakeMessageSender, type FakeReport } from './notifications/fake-sender.js';
 import { startPipeline, type Pipeline } from './pipeline.js';
@@ -31,6 +32,9 @@ let redisContainer: StartedTestContainer;
 let redis: Redis;
 let pipeline: Pipeline;
 let relayTimer: NodeJS.Timeout;
+
+/** Everything the pipeline logs, parsed: the trace test reads one request's journey from it. */
+const logLines: Record<string, unknown>[] = [];
 
 const mail: { to: string; subject: string }[] = [];
 const mailer: Mailer = {
@@ -162,7 +166,12 @@ beforeAll(async () => {
     relayBatch: 50,
     alertScanIntervalMs: null,
     backoff: () => 10,
-    log: { info: () => undefined, error: () => undefined },
+    logger: createLogger({
+      level: 'info',
+      destination: {
+        write: (line: string) => void logLines.push(JSON.parse(line) as Record<string, unknown>),
+      },
+    }),
   });
   relayTimer = setInterval(() => void pipeline.relay().catch(() => undefined), 100);
 });
@@ -176,12 +185,13 @@ afterAll(async () => {
 });
 
 /** What the API writes when a manager presses Publish: one `schedule.published` outbox row. */
-async function publishWeek(): Promise<string> {
+async function publishWeek(traceId?: string): Promise<string> {
   return asOrg(async (tx) => {
     const [event] = await tx
       .insert(schema.outbox)
       .values({
         orgId: org.id,
+        ...(traceId ? { traceId } : {}),
         topic: 'schedule.published',
         payload: {
           scheduleId: org.scheduleId,
@@ -349,5 +359,36 @@ describe('publish → messages, end to end', () => {
 
     expect(await deliveriesFor(event)).toHaveLength(2);
     expect(whatsapp.sent.length).toBe(sentBefore);
+  });
+});
+
+describe('one trace from publish to provider (W7 D5)', () => {
+  it('the relay, the fan-out and every send log under the trace the API wrote', async () => {
+    whatsapp.failAlways('none');
+    const trace = 'a1b2c3d4e5f60718293a4b5c6d7e8f90';
+    const event = await publishWeek(trace);
+
+    await eventually(
+      event,
+      people.asha,
+      'whatsapp',
+      (row) => row.status === 'delivered' || row.readAt !== null,
+    );
+    await eventually(event, people.meera, 'email', (row) => row.status === 'sent');
+
+    const mine = logLines.filter((line) => line['traceId'] === trace);
+    const steps = mine.map((line) => line['msg']);
+    expect(steps).toContain('relay: queued');
+    expect(steps).toContain('notifications: handled');
+    expect(steps.filter((msg) => msg === 'delivery: sent')).toHaveLength(2);
+    // Every step knows the organisation and its queue.
+    for (const line of mine) {
+      expect(line, String(line['msg'])).toMatchObject({ service: 'worker', orgId: org.id });
+      expect(['outbox', 'notifications', 'deliveries']).toContain(line['queue']);
+    }
+    // And no address reached the log.
+    const text = JSON.stringify(logLines);
+    expect(text).not.toContain('meera@sunriseclinic.test');
+    expect(text).not.toMatch(/\+91\d{10}/);
   });
 });
