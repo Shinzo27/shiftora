@@ -21,6 +21,7 @@ import { RealtimeModule } from './modules/realtime/realtime.module.js';
 import { SchedulingModule } from './modules/scheduling/scheduling.module.js';
 import { TenancyModule } from './modules/tenancy/tenancy.module.js';
 import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
+import { AuditModule } from './modules/audit/audit.module.js';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module.js';
     AttendanceModule,
     AutofillModule, // clock-in/out: geofenced, idempotent
     RealtimeModule, // sockets: a change on one screen reaches the others
+    AuditModule, // the owner's audit log (W7 D4)
     HealthModule,
   ],
 })

@@ -1,5 +1,7 @@
 import type {
   Attendance,
+  AuditPage,
+  Member,
   AutofillRequestResult,
   AutofillRunView,
   AuthResponse,
@@ -302,4 +304,23 @@ export const payrollApi = {
     api.post<PayPeriodView>(`/pay-periods/${id}/approve`, { orgId }),
   export: (orgId: string, id: string, query: string) =>
     api.download(`/pay-periods/${id}/export?${query}`, { orgId }),
+};
+
+/** The audit log (W7 D4), owners only. Filters are optional; `cursor` pages to older entries. */
+export const auditApi = {
+  list: (
+    orgId: string,
+    params: {
+      entity?: string;
+      entityId?: string;
+      actorUserId?: string;
+      from?: string;
+      cursor?: string;
+    },
+  ) => {
+    const query = new URLSearchParams({ limit: '50' });
+    for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+    return api.get<AuditPage>(`/audit-events?${query.toString()}`, { orgId });
+  },
+  members: (orgId: string) => api.get<Member[]>('/members', { orgId }),
 };

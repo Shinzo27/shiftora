@@ -109,7 +109,7 @@
 |---|---|---|
 | `auth` | users, sessions (refresh tokens), default-deny `JwtAuthGuard`, `@Public()` | — |
 | `tenancy` | `TenancyInterceptor`: one transaction per request, RLS session vars, membership + `@Roles` check; `RequestContext` | — |
-| `audit` | `AuditService.record()` into `audit_events`, same transaction as the change | — |
+| `audit` | `AuditService.record()` into `audit_events`, same transaction as the change; `GET /audit-events` (owner's log, keyset paging) | — |
 | `invites` | invite codes, accept flow | — |
 | `org` | organizations, locations, departments, roles, memberships, manager location scopes | `location.created` |
 | `billing` | plans, subscriptions, entitlements (employee/location limits, message quotas), coupons, GST invoices, Razorpay webhooks | `subscription.changed`, `payment.captured`, `invoice.issued` |
@@ -224,7 +224,8 @@ deliveries(id, org_id, notification_id, channel: email|whatsapp|sms|push,
   -- unique (notification_id, channel): one row per channel per message
   -- written by the fan-out, sent by the deliveries queue; the row, not the job, is the truth
 audit_events(id, org_id, actor_user_id, action, entity, entity_id,
-             before jsonb, after jsonb, ip, at)             -- append-only, partitioned by month
+             before jsonb, after jsonb, created_at)         -- append-only, partitioned by UTC month,
+  -- PK (id, created_at); partitions made ahead by ensure_audit_partitions() (ADR 021)
 ```
 
 Money is stored as integer minor units (`*_minor`) with a currency code; durations as minutes.
@@ -835,3 +836,4 @@ GET  /audit?entity=shift&entityId=
 | 018 | Account mail (verification, reset) is a platform outbox event with `org_id IS NULL`, sent directly by the worker | Accepted (W4 D3) |
 | 019 | The alert scan (`app.alert_scan` on `organizations`) and delivery reports (`app.provider_report` on `deliveries`) get the same kind of switch: `SELECT`-only, one query wide; the webhook only writes a platform event | Accepted (2026-11-16) |
 | 020 | Claiming an open shift is one conditional UPDATE (`status = 'open' AND employee_id IS NULL AND version = <read>`), not a lock or a queue; retries are keyed by `Idempotency-Key` in `idempotency_keys`, reserved before the work, so a retry returns the first answer and never claims twice | Accepted (W5 D4) |
+| 021 | `audit_events` is partitioned by UTC month; RLS and grants live on the parent and every partition is revoked from app_user; a SECURITY DEFINER `ensure_audit_partitions()` (called by the worker daily) is app_user's only route to DDL; the migration moved history under `row_security = off` because FORCEd RLS made the owner's copy read zero rows | Accepted (W7 D4) |

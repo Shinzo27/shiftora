@@ -1,4 +1,5 @@
 export * from './attendance.js';
+export * from './audit.js';
 export * from './auth.js';
 export * from './autofill.js';
 export * from './claims.js';

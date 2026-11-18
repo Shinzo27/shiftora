@@ -101,7 +101,7 @@ describe('every tenant table is protected', () => {
       `select c.relname as table, c.relrowsecurity as enabled, c.relforcerowsecurity as forced,
               (select count(*)::int from pg_policies p where p.tablename = c.relname) as policies
        from pg_class c join pg_namespace n on n.oid = c.relnamespace
-       where n.nspname = 'public' and c.relkind = 'r'
+       where n.nspname = 'public' and c.relkind in ('r', 'p') and not c.relispartition
          and (exists (select 1 from information_schema.columns col
                       where col.table_name = c.relname and col.column_name = 'org_id')
               or c.relname = 'organizations')
@@ -239,5 +239,71 @@ describe('audit_events', () => {
     await expect(
       as({ user: ASHA, org: ORG_A }, () => db.query('delete from audit_events')),
     ).rejects.toSatisfy((e) => pgCode(e) === '42501');
+  });
+
+  it('is partitioned by month, and a partition named directly is refused to app_user', async () => {
+    const owner = new pg.Client({ connectionString: database.urlFor('app_owner') });
+    await owner.connect();
+    try {
+      const parts = (
+        await owner.query<{ name: string; bound: string }>(
+          `select c.relname as name, pg_get_expr(c.relpartbound, c.oid) as bound
+           from pg_inherits i join pg_class c on c.oid = i.inhrelid
+           where i.inhparent = 'audit_events'::regclass order by 1`,
+        )
+      ).rows;
+      const month = new Date().toISOString().slice(0, 7).replace('-', '_');
+      expect(parts.map((p) => p.name)).toContain('audit_events_default');
+      expect(parts.map((p) => p.name)).toContain(`audit_events_${month}`);
+      // This month plus three ahead, at least.
+      expect(parts.filter((p) => p.name !== 'audit_events_default').length).toBeGreaterThanOrEqual(
+        4,
+      );
+
+      // The row inserted above went through the parent into this month's partition.
+      for (const name of [`audit_events_${month}`, 'audit_events_default']) {
+        await expect(
+          as({ user: ASHA, org: ORG_A }, () => db.query(`select * from ${name}`)),
+          name,
+        ).rejects.toSatisfy((e) => pgCode(e) === '42501');
+      }
+    } finally {
+      await owner.end();
+    }
+  });
+
+  it('ensure_audit_partitions is callable by app_user and idempotent; the helper is not', async () => {
+    const first = await rows<{ n: number }>('select ensure_audit_partitions(3) as n');
+    expect(first[0]!.n).toBe(0); // the migration already made them
+    const more = await rows<{ n: number }>('select ensure_audit_partitions(5) as n');
+    expect(more[0]!.n).toBe(2);
+    await expect(db.query("select create_audit_partition('2030-01-01')")).rejects.toSatisfy(
+      (e) => pgCode(e) === '42501',
+    );
+    await expect(db.query('select ensure_audit_partitions(99)')).rejects.toThrow(
+      /between 0 and 24/,
+    );
+  });
+
+  it('a row whose month has no partition lands in the default, and the next run moves it', async () => {
+    const owner = new pg.Client({ connectionString: database.urlFor('app_owner') });
+    await owner.connect();
+    try {
+      // A month far ahead: no partition yet, so the row goes to the default.
+      const eventId = newId();
+      await owner.query(
+        `insert into audit_events_default (id, org_id, action, entity, entity_id, created_at)
+         values ($1, $2, 'test.future', 'test', $1, '2031-03-15T10:00:00Z')`,
+        [eventId, ORG_A],
+      );
+      await owner.query("select create_audit_partition('2031-03-01')");
+      // Read the partitions directly: the parent forces RLS even on its owner.
+      const count = async (table: string) =>
+        (await owner.query(`select 1 from ${table} where id = $1`, [eventId])).rowCount;
+      expect(await count('audit_events_2031_03')).toBe(1);
+      expect(await count('audit_events_default')).toBe(0);
+    } finally {
+      await owner.end();
+    }
   });
 });

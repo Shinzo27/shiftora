@@ -10,6 +10,8 @@ export const JOB_EVENTS_CHANNEL = 'shiftora:job-events';
 /** One repeatable job: the shift-reminder / missed clock-in scan. */
 export const ALERTS_QUEUE = 'alerts';
 export const ALERT_SCAN_SCHEDULER = 'shift-alerts';
+/** Daily housekeeping on the same queue: the audit log's monthly partitions. */
+export const AUDIT_PARTITIONS_SCHEDULER = 'audit-partitions';
 
 export interface NotificationJob {
   /** The outbox row this job came from — also the job id, which is what makes it idempotent. */

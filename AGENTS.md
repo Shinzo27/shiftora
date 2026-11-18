@@ -287,6 +287,15 @@ Do this before writing any code, whatever tool or model you are:
 - **Reminders and missed clock-ins come from one repeatable job** (`alerts` queue, job scheduler
   `shift-alerts`, every `ALERT_SCAN_INTERVAL_MS`). Only shifts in the schedule's latest
   publication count: to see a reminder locally, publish a week with a shift starting within 2 h.
+- **A data migration on a FORCEd-RLS table reads nothing — and says nothing.** The owner is bound
+  by `FORCE ROW LEVEL SECURITY` too, so `INSERT … SELECT * FROM old_table` copies zero rows with no
+  error (0026's first draft then dropped the full table). Before moving rows, `ALTER TABLE …
+  NO FORCE ROW LEVEL SECURITY` on the source and `SET LOCAL row_security = off`, which turns a
+  filtered read into an error; compare counts before any `DROP`. Prove it on a scratch database
+  with rows in it — an empty test database passes either way.
+- **`audit_events` is partitioned (ADR 021).** Its primary key is `(id, created_at)`. Never grant a
+  partition to app_user or query one from app code: a partition read by name skips the parent's
+  RLS. New months come from `ensure_audit_partitions()` (worker, daily); don't create them by hand.
 - **Drizzle queries are lazy.** `void db.insert(...)` sends nothing: a query runs when it is
   awaited or `.then` is called. Fire-and-forget code must call `.then(ok, fail)` explicitly.
 - **The messages E2E needs the worker.** Locally `pnpm dev` runs it; in CI Playwright starts it

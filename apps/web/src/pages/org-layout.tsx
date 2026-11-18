@@ -4,6 +4,7 @@ import {
   ChevronsUpDown,
   Clock,
   IndianRupee,
+  ScrollText,
   MapPin,
   ArrowLeftRight,
   MessagesSquare,
@@ -151,6 +152,7 @@ const navItems: NavItem[] = [
   { label: 'Requests', to: 'requests', icon: ArrowLeftRight, managersOnly: true },
   { label: 'Messages', to: 'messages', icon: MessagesSquare, ownerOnly: true },
   { label: 'Payroll', to: 'payroll', icon: IndianRupee, managersOnly: true },
+  { label: 'Audit log', to: 'audit', icon: ScrollText, ownerOnly: true },
 ];
 
 function AppSidebar() {

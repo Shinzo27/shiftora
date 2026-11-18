@@ -4,11 +4,13 @@ import { Worker, type ConnectionOptions, type Queue } from 'bullmq';
 import { scanShiftAlerts, type ScanResult } from './alerts/scan.js';
 import { createDeliveryWorker } from './delivery-worker.js';
 import { handleNotificationJob } from './handlers.js';
+import { ensureAuditPartitions } from './maintenance/audit-partitions.js';
 import { sendableChannels, type Adapters } from './notifications/dispatch.js';
 import { relayOnce, type Enqueue } from './outbox-relay.js';
 import {
   ALERT_SCAN_SCHEDULER,
   ALERTS_QUEUE,
+  AUDIT_PARTITIONS_SCHEDULER,
   alertsQueue,
   deliveriesQueue,
   NOTIFICATIONS_QUEUE,
@@ -102,6 +104,12 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
   // several worker processes still run it once per interval. Upserting on every boot keeps the
   // interval in step with the configuration.
   const alerts = alertsQueue(connection);
+
+  // The audit log's monthly partitions (W7 D4): checked once on boot, so a fresh deploy never
+  // waits a day for next month's table, then daily on the same Redis-held schedule.
+  const created = await ensureAuditPartitions(db);
+  if (created > 0) log.info(`audit: created ${created} monthly partition(s)`);
+
   let scanner: Worker | null = null;
   if (options.alertScanIntervalMs !== null) {
     await alerts.upsertJobScheduler(
@@ -109,9 +117,19 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
       { every: options.alertScanIntervalMs },
       { name: 'scan' },
     );
+    await alerts.upsertJobScheduler(
+      AUDIT_PARTITIONS_SCHEDULER,
+      { every: 24 * 60 * 60 * 1000 },
+      { name: 'audit-partitions' },
+    );
     scanner = new Worker(
       ALERTS_QUEUE,
-      async () => {
+      async (job) => {
+        if (job.name === 'audit-partitions') {
+          const made = await ensureAuditPartitions(db);
+          if (made > 0) log.info(`audit: created ${made} monthly partition(s)`);
+          return { created: made };
+        }
         const result = await scanShiftAlerts(db);
         if (result.reminders + result.missed + result.expired > 0) {
           log.info(
@@ -122,8 +140,8 @@ export async function startPipeline(options: PipelineOptions): Promise<Pipeline>
       },
       { connection, concurrency: 1 },
     );
-    scanner.on('failed', (_job, error) => {
-      log.error('alerts: scan failed', error.message);
+    scanner.on('failed', (job, error) => {
+      log.error(`alerts: ${job?.name ?? 'job'} failed`, error.message);
     });
   }
 
