@@ -5,6 +5,7 @@ export * from './autofill.js';
 export * from './claims.js';
 export * from './coverage.js';
 export * from './employees.js';
+export * from './env.js';
 export * from './locations.js';
 export * from './me.js';
 export * from './messages.js';

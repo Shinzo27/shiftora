@@ -106,7 +106,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W4 D4 | Fake WhatsApp/SMS provider with failure injection, provider errors classified (permanent / transient / 429), jittered backoff, dead letters + fallback down the ladder, `message_usage` quota (`0016`) with a race-safe reservation, owner Messages page with Replay (via the outbox) | ✅ Done | see `git log` |
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
-Numbers today: 28 migrations, 862 automated tests (426 unit, 436 integration against real
+Numbers today: 28 migrations, 872 automated tests (436 unit, 436 integration against real
 Postgres and Redis) plus 7 Playwright end-to-end tests, 110 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
@@ -114,6 +114,46 @@ staff app for phones with per-device Web Push; light and dark; axe
 clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 
 ### Handoff note (update at the end of every session)
+
+> **2026-11-19 (second dev machine, Hermes) — pulled 26 commits and found two real bugs while checking.**
+> - **Pulled** `ba69fd0..2c46a2c` (W4 D4–D6, W5, W6, W7 D1–D5, W7½ UI1–UI2 start): 28 migrations
+>   (`pnpm db:migrate`), 39 tables, 57 new packages, and `.env` needed the eight new keys
+>   (`LOG_LEVEL`, `WHATSAPP_PROVIDER`/`SMS_PROVIDER`, `FAKE_PROVIDER_FAILURE`,
+>   `WHATSAPP_APP_SECRET`/`VERIFY_TOKEN`, `FAKE_PROVIDER_REPORT_URL`, `ALERT_SCAN_INTERVAL_MS`).
+> - **Bug 1 — the API could not shut down with Redis unreachable.** `JobEventsService` awaited
+>   `subscriber.quit()`; node-redis's `quit()` never settles on a client that is reconnecting, so
+>   `app.close()` hung for ever. Found because the rate-limit suite passed all 3 tests and then
+>   reported `Hook timed out in 120000ms` in `afterAll` (its third case points an app at
+>   `redis://127.0.0.1:1`); raised the timeout to 300 s and it still hung. Measured node-redis 5
+>   directly: `isOpen` true, `isReady` false while retrying, `close()`/`destroy()` settle at once,
+>   `quit()` never does. Fixed with `closeRedisClient()`
+>   (`apps/api/src/common/redis-client.ts`), now used by the throttler, the socket gateway and job
+>   events; 5 unit tests cover the three states. The suite went from hanging to **14 s**.
+> - **Bug 2 — a fresh `cp .env.example .env` could not boot the API or the worker.**
+>   `.env.example` ships `WHATSAPP_APP_SECRET=` empty on purpose, Node's `--env-file` loads that as
+>   `''`, and `.optional().min(16)` refused it: `Too small: expected string to have >=16
+>   characters → at WHATSAPP_APP_SECRET`. Found when E2E's API web server died on boot. Fixed in
+>   the schemas, not the file: `envText`/`envUrl`/`envEnum` in `packages/shared/src/env.ts` make
+>   empty mean unset (what Compose and the example both do), and both `env.test.ts` files now
+>   **parse the shipped `.env.example`** so this cannot regress.
+> - **Verified on this machine:** 436 unit + 436 integration (db 64, api 291, worker 81), lint,
+>   typecheck, build; E2E **6 of 7** (below).
+> - **E2E needs two more lines in `.env`** (added to §8.1): `WHATSAPP_APP_SECRET` and
+>   `WHATSAPP_VERIFY_TOKEN`. `messages.spec.ts` waits for a **read receipt**, and the fake provider
+>   only posts one when the secret exists — CI appends them itself, §8.1 did not say so.
+> - **Open: `team.spec.ts` fails its last assertion** — after the owner removes the manager it
+>   expects `403` on `GET /members` with the manager's token and gets `200`. Reproduced the same
+>   sequence by hand through the API (invite → accept → 200, owner `DELETE` → 204, same token →
+>   **403 `org.not_member`**), and the database shows no membership rows, so the product is right
+>   and the spec is racing something on this machine. Screenshots are in
+>   `apps/web/test-results/team-…/`. Do not weaken the assertion; instrument it (log the token's
+>   `sub` and `clinic.orgId` at that point).
+> - **Watch out for:** `pnpm test:int` runs db, api and worker in parallel from turbo and each
+>   starts Testcontainers Postgres — on this 8 GB machine that starved the db suite into a 120 s
+>   `beforeAll` timeout (all 7 files skipped). Run them one filter at a time here.
+> - **Next — W7 D6** (benchmark the auto-scheduler, numbers in the README), then **W7½ UI2**
+>   remainder (availability/time off for managers, departments, templates) and **UI3** (the
+>   route-coverage check in CI and the dated sweep).
 
 > **2026-11-18 (first dev machine, Claude Code) — W7 D4 and D5 done (one commit per day).**
 > - **Owner's go:** "Go with W7 d4 5" — D5 as the agreed lighter version (pino approved; it was
@@ -584,6 +624,14 @@ pnpm lint && pnpm typecheck && pnpm test && pnpm test:int   # all green = machin
 ```
 
 E2E needs Playwright's Chromium once: `pnpm --filter @shiftora/web exec playwright install chromium`.
+It also needs a webhook secret, because `messages.spec.ts` waits for a **read receipt** and the fake
+WhatsApp provider only posts one when the secret exists (CI appends both lines itself). Any value
+works locally:
+
+```bash
+echo "WHATSAPP_APP_SECRET=dev-only-webhook-secret-0123456789" >> .env
+echo "WHATSAPP_VERIFY_TOKEN=dev-only-verify-token" >> .env
+```
 
 Ports 5433 (Postgres) and 4000 (API) were chosen because 5432/3000 were busy on the first
 machine; change them in `.env` and `infra/docker-compose.yml` if your machine differs.
@@ -1215,7 +1263,8 @@ invoice format sign-off with a CA (values are config, not code).
 | Replaying a dead letter whose fallback email was already sent sends the message twice (by design: the owner asked); say so in the confirm, or offer "replay" only when there was no fallback | W8 polish |
 | Plan entitlements: today every active location counts as paid and Free orgs can use WhatsApp; `EntitlementService` decides from the subscription | W8 D2 |
 | ~~Auth throttle on `/auth/refresh` was per IP, so staff behind one office connection logged each other out~~ Done: refresh is limited per login (session family); no/unknown cookie still per IP | ✅ 2026-11-16 |
-| Week board header is sticky only within its own (horizontal) scroll box; make it stick while the page scrolls (vertical scroll container with a max height) | W5+ |
+| Week board header is sticky only within its own (horizontal) scroll box; make it stick while the page scrolls (vertical scroll container with a max height) — cosmetic, W7½ UI3 |
+| The **worker** still calls `redis.quit()` (ioredis) on shutdown; ioredis's `quit()` waits for a connection like node-redis's, so a Redis that is down at SIGTERM can delay the stop. The API now uses `closeRedisClient()`; do the same in `apps/worker/src/main.ts` | Before production (W8 D1) |
 
 ---
 

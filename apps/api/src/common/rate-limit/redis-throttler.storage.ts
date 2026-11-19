@@ -2,6 +2,8 @@ import { Logger, type OnApplicationShutdown, type OnModuleInit } from '@nestjs/c
 import { ThrottlerStorageService, type ThrottlerStorage } from '@nestjs/throttler';
 import { createClient } from 'redis';
 
+import { closeRedisClient } from '../redis-client.js';
+
 /** What the guard expects back (the package does not export the record type by name). */
 type ThrottlerStorageRecord = Awaited<ReturnType<ThrottlerStorage['increment']>>;
 
@@ -107,9 +109,8 @@ export class RedisThrottlerStorage
   async onApplicationShutdown(): Promise<void> {
     this.fallback.onApplicationShutdown();
     // Connected: finish what is in flight. Still reconnecting: stop now, or shutdown waits on a
-    // Redis that is not there.
-    if (this.client.isReady) await this.client.close().catch(() => undefined);
-    else if (this.client.isOpen) this.client.destroy();
+    // Redis that is not there. Never `quit()` — see `common/redis-client.ts`.
+    await closeRedisClient(this.client);
   }
 
   private warnOnce(error: Error): void {

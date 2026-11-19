@@ -148,6 +148,17 @@ Do this before writing any code, whatever tool or model you are:
 
 ## Known gotchas (learned the hard way)
 
+- **Never `quit()` a Redis client at shutdown.** On a client that is *reconnecting* — an
+  unreachable `REDIS_URL`, a Redis that restarted, a container still starting — node-redis's
+  `quit()` waits for a connection that may never arrive, so `app.close()` never returns. The
+  symptom is an integration suite where every test passes and then
+  `Error: Hook timed out in 120000ms` in `afterAll` (the rate-limit suite, whose third case points
+  an app at `redis://127.0.0.1:1`), and an API that will not stop in production when Redis is
+  down at deploy time. Use `closeRedisClient()` in `apps/api/src/common/redis-client.ts`:
+  graceful `close()` when ready, `destroy()` while still connecting, nothing when closed.
+  Measured on node-redis 5: `isOpen` is true and `isReady` false while retrying, `close()` and
+  `destroy()` both settle at once, `quit()` never settles.
+
 - **`pnpm dev` now starts three things**: the API, the web app and `@shiftora/worker` (relay +
   queue). The worker's `dev` script compiles once, then runs `tsc --watch` beside
   `node --watch`: without the first compile, `node --watch` races tsc and prints
@@ -510,6 +521,11 @@ Do this before writing any code, whatever tool or model you are:
 
 - TypeScript `strict`; no `any` (use `unknown` + Zod parse). No default exports except where a
   framework requires it.
+- **Optional env vars use `envText`/`envUrl`/`envEnum` from `@shiftora/shared`**, never
+  `.optional()` alone: `KEY=` (empty) is how `.env.example` and Compose say "off", and a plain
+  `.optional().min(16)` refuses the empty string, so a fresh `cp .env.example .env` cannot boot.
+  `apps/api/src/config/env.test.ts` and `apps/worker/src/env.test.ts` parse the shipped example
+  for exactly this reason.
 - API: REST under `/api/v1`, Zod schemas from `packages/shared`, RFC 7807 errors with a stable
   `code`, cursor pagination.
 - Nest module layout: `<module>.module.ts`, `<module>.controller.ts`, `<module>.service.ts`,

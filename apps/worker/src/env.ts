@@ -1,3 +1,4 @@
+import { envEnum, envText, envUrl } from '@shiftora/shared';
 import { z } from 'zod';
 
 /**
@@ -20,35 +21,36 @@ const envSchema = z.object({
   /** SMTP: Mailpit on :1025 locally; any relay in production. */
   SMTP_HOST: z.string().min(1).default('localhost'),
   SMTP_PORT: z.coerce.number().int().min(1).max(65_535).default(1025),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
+  SMTP_USER: envText(),
+  SMTP_PASS: envText(),
   /** The web app's public URL: links in emails are built from it. */
   APP_URL: z.url().default('http://localhost:5173'),
   /** VAPID keys for Web Push. Absent means no push channel: the button hides, nothing crashes. */
-  VAPID_PUBLIC_KEY: z.string().optional(),
-  VAPID_PRIVATE_KEY: z.string().optional(),
+  VAPID_PUBLIC_KEY: envText(),
+  VAPID_PRIVATE_KEY: envText(),
   VAPID_SUBJECT: z.string().default('mailto:admin@shiftora.local'),
   /**
    * WhatsApp and SMS providers. `fake` logs instead of sending, so the whole pipeline (quota,
    * retries, dead letters, fallback) runs locally; `none` takes the channel out of routing.
    * Meta's adapter becomes a third value.
    */
-  WHATSAPP_PROVIDER: z.enum(['none', 'fake']).default('none'),
-  SMS_PROVIDER: z.enum(['none', 'fake']).default('none'),
+  WHATSAPP_PROVIDER: envEnum(['none', 'fake'], 'none'),
+  SMS_PROVIDER: envEnum(['none', 'fake'], 'none'),
   /**
    * Failure injection for the fake providers: every send fails this way. `undeliverable` is
    * accepted first and reported failed a moment later (needs the report URL below).
    */
-  FAKE_PROVIDER_FAILURE: z
-    .enum(['none', 'transient', 'permanent', 'rate_limited', 'undeliverable'])
-    .default('none'),
+  FAKE_PROVIDER_FAILURE: envEnum(
+    ['none', 'transient', 'permanent', 'rate_limited', 'undeliverable'],
+    'none',
+  ),
   /**
    * Where the fake WhatsApp provider posts its delivery reports, signed like Meta's: the API's
    * webhook (http://localhost:4000/api/v1/webhooks/whatsapp). Unset, no reports are sent.
    */
-  FAKE_PROVIDER_REPORT_URL: z.url().optional(),
+  FAKE_PROVIDER_REPORT_URL: envUrl(),
   /** Meta's app secret: signs (fake) and verifies (API) `X-Hub-Signature-256`. */
-  WHATSAPP_APP_SECRET: z.string().min(16).optional(),
+  WHATSAPP_APP_SECRET: envText(16),
   /** How often the shift-reminder / missed clock-in scan runs. */
   ALERT_SCAN_INTERVAL_MS: z.coerce.number().int().min(10_000).max(600_000).default(60_000),
   /** What staff see in the From line. */

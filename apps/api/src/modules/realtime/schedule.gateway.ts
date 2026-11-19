@@ -7,6 +7,7 @@ import { createClient } from 'redis';
 import type { Server, Socket } from 'socket.io';
 
 import { AppConfig } from '../../config/app-config.js';
+import { closeRedisClient } from '../../common/redis-client.js';
 import { RequestContext } from '../../database/request-context.js';
 import { DATABASE } from '../../database/database.module.js';
 import { TokenService } from '../auth/token.service.js';
@@ -132,11 +133,10 @@ export class ScheduleGateway implements OnGatewayInit, OnGatewayConnection, OnAp
   }
 
   async onApplicationShutdown(): Promise<void> {
-    await Promise.all(
-      this.redisClients.map(async (client) => {
-        if (client.isReady) await client.close().catch(() => undefined);
-        else if (client.isOpen) client.destroy();
-      }),
-    );
+    // `close()` or `destroy()`, never `quit()`: a client that is reconnecting would hang the
+    // shutdown (common/redis-client.ts).
+    const clients = this.redisClients;
+    this.redisClients = [];
+    await Promise.all(clients.map((client) => closeRedisClient(client)));
   }
 }

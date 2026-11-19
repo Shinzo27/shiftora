@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { createClient, type RedisClientType } from 'redis';
 
 import { AppConfig } from '../../config/app-config.js';
+import { closeRedisClient } from '../../common/redis-client.js';
 import type { AutofillProgressEvent } from './realtime.events.js';
 import { RealtimeService } from './realtime.service.js';
 
@@ -52,7 +53,11 @@ export class JobEventsService implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
-    await this.subscriber?.quit().catch(() => undefined);
+    // Never `quit()` here: a subscriber that is still reconnecting would never settle, and the
+    // API would hang on shutdown instead of stopping. See `common/redis-client.ts`.
+    const client = this.subscriber;
+    this.subscriber = null;
+    await closeRedisClient(client);
   }
 
   private forward(message: string): void {

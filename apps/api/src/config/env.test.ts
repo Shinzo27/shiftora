@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
 import { describe, expect, it } from 'vitest';
 
 import { parseEnv } from './env.js';
@@ -6,6 +9,21 @@ const valid = {
   DATABASE_URL: 'postgres://app_user:secret@localhost:5433/shiftora',
   JWT_ACCESS_SECRET: 'dev-only-a-secret-that-is-long-enough-123',
 };
+
+/**
+ * The file a new machine copies. It must satisfy the schema: an empty optional key (`KEY=`) is
+ * how the file says "this feature is off", and a schema that refuses it breaks setup with an
+ * error about a variable the developer never set.
+ */
+function shippedEnvExample(): Record<string, string> {
+  const path = fileURLToPath(new URL('../../../../.env.example', import.meta.url));
+  const source: Record<string, string> = {};
+  for (const line of readFileSync(path, 'utf8').split('\n')) {
+    const match = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
+    if (match) source[match[1]!] = match[2]!;
+  }
+  return source;
+}
 
 function errorMessage(source: Record<string, string | undefined>): string {
   try {
@@ -17,6 +35,17 @@ function errorMessage(source: Record<string, string | undefined>): string {
 }
 
 describe('parseEnv', () => {
+  it('accepts the .env.example a new machine copies', () => {
+    // This is the bug that broke a fresh checkout: `WHATSAPP_APP_SECRET=` is empty on purpose,
+    // and `''` failed `.min(16)` — the API refused to start on the documented setup path.
+    expect(() => parseEnv(shippedEnvExample())).not.toThrow();
+  });
+
+  it('reads an empty optional value as unset, not as an empty secret', () => {
+    expect(parseEnv({ ...valid, WHATSAPP_APP_SECRET: '' }).WHATSAPP_APP_SECRET).toBeUndefined();
+    expect(parseEnv({ ...valid, REDIS_URL: '' }).REDIS_URL).toBeUndefined();
+  });
+
   it('applies defaults', () => {
     expect(parseEnv(valid)).toEqual({
       NODE_ENV: 'development',

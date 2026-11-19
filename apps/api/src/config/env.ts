@@ -1,3 +1,4 @@
+import { envText, envUrl } from '@shiftora/shared';
 import { z } from 'zod';
 
 const DEV_SECRET_PREFIX = 'dev-only';
@@ -13,19 +14,19 @@ const envSchema = z
     REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
     WEB_ORIGIN: z.url().default('http://localhost:5173'),
     /** Handed to the browser so it can subscribe; absent disables the push button. */
-    VAPID_PUBLIC_KEY: z.string().optional(),
+    VAPID_PUBLIC_KEY: envText(),
     /**
      * Optional: with it, realtime events reach every API instance and rate limits are shared by
      * all of them; without it, both stay inside one process.
      */
-    REDIS_URL: z.url({ protocol: /^rediss?$/ }).optional(),
+    REDIS_URL: envUrl(/^rediss?$/),
     /**
      * Meta's app secret: every WhatsApp webhook is signed with it (`X-Hub-Signature-256`).
      * Unset, the webhook answers 404 and accepts nothing.
      */
-    WHATSAPP_APP_SECRET: z.string().min(16).optional(),
+    WHATSAPP_APP_SECRET: envText(16),
     /** The token Meta echoes when the webhook URL is registered (the GET handshake). */
-    WHATSAPP_VERIFY_TOKEN: z.string().min(8).optional(),
+    WHATSAPP_VERIFY_TOKEN: envText(8),
   })
   .refine(
     (env) => env.NODE_ENV !== 'production' || !env.JWT_ACCESS_SECRET.startsWith(DEV_SECRET_PREFIX),
