@@ -1,4 +1,5 @@
 import { eq, schema } from '@shiftora/db';
+import { addDays, toLocal } from '@shiftora/domain';
 import type { ClockResult, MyTimeEntries } from '@shiftora/shared';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -376,6 +377,17 @@ describe('who may punch', () => {
   });
 });
 
+/**
+ * The window is derived from today, not typed. Hard-coded dates here went stale the week after
+ * they were written: the punches are made "now", so a range that ends in the past finds nothing
+ * and the suite fails for a reason that has nothing to do with the code.
+ */
+const today = () => toLocal(new Date(), 'Asia/Kolkata').date;
+/** A window centred on today; `from` must not be after `to`. */
+const around = (days: number) => ({ from: addDays(today(), -days), to: addDays(today(), days) });
+/** A window that starts in the future, so nothing can be in it. */
+const ahead = () => ({ from: addDays(today(), 30), to: addDays(today(), 37) });
+
 describe('GET /me/time-entries', () => {
   it('lists only the caller’s punches, newest first, with the wall clock', async () => {
     const s = await setup();
@@ -383,7 +395,8 @@ describe('GET /me/time-entries', () => {
     await s.staff.call('POST', '/clock-out', { org: s.org, body: {} });
     await s.colleague.call('POST', '/clock-in', { org: s.org, body: punch(s.locationId) });
 
-    const res = await s.staff.call('GET', '/me/time-entries?from=2026-11-05&to=2026-11-19', {
+    const { from, to } = around(7);
+    const res = await s.staff.call('GET', `/me/time-entries?from=${from}&to=${to}`, {
       org: s.org,
     });
     expect(res.status).toBe(200);
@@ -395,7 +408,8 @@ describe('GET /me/time-entries', () => {
 
   it('is empty for a login with no staff profile', async () => {
     const s = await setup();
-    const res = await s.owner.call('GET', '/me/time-entries?from=2026-11-05&to=2026-11-19', {
+    const { from, to } = around(7);
+    const res = await s.owner.call('GET', `/me/time-entries?from=${from}&to=${to}`, {
       org: s.org,
     });
     expect(res.status).toBe(200);
@@ -407,7 +421,8 @@ describe('GET /me/time-entries', () => {
     await s.staff.call('POST', '/clock-in', { org: s.org, body: punch(s.locationId) });
     await s.staff.call('POST', '/clock-out', { org: s.org, body: {} });
 
-    const res = await s.staff.call('GET', '/me/time-entries?from=2026-12-01&to=2026-12-07', {
+    const { from, to } = ahead();
+    const res = await s.staff.call('GET', `/me/time-entries?from=${from}&to=${to}`, {
       org: s.org,
     });
     expect(res.json<MyTimeEntries>().items).toEqual([]);

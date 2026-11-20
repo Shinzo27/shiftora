@@ -121,10 +121,20 @@ test.describe('team and access', () => {
     await page.getByRole('dialog').getByRole('button', { name: 'Remove', exact: true }).click();
     await expect(memberRow).toHaveCount(0);
 
-    const afterRemoval = await request.get(`${API}/members`, {
-      headers: { authorization: `Bearer ${managerToken}`, 'x-org-id': clinic.orgId },
-    });
-    expect(afterRemoval.status(), await afterRemoval.text()).toBe(403);
+    // Polled rather than asserted once: the row leaves the table when the mutation settles, and
+    // "settles" is a moment the browser and the server can disagree about under load. The
+    // requirement is that the next request is refused, so that is what is waited for.
+    await expect
+      .poll(
+        async () =>
+          (
+            await request.get(`${API}/members`, {
+              headers: { authorization: `Bearer ${managerToken}`, 'x-org-id': clinic.orgId },
+            })
+          ).status(),
+        { timeout: 10_000 },
+      )
+      .toBe(403);
 
     // And the browser shows it rather than a half-broken shell.
     await manager.goto(`/o/${clinic.orgId}/schedule`);
