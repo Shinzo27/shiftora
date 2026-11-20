@@ -11,6 +11,7 @@ import { Check, Copy, Mail, MoreHorizontal, Plus, ShieldCheck, UserCog } from 'l
 import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ErrorState, FormAlert, initials, PageHeader } from '@/components/page';
 import { TextField } from '@/components/text-field';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -129,6 +130,7 @@ export function TeamPage() {
   const [shownInvite, setShownInvite] = useState<CreateInviteResponse | null>(null);
   const [editingBranches, setEditingBranches] = useState<Member | null>(null);
   const [removing, setRemoving] = useState<Member | null>(null);
+  const [revoking, setRevoking] = useState<Invite | null>(null);
 
   const changeRole = useMutation({
     mutationFn: ({ member, role: next }: { member: Member; role: AssignableRole }) =>
@@ -155,8 +157,12 @@ export function TeamPage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['invites', orgId] });
       toast.success('Invitation revoked');
+      setRevoking(null);
     },
-    onError: (error) => toast.error(errorMessage(error) ?? 'Could not revoke it'),
+    onError: (error) => {
+      setRevoking(null);
+      toast.error(errorMessage(error) ?? 'Could not revoke it');
+    },
   });
 
   const reinvite = useMutation({
@@ -233,9 +239,7 @@ export function TeamPage() {
                                 </span>
                               ) : null}
                             </p>
-                            <p className="truncate text-xs text-muted-foreground">
-                              {member.email}
-                            </p>
+                            <p className="truncate text-xs text-muted-foreground">{member.email}</p>
                           </div>
                         </div>
                       </TableCell>
@@ -376,7 +380,7 @@ export function TeamPage() {
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               variant="destructive"
-                              onSelect={() => revoke.mutate(invite)}
+                              onSelect={() => setRevoking(invite)}
                             >
                               Revoke invitation
                             </DropdownMenuItem>
@@ -416,6 +420,17 @@ export function TeamPage() {
           onClose={() => setEditingBranches(null)}
         />
       ) : null}
+
+      <ConfirmDialog
+        open={revoking !== null}
+        title={`Revoke the invitation to ${revoking?.email ?? ''}?`}
+        description="The link stops working at once. To invite them again you send a new one."
+        confirmLabel="Revoke invitation"
+        cancelLabel="Keep it"
+        pending={revoke.isPending}
+        onConfirm={() => revoking && revoke.mutate(revoking)}
+        onCancel={() => setRevoking(null)}
+      />
 
       <Dialog open={removing !== null} onOpenChange={(open) => !open && setRemoving(null)}>
         <DialogContent className="sm:max-w-md">
@@ -500,8 +515,7 @@ function InviteDialog({
   const [errors, setErrors] = useState<FieldErrors>({});
   const [role, setRole] = useState<AssignableRole>('employee');
   const create = useMutation({
-    mutationFn: (input: { email: string; role: AssignableRole }) =>
-      invitesApi.create(orgId, input),
+    mutationFn: (input: { email: string; role: AssignableRole }) => invitesApi.create(orgId, input),
     onSuccess: (created) => {
       // The pending list is another query: without this the new invitation is invisible until
       // the page is reloaded.
@@ -536,8 +550,8 @@ function InviteDialog({
           <DialogHeader>
             <DialogTitle>Invite someone</DialogTitle>
             <DialogDescription>
-              They get an email with a link that works for seven days. If they have no account
-              yet, they create one with this address.
+              They get an email with a link that works for seven days. If they have no account yet,
+              they create one with this address.
             </DialogDescription>
           </DialogHeader>
           <FieldGroup className="py-4">
@@ -611,8 +625,8 @@ function InviteLinkDialog({
         <DialogHeader>
           <DialogTitle>Invitation on its way</DialogTitle>
           <DialogDescription>
-            We emailed {response.invite.email}. You can also send the link yourself — it works
-            once, for seven days.
+            We emailed {response.invite.email}. You can also send the link yourself — it works once,
+            for seven days.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2 py-2">
@@ -697,7 +711,9 @@ function BranchesDialog({
                   checked={checked}
                   onCheckedChange={(value) =>
                     setSelected((ids) =>
-                      value === true ? [...ids, location.id] : ids.filter((id) => id !== location.id),
+                      value === true
+                        ? [...ids, location.id]
+                        : ids.filter((id) => id !== location.id),
                     )
                   }
                 />

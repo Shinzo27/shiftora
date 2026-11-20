@@ -43,7 +43,7 @@ export function AttendancePage() {
     <>
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Attendance</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Timesheets</h1>
           <p className="text-sm text-muted-foreground">
             {location ? (
               <>
@@ -151,7 +151,8 @@ function PunchRow({ row, onEdit }: { row: AttendanceRow; onEdit: () => void }) {
   const badges = punchBadges(row);
   return (
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 p-4">
-      <div className="min-w-0 flex-1">
+      {/* Phones: the name gets its own line (it was cut to "Roh…"); wider screens: one row. */}
+      <div className="min-w-0 basis-full sm:basis-0 sm:flex-1">
         <p className="truncate text-sm font-medium">{row.employeeName}</p>
         <p className="text-xs text-muted-foreground tabular-nums">
           {row.shift ? `rostered ${row.shift.startTime}–${row.shift.endTime}` : 'not rostered'}
@@ -187,6 +188,7 @@ function PunchRow({ row, onEdit }: { row: AttendanceRow; onEdit: () => void }) {
       <Button
         variant="ghost"
         size="icon"
+        className="ml-auto"
         aria-label={`Correct ${row.employeeName}'s punch`}
         onClick={onEdit}
       >
@@ -207,14 +209,19 @@ function Totals({ totals }: { totals: Attendance['totals'] }) {
         {totals.map((total) => {
           const difference = total.workedMinutes - total.plannedMinutes;
           return (
-            <li key={total.employeeId} className="flex items-center gap-3 px-4 py-2.5 text-sm">
-              <span className="min-w-0 flex-1 truncate">{total.employeeName}</span>
+            <li
+              key={total.employeeId}
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm"
+            >
+              <span className="min-w-0 basis-full truncate font-medium sm:basis-0 sm:flex-1">
+                {total.employeeName}
+              </span>
               <span className="tabular-nums">{compactDuration(total.workedMinutes)} worked</span>
-              <span className="w-24 text-right text-muted-foreground tabular-nums">
+              <span className="text-muted-foreground tabular-nums sm:w-24 sm:text-right">
                 {total.plannedMinutes ? `${compactDuration(total.plannedMinutes)} rostered` : '—'}
               </span>
               <span
-                className={`w-16 text-right tabular-nums ${
+                className={`ml-auto text-right tabular-nums sm:ml-0 sm:w-16 ${
                   difference < 0 ? 'text-warning' : 'text-muted-foreground'
                 }`}
               >

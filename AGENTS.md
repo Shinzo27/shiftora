@@ -135,8 +135,13 @@ Do this before writing any code, whatever tool or model you are:
    **A feature is not done until it has a screen** (owner's rule, 2026-11-18): a new endpoint
    ships with the UI that calls it in the same day, or with a line in `docs/ui-coverage.md`
    saying why it is API-only (a webhook, a token refresh) — the UI coverage check fails CI
-   otherwise (from W7½ UI3). Also check the role gating: a page an employee or manager must not
-   see is hidden in the sidebar **and** answers with a clear empty state if opened by URL.
+   otherwise (`pnpm check:ui-coverage`, in CI). Also check the role gating: a page an employee or
+   manager must not see is hidden in the sidebar **and** answers with a clear empty state if
+   opened by URL. **A new page goes into the lists in `e2e/accessibility.spec.ts` (axe, both
+   themes, 390 px) and `e2e/roles.spec.ts`**, and anything that deletes or cannot be undone asks
+   first with `components/confirm-dialog.tsx`. A visible label must be part of the accessible
+   name: put extra words in an `sr-only` span after the visible text, never an `aria-label` that
+   replaces it (axe *label-content-name-mismatch*).
 6. Run everything: `pnpm format && pnpm lint && pnpm typecheck && pnpm test && pnpm test:int
    && pnpm build`. Report failures honestly.
 7. Update the docs in the same change: `PROJECT_PLAN.md` (§2 status table and handoff note and "Numbers

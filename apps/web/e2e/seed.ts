@@ -127,6 +127,39 @@ export async function seedClinic(
   return clinic;
 }
 
+/**
+ * Another login in the clinic with `role` — signup, an invitation, acceptance — the way a real
+ * manager joins. Used by the role-gating and accessibility sweeps.
+ */
+export async function addMember(
+  request: APIRequestContext,
+  clinic: Clinic,
+  role: 'manager' | 'employee',
+): Promise<{ email: string; password: string }> {
+  const stamp = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const email = `${role}-${stamp}@example.com`;
+  const signup = await request.post(`${API}/auth/signup`, {
+    data: { email, password: PASSWORD, name: role === 'manager' ? 'Meera Iyer' : 'Rohan Desai' },
+  });
+  expect(signup.ok(), await signup.text()).toBeTruthy();
+  const auth = {
+    authorization: `Bearer ${((await signup.json()) as { accessToken: string }).accessToken}`,
+  };
+  const ownerHeaders = {
+    authorization: `Bearer ${await token(request, clinic.email, clinic.password)}`,
+    'x-org-id': clinic.orgId,
+  };
+  const invite = await request.post(`${API}/invites`, {
+    headers: ownerHeaders,
+    data: { email, role },
+  });
+  expect(invite.ok(), await invite.text()).toBeTruthy();
+  const { code } = (await invite.json()) as { code: string };
+  const accepted = await request.post(`${API}/invites/accept`, { headers: auth, data: { code } });
+  expect(accepted.ok(), await accepted.text()).toBeTruthy();
+  return { email, password: PASSWORD };
+}
+
 export async function signIn(page: Page, email: string, password = PASSWORD): Promise<void> {
   await page.goto('/login');
   await page.getByLabel('Email').fill(email);

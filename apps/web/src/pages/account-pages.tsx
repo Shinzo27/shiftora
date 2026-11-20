@@ -22,7 +22,10 @@ function AccountCard({
     <main className="flex min-h-dvh items-center justify-center bg-muted/40 p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>{title}</CardTitle>
+          {/* The page's one h1 (W7½ UI3): a card title is a div, and these pages had none. */}
+          <CardTitle>
+            <h1>{title}</h1>
+          </CardTitle>
           <CardDescription>{description}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">{children}</CardContent>

@@ -29,6 +29,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm lint
+      # Every API route has a screen or a written reason (docs/ui-coverage.md, W7½ UI3).
+      - run: pnpm check:ui-coverage
+      - run: pnpm test:scripts
       - run: pnpm typecheck
       - run: pnpm test
       # Integration tests start Postgres with Testcontainers (Docker is preinstalled on the runner).

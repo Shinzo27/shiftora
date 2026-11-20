@@ -37,8 +37,9 @@ export function UserMenu({
 
   return (
     <DropdownMenu>
+      {/* Named by what it shows plus "Account menu", not by "Account menu" alone: a voice-control
+          user says what they see ("click Priya Nair"), so the visible text must be in the name. */}
       <DropdownMenuTrigger
-        aria-label="Account menu"
         className={cn(
           'flex items-center gap-2 rounded-lg text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/50',
           compact
@@ -51,13 +52,16 @@ export function UserMenu({
             {initials(user.name)}
           </AvatarFallback>
         </Avatar>
-        {compact ? null : (
+        {compact ? (
+          <span className="sr-only">Account menu for {user.name}</span>
+        ) : (
           <>
             <span className="grid min-w-0 flex-1 text-sm leading-tight">
               <span className="truncate font-medium">{user.name}</span>
               <span className="truncate text-xs text-muted-foreground">{user.email}</span>
             </span>
             <ChevronsUpDown className="size-4 text-muted-foreground" />
+            <span className="sr-only">Account menu</span>
           </>
         )}
       </DropdownMenuTrigger>

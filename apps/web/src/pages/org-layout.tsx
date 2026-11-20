@@ -85,6 +85,12 @@ function OrgShell({ orgId }: { orgId: string }) {
   // a retry button, because that one may well work in a moment.
   if (org.isError && isAccessDenied(org.error)) return <Navigate to="/orgs" replace />;
 
+  // Staff work in their own app (W7½ UI3). A bookmarked or typed manager URL used to open this
+  // shell for them, with a sidebar of one item and pages whose calls all answered 403.
+  if (org.isSuccess && (org.data.role === 'employee' || org.data.role === 'kiosk')) {
+    return <Navigate to={`/o/${orgId}/shifts`} replace />;
+  }
+
   const failed = org.isError ? org : locations.isError ? locations : null;
   if (failed) {
     return (

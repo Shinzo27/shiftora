@@ -65,7 +65,6 @@ export function CommandMenu() {
         variant="outline"
         onClick={() => setOpen(true)}
         className="h-8 w-9 justify-start gap-2 px-2 text-muted-foreground sm:w-56"
-        aria-label="Search and commands"
       >
         <Search />
         <span className="hidden flex-1 text-left font-normal sm:inline">Search…</span>
@@ -73,6 +72,9 @@ export function CommandMenu() {
           <Kbd>{isMac ? '⌘' : 'Ctrl'}</Kbd>
           <Kbd>K</Kbd>
         </KbdGroup>
+        {/* After the visible text, so the name starts with what is on screen (axe
+            label-content-name-mismatch); on a phone, where only the icon shows, it is the name. */}
+        <span className="sr-only">Search and commands</span>
       </Button>
       <CommandDialog open={open} onOpenChange={setOpen}>
         <Command>

@@ -4,6 +4,7 @@ import { CalendarClock, Plus, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -50,6 +51,7 @@ export function CoverageDialog({
   const [start, setStart] = useState('09:00');
   const [end, setEnd] = useState('17:00');
   const [headcount, setHeadcount] = useState('1');
+  const [removing, setRemoving] = useState<CoverageRequirementView | null>(null);
 
   const requirements = useQuery({
     queryKey: ['coverage', orgId, location?.id],
@@ -88,6 +90,7 @@ export function CoverageDialog({
     mutationFn: (id: string) => coverageApi.remove(orgId, id),
     onSuccess: () => {
       toast.success('Removed.');
+      setRemoving(null);
       refresh();
     },
     onError: (error: unknown) => {
@@ -224,7 +227,7 @@ export function CoverageDialog({
                       size="icon-sm"
                       aria-label="Remove requirement"
                       disabled={remove.isPending}
-                      onClick={() => remove.mutate(row.id)}
+                      onClick={() => setRemoving(row)}
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -234,6 +237,21 @@ export function CoverageDialog({
             )}
           </div>
         </div>
+
+        <ConfirmDialog
+          open={removing !== null}
+          title="Remove this requirement?"
+          description={
+            removing
+              ? `${DAYS[removing.weekday - 1]} ${removing.startLocal.slice(0, 5)}–${removing.endLocal.slice(0, 5)} stops being filled by the auto-scheduler. Shifts already on the rota stay.`
+              : ''
+          }
+          confirmLabel="Remove"
+          cancelLabel="Keep it"
+          pending={remove.isPending}
+          onConfirm={() => removing && remove.mutate(removing.id)}
+          onCancel={() => setRemoving(null)}
+        />
       </DialogContent>
     </Dialog>
   );

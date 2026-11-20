@@ -4,6 +4,7 @@ import { CheckCircle2, Download, IndianRupee, ReceiptText, Trash2 } from 'lucide
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ErrorState, PageHeader } from '@/components/page';
 import { PeriodPaySheet } from '@/components/payroll/period-pay-sheet';
 import { Badge } from '@/components/ui/badge';
@@ -139,7 +140,6 @@ function NewPeriod() {
         <Input
           id="period-start"
           type="date"
-          required
           value={startsOn}
           onChange={(event) => setStartsOn(event.target.value)}
         />
@@ -149,13 +149,14 @@ function NewPeriod() {
         <Input
           id="period-end"
           type="date"
-          required
           min={startsOn || undefined}
           value={endsOn}
           onChange={(event) => setEndsOn(event.target.value)}
         />
       </div>
-      <Button type="submit" disabled={create.isPending}>
+      {/* Disabled until both dates are chosen, instead of `required`: an empty required date is
+          announced as an invalid entry before anyone has typed (W7½ UI3). */}
+      <Button type="submit" disabled={!startsOn || !endsOn || create.isPending}>
         {create.isPending ? <Spinner /> : null}
         Add pay period
       </Button>
@@ -169,6 +170,7 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
   const queryClient = useQueryClient();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['pay-periods', orgId] });
   const [viewing, setViewing] = useState<PayPeriodView | null>(null);
+  const [removing, setRemoving] = useState<PayPeriodView | null>(null);
 
   const approve = useMutation({
     mutationFn: (id: string) => payrollApi.approve(orgId, id),
@@ -180,7 +182,11 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
   });
   const remove = useMutation({
     mutationFn: (id: string) => payrollApi.remove(orgId, id),
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.success('Pay period deleted');
+      setRemoving(null);
+      refresh();
+    },
     onError: (error) => toast.error(errorMessage(error) ?? 'Could not delete it'),
   });
   const download = useMutation({
@@ -263,7 +269,7 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
                         size="sm"
                         variant="ghost"
                         disabled={remove.isPending}
-                        onClick={() => remove.mutate(period.id)}
+                        onClick={() => setRemoving(period)}
                         aria-label={`Delete the pay period ${range(period)}`}
                       >
                         <Trash2 />
@@ -300,6 +306,16 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
           })}
         </TableBody>
       </Table>
+      <ConfirmDialog
+        open={removing !== null}
+        title={`Delete the pay period ${removing ? range(removing) : ''}?`}
+        description="Only the dates go: punches are untouched, and you can add the period again."
+        confirmLabel="Delete period"
+        cancelLabel="Keep it"
+        pending={remove.isPending}
+        onConfirm={() => removing && remove.mutate(removing.id)}
+        onCancel={() => setRemoving(null)}
+      />
       <PeriodPaySheet
         orgId={orgId}
         period={viewing}

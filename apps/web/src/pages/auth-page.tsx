@@ -191,7 +191,10 @@ function MockSchedule() {
           <div className="text-sm font-semibold">Andheri branch</div>
           <div className="text-xs text-muted-foreground">Tuesday, 10 Nov</div>
         </div>
-        <span className="rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-success">
+        {/* Foreground text with a success dot: text-success on its own 15% tint failed contrast
+            (axe, W7½ UI3). */}
+        <span className="flex items-center gap-1.5 rounded-full bg-success/15 px-2 py-0.5 text-xs font-medium text-foreground">
+          <span className="size-1.5 rounded-full bg-success" aria-hidden="true" />
           Published
         </span>
       </div>

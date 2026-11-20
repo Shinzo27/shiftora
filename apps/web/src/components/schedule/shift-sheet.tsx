@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { FormAlert } from '@/components/page';
 import { OfferPanel } from '@/components/schedule/offer-panel';
 import { Button } from '@/components/ui/button';
@@ -65,6 +66,7 @@ export function ShiftSheet({
 }: ShiftSheetProps) {
   const queryClient = useQueryClient();
   const [warnings, setWarnings] = useState<ShiftWarning[]>([]);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
   const form = useForm<ShiftFormValues>({
@@ -152,9 +154,13 @@ export function ShiftSheet({
       void queryClient.invalidateQueries({ queryKey: ['conflicts'], exact: false });
       void queryClient.invalidateQueries({ queryKey: ['schedules', orgId] });
       toast.success('Shift removed');
+      setConfirmingDelete(false);
       onClose();
     },
-    onError: (error) => setFormError(errorMessage(error)),
+    onError: (error) => {
+      setConfirmingDelete(false);
+      setFormError(errorMessage(error));
+    },
   });
 
   const employeeError = form.formState.errors.employeeId?.message;
@@ -369,13 +375,24 @@ export function ShiftSheet({
         ) : null}
       </FieldGroup>
 
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Delete this shift?"
+        description="It comes off the rota. If the week is published, the change goes out with the next publish. This cannot be undone."
+        confirmLabel="Delete shift"
+        cancelLabel="Keep it"
+        pending={remove.isPending}
+        onConfirm={() => remove.mutate()}
+        onCancel={() => setConfirmingDelete(false)}
+      />
+
       <SheetFooter className="sm:justify-between">
         {shift ? (
           <Button
             type="button"
             variant="ghost"
             className="text-destructive hover:text-destructive"
-            onClick={() => remove.mutate()}
+            onClick={() => setConfirmingDelete(true)}
             disabled={remove.isPending || save.isPending}
           >
             {remove.isPending ? <Spinner /> : <Trash2 />}

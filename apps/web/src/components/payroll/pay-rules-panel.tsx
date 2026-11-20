@@ -4,6 +4,7 @@ import { CalendarClock, Plus, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 
+import { ConfirmDialog } from '@/components/confirm-dialog';
 import { ErrorState, FormAlert } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -86,15 +87,19 @@ export function PayRulesPanel() {
     queryFn: () => payRulesApi.list(orgId),
   });
   const [writing, setWriting] = useState(false);
+  const [withdrawing, setWithdrawing] = useState<PayRulesVersionView | null>(null);
 
   const withdraw = useMutation({
     mutationFn: (version: PayRulesVersionView) => payRulesApi.withdraw(orgId, version.id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['pay-rules', orgId] });
       toast.success('Version withdrawn');
+      setWithdrawing(null);
     },
-    onError: (error) =>
-      toast.error(errorMessage(error) ?? 'Could not withdraw — a pay period may already use it'),
+    onError: (error) => {
+      setWithdrawing(null);
+      toast.error(errorMessage(error) ?? 'Could not withdraw — a pay period may already use it');
+    },
   });
 
   const latest = versions.data?.[0];
@@ -155,7 +160,7 @@ export function PayRulesPanel() {
                   variant="ghost"
                   size="sm"
                   disabled={withdraw.isPending}
-                  onClick={() => withdraw.mutate(version)}
+                  onClick={() => setWithdrawing(version)}
                   title="Withdraw the newest version, if no pay period has used it"
                 >
                   <Undo2 /> Withdraw
@@ -165,6 +170,17 @@ export function PayRulesPanel() {
           ))}
         </ul>
       )}
+
+      <ConfirmDialog
+        open={withdrawing !== null}
+        title={`Withdraw v${withdrawing?.version ?? ''}?`}
+        description="It has not been used by any pay period yet. Work from its start date is paid under the version before it, or plain hourly pay if there is none."
+        confirmLabel="Withdraw version"
+        cancelLabel="Keep it"
+        pending={withdraw.isPending}
+        onConfirm={() => withdrawing && withdraw.mutate(withdrawing)}
+        onCancel={() => setWithdrawing(null)}
+      />
 
       {/* No `latest` yet is the normal start (new organisations have no rules): the dialog then
           starts from plain hourly pay. Requiring one made the first version impossible to add. */}
