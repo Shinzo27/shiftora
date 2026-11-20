@@ -5,6 +5,8 @@ import {
   CalendarClock,
   Clock,
   Crosshair,
+  FolderTree,
+  LayoutTemplate,
   MapPin,
   MoreHorizontal,
   Pencil,
@@ -60,6 +62,9 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { locationsApi } from '@/lib/api';
 import { CoverageDialog } from '@/components/locations/coverage-dialog';
+import { DepartmentsDialog } from '@/components/locations/departments-dialog';
+import { JobRolesSection } from '@/components/locations/job-roles-section';
+import { TemplatesDialog } from '@/components/locations/templates-dialog';
 import { apiFieldErrors, errorMessage, text, zodFieldErrors, type FieldErrors } from '@/lib/forms';
 import { useOrg } from '@/lib/org-context';
 
@@ -70,7 +75,11 @@ export function LocationsPage() {
   // OrgLayout has already loaded the locations; they live in the org context.
   const { orgId, role, locations } = useOrg();
   const [coverageFor, setCoverageFor] = useState<{ id: string; name: string } | null>(null);
+  const [departmentsFor, setDepartmentsFor] = useState<{ id: string; name: string } | null>(null);
+  const [templatesFor, setTemplatesFor] = useState<{ id: string; name: string } | null>(null);
   const isOwner = role === 'owner';
+  // Owners and managers look after departments, templates and job roles (the API allows both).
+  const canManage = isOwner || role === 'manager';
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<Editing>(null);
   // ?new=1 (from ⌘K or onboarding) opens the add sheet, even when this page is already showing.
@@ -106,6 +115,13 @@ export function LocationsPage() {
                 {...(isOwner ? { onEdit: () => openSheet(location) } : {})}
                 {...(isOwner
                   ? { onCoverage: () => setCoverageFor({ id: location.id, name: location.name }) }
+                  : {})}
+                {...(canManage
+                  ? {
+                      onDepartments: () =>
+                        setDepartmentsFor({ id: location.id, name: location.name }),
+                      onTemplates: () => setTemplatesFor({ id: location.id, name: location.name }),
+                    }
                   : {})}
               />
             </li>
@@ -145,7 +161,19 @@ export function LocationsPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+      {canManage ? <JobRolesSection canEdit={canManage} /> : null}
+
       <CoverageDialog orgId={orgId} location={coverageFor} onClose={() => setCoverageFor(null)} />
+      <DepartmentsDialog
+        orgId={orgId}
+        location={departmentsFor}
+        onClose={() => setDepartmentsFor(null)}
+      />
+      <TemplatesDialog
+        orgId={orgId}
+        location={templatesFor}
+        onClose={() => setTemplatesFor(null)}
+      />
     </>
   );
 }
@@ -154,11 +182,16 @@ function LocationCard({
   location,
   onEdit,
   onCoverage,
+  onDepartments,
+  onTemplates,
 }: {
   location: Location;
   onEdit?: () => void;
   onCoverage?: () => void;
+  onDepartments?: () => void;
+  onTemplates?: () => void;
 }) {
+  const hasActions = Boolean(onEdit ?? onCoverage ?? onDepartments ?? onTemplates);
   const readOnly = location.status === 'read_only';
   return (
     <Card className="h-full transition hover:shadow-md">
@@ -170,7 +203,7 @@ function LocationCard({
           <span className="truncate">{location.name}</span>
         </CardTitle>
         <CardDescription className="truncate">{location.address ?? 'No address'}</CardDescription>
-        {onEdit ? (
+        {hasActions ? (
           <CardAction>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -179,12 +212,24 @@ function LocationCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={onEdit}>
-                  <Pencil /> Edit
-                </DropdownMenuItem>
+                {onEdit ? (
+                  <DropdownMenuItem onSelect={onEdit}>
+                    <Pencil /> Edit
+                  </DropdownMenuItem>
+                ) : null}
                 {onCoverage ? (
                   <DropdownMenuItem onSelect={onCoverage}>
                     <CalendarClock /> Coverage
+                  </DropdownMenuItem>
+                ) : null}
+                {onDepartments ? (
+                  <DropdownMenuItem onSelect={onDepartments}>
+                    <FolderTree /> Departments
+                  </DropdownMenuItem>
+                ) : null}
+                {onTemplates ? (
+                  <DropdownMenuItem onSelect={onTemplates}>
+                    <LayoutTemplate /> Shift templates
                   </DropdownMenuItem>
                 ) : null}
               </DropdownMenuContent>

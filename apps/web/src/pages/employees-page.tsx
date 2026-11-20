@@ -14,6 +14,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  CalendarClock,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -24,6 +25,7 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 
+import { AvailabilitySheet } from '@/components/employees/availability-sheet';
 import { ErrorState, FormAlert, initials, PageHeader } from '@/components/page';
 import { TextField } from '@/components/text-field';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -119,6 +121,7 @@ export function EmployeesPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [params, setParams] = useSearchParams();
   const [editing, setEditing] = useState<Editing>(null);
+  const [availabilityFor, setAvailabilityFor] = useState<Employee | null>(null);
   // ?new=1 (from ⌘K or onboarding) opens the add sheet, even when this page is already showing.
   const sheet: Editing = editing ?? (canManage && params.has('new') ? 'new' : null);
 
@@ -209,6 +212,9 @@ export function EmployeesPage() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onSelect={() => openSheet(row.original)}>
                 <Pencil /> Edit
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setAvailabilityFor(row.original)}>
+                <CalendarClock /> Availability &amp; time off
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -402,6 +408,7 @@ export function EmployeesPage() {
           ) : null}
         </SheetContent>
       </Sheet>
+      <AvailabilitySheet employee={availabilityFor} onClose={() => setAvailabilityFor(null)} />
     </>
   );
 }

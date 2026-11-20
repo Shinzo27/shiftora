@@ -57,6 +57,15 @@ import type {
   UpdateEmployeeRequest,
   UpdateLocationRequest,
   UpdateShiftRequest,
+  Availability,
+  CreateShiftTemplateRequest,
+  CreateTimeOffRequest,
+  Department,
+  OfferResult,
+  PayrollEmployee,
+  SetAvailabilityRequest,
+  ShiftTemplate,
+  UpdateShiftTemplateRequest,
 } from '@shiftora/shared';
 
 import type { AssignableRole } from '@shiftora/domain';
@@ -170,6 +179,32 @@ export const jobRolesApi = {
   list: (orgId: string) => api.get<JobRole[]>('/job-roles', { orgId }),
   create: (orgId: string, name: string) =>
     api.post<JobRole>('/job-roles', { orgId, body: { name } }),
+  rename: (orgId: string, id: string, name: string) =>
+    api.patch<JobRole>(`/job-roles/${id}`, { orgId, body: { name } }),
+  /** Also takes the role off employees and deletes coverage that needed it (W7½ UI2). */
+  remove: (orgId: string, id: string) => api.delete<void>(`/job-roles/${id}`, { orgId }),
+};
+
+/** A branch's departments (owners and managers write). */
+export const departmentsApi = {
+  list: (orgId: string, locationId: string) =>
+    api.get<Department[]>(`/locations/${locationId}/departments`, { orgId }),
+  create: (orgId: string, locationId: string, name: string) =>
+    api.post<Department>(`/locations/${locationId}/departments`, { orgId, body: { name } }),
+  rename: (orgId: string, id: string, name: string) =>
+    api.patch<Department>(`/departments/${id}`, { orgId, body: { name } }),
+  remove: (orgId: string, id: string) => api.delete<void>(`/departments/${id}`, { orgId }),
+};
+
+/** Named shift shapes per branch ("Morning 08:00–14:00"). */
+export const shiftTemplatesApi = {
+  list: (orgId: string, locationId: string) =>
+    api.get<ShiftTemplate[]>(`/shift-templates?locationId=${locationId}`, { orgId }),
+  create: (orgId: string, body: CreateShiftTemplateRequest) =>
+    api.post<ShiftTemplate>('/shift-templates', { orgId, body }),
+  update: (orgId: string, id: string, body: UpdateShiftTemplateRequest) =>
+    api.patch<ShiftTemplate>(`/shift-templates/${id}`, { orgId, body }),
+  remove: (orgId: string, id: string) => api.delete<void>(`/shift-templates/${id}`, { orgId }),
 };
 
 export const employeesApi = {
@@ -183,6 +218,17 @@ export const employeesApi = {
     api.post<Employee>('/employees', { orgId, body }),
   update: (orgId: string, id: string, body: UpdateEmployeeRequest) =>
     api.patch<Employee>(`/employees/${id}`, { orgId, body }),
+  availability: (orgId: string, id: string) =>
+    api.get<Availability>(`/employees/${id}/availability`, { orgId }),
+  /** Replaces the whole weekly pattern. */
+  setAvailability: (orgId: string, id: string, body: SetAvailabilityRequest) =>
+    api.put<Availability>(`/employees/${id}/availability`, { orgId, body }),
+  /** Time off ending after `from` (an instant), oldest first. */
+  timeOff: (orgId: string, id: string, from: string) =>
+    api.get<TimeOff[]>(`/employees/${id}/time-off?from=${encodeURIComponent(from)}`, { orgId }),
+  addTimeOff: (orgId: string, id: string, body: CreateTimeOffRequest) =>
+    api.post<TimeOff>(`/employees/${id}/time-off`, { orgId, body }),
+  removeTimeOff: (orgId: string, id: string) => api.delete<void>(`/time-off/${id}`, { orgId }),
 };
 
 export const schedulesApi = {
@@ -274,6 +320,9 @@ export const openShiftsApi = {
     }),
   candidates: (orgId: string, shiftId: string) =>
     api.get<ShiftCandidates>(`/shifts/${shiftId}/candidates`, { orgId }),
+  /** Tells everyone who could take it (and only them). */
+  offer: (orgId: string, shiftId: string) =>
+    api.post<OfferResult>(`/shifts/${shiftId}/offer`, { orgId }),
 };
 
 export const autofillApi = {
@@ -341,6 +390,9 @@ export const payrollApi = {
     api.post<PayPeriodView>(`/pay-periods/${id}/approve`, { orgId }),
   export: (orgId: string, id: string, query: string) =>
     api.download(`/pay-periods/${id}/export?${query}`, { orgId }),
+  /** Per-person pay for an approved period, with the day lines behind it (owners). */
+  payroll: (orgId: string, id: string) =>
+    api.get<PayrollEmployee[]>(`/pay-periods/${id}/payroll`, { orgId }),
 };
 
 /** The audit log (W7 D4), owners only. Filters are optional; `cursor` pages to older entries. */

@@ -20,6 +20,10 @@ the design system; a recommendation that changes the look is shown to the owner 
 | `/invite/:code` | Accept an invitation (works signed out) | `POST /invites/accept` | 2026-11-18 |
 | `/o/:orgId/payroll` | Payroll: pay rules (versions, owners edit), pay periods, approval, files | `GET`/`POST`/`DELETE /pay-rules`, `/pay-periods*` | 2026-11-18 |
 | `/o/:orgId/audit` | Audit log (owners) | `GET /audit-events` | 2026-11-18 |
+| `/o/:orgId/schedule` → shift sheet | **Offer to staff** on a saved open shift: candidates eligible first with reasons, one Offer button | `GET /shifts/:id/candidates`, `POST /shifts/:id/offer` | 2026-11-20 |
+| `/o/:orgId/employees` → row menu | **Availability & time off** sheet: weekly pattern (checked with the API's own schema), whole days off on the branch calendar, remove with confirm | `GET`/`PUT /employees/:id/availability`, `GET`/`POST /employees/:id/time-off`, `DELETE /time-off/:id` | 2026-11-20 |
+| `/o/:orgId/locations` | **Job roles** section (add, rename in place, delete with a warning); card menu → **Departments** and **Shift templates** dialogs (owners and managers) | `/job-roles*`, `/locations/:id/departments`, `/departments/:id`, `/shift-templates*` | 2026-11-20 |
+| `/o/:orgId/payroll` → View pay | **Pay per person** for an approved period, highest first, with each person's day lines | `GET /pay-periods/:id/payroll` | 2026-11-20 |
 
 ## API-only routes and why
 
@@ -30,3 +34,6 @@ the design system; a recommendation that changes the look is shown to the owner 
 | `POST /me/push-subscriptions`, `DELETE /me/push-subscriptions` | The browser's PushManager calls them behind the toggle on `/profile`. |
 | `/webhooks/*` | Providers call them, not people. |
 | `/health/*` | Probes. |
+| `GET /pay-rules/in-force` | The Payroll page lists every version with its dates; "the rules on one date" is for integrations and support. |
+| `GET /schedules/:id` | The week board loads weeks through `GET /schedules?locationId&weekStart`; one-by-id is for integrations. |
+| `GET /shift-requests/:id` | The Requests inbox and "My requests" already carry each request in full; one-by-id is for integrations. |

@@ -198,6 +198,11 @@ Do this before writing any code, whatever tool or model you are:
   The table belongs to the audit module; the timesheet's history comes from that method so org
   scoping stays in one place. Writes go through `record()` inside the request transaction, which
   is what makes a correction and its reason impossible to separate.
+- **A Sheet's width comes from the caller — keep it that way.** shadcn generates the side widths as
+  `data-[side=right]:w-3/4 sm:max-w-sm`; a variant class out-ranks a plain one, so every
+  `<SheetContent className="w-full sm:max-w-md">` silently stayed ¾ wide on phones. `ui/sheet.tsx`
+  now applies the default as plain classes *before* `className`, which tailwind-merge lets callers
+  replace. If a shadcn update regenerates `sheet.tsx`, re-apply this, and check at 390 px.
 - **`FormAlert` takes `message`, not children.** In `components/page.tsx` it is
   `({ message }: { message: string | null })`, so `<FormAlert>{text}</FormAlert>` fails the
   typecheck; `FieldError` next to it does take children.

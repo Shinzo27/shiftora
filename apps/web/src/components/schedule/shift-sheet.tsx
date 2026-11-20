@@ -8,6 +8,7 @@ import { Controller, useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 
 import { FormAlert } from '@/components/page';
+import { OfferPanel } from '@/components/schedule/offer-panel';
 import { Button } from '@/components/ui/button';
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
@@ -194,7 +195,7 @@ export function ShiftSheet({
             <FieldError>{employeeError}</FieldError>
           ) : (
             <FieldDescription>
-              Leave it open for staff to pick up once the marketplace ships.
+              Leave it open, then offer it below: eligible staff can pick it up in their app.
             </FieldDescription>
           )}
         </Field>
@@ -316,6 +317,11 @@ export function ShiftSheet({
         ) : null}
 
         <FormAlert message={Object.keys(form.formState.errors).length ? null : formError} />
+
+        {/* A saved open shift can be offered; a new one must be saved first (it has no id). */}
+        {shift && shift.employeeId === null && shift.status !== 'cancelled' ? (
+          <OfferPanel orgId={orgId} shiftId={shift.id} />
+        ) : null}
       </FieldGroup>
 
       <SheetFooter className="sm:justify-between">

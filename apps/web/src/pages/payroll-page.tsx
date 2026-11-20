@@ -1,10 +1,11 @@
 import type { PayPeriodView } from '@shiftora/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2, Download, IndianRupee, Trash2 } from 'lucide-react';
+import { CheckCircle2, Download, IndianRupee, ReceiptText, Trash2 } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
 import { ErrorState, PageHeader } from '@/components/page';
+import { PeriodPaySheet } from '@/components/payroll/period-pay-sheet';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -167,6 +168,7 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
   const { orgId } = useOrg();
   const queryClient = useQueryClient();
   const refresh = () => void queryClient.invalidateQueries({ queryKey: ['pay-periods', orgId] });
+  const [viewing, setViewing] = useState<PayPeriodView | null>(null);
 
   const approve = useMutation({
     mutationFn: (id: string) => payrollApi.approve(orgId, id),
@@ -266,6 +268,16 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
                         <Trash2 />
                       </Button>
                     ) : null}
+                    {period.status === 'approved' && isOwner ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewing(period)}
+                        aria-label={`View pay per person for ${range(period)}`}
+                      >
+                        <ReceiptText /> View pay
+                      </Button>
+                    ) : null}
                     {period.status === 'approved' && isOwner
                       ? (['csv', 'xlsx'] as const).map((format) => (
                           <Button
@@ -287,6 +299,12 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
           })}
         </TableBody>
       </Table>
+      <PeriodPaySheet
+        orgId={orgId}
+        period={viewing}
+        title={viewing ? range(viewing) : ''}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 }
