@@ -85,7 +85,15 @@ export function solve(problem: ScheduleProblem, options: SolveOptions = {}): Sch
           .map((blocker) => blocker.employeeId),
       );
 
-      const next = attemptSwap(problem, employees, slots, state, slot, busy);
+      const next = attemptSwap(
+        problem,
+        employees,
+        slots,
+        state,
+        slot,
+        busy,
+        () => now() >= deadline,
+      );
       if (!next) continue;
 
       state = next;
@@ -124,32 +132,37 @@ function attemptSwap(
   state: State,
   slot: CoverageSlot,
   busy: Set<string>,
+  /** Checked inside the loops: the budget is a promise to the caller, not a hint. */
+  outOfTime: () => boolean,
 ): State | null {
   for (const mover of busy) {
-    const theirs = state.assignments.find((assignment) => assignment.employeeId === mover);
-    if (!theirs) continue;
-    const theirSlot = slots.get(theirs.slotId);
-    if (!theirSlot) continue;
+    // Every shift the mover holds, not only the first: any one of them may be the one in the way
+    // (the benchmark's tight weeks were left unfilled by trying just one).
+    for (const theirs of state.assignments.filter((a) => a.employeeId === mover)) {
+      if (outOfTime()) return null;
+      const theirSlot = slots.get(theirs.slotId);
+      if (!theirSlot) continue;
 
-    for (const alternative of problem.employees) {
-      if (alternative.id === mover) continue;
-
+      // Once per move, not once per candidate: who takes the shift does not change these loads.
+      // Recomputing it inside the loop below is what made one pass outlast the whole budget.
       const withoutTheirs = state.assignments.filter((assignment) => assignment !== theirs);
       const loadsAfterMove = loadsFor(problem, withoutTheirs);
-
-      if (!couldTake(employees.get(alternative.id), loadsAfterMove, theirSlot, alternative.id)) {
-        continue;
-      }
       if (!couldTake(employees.get(mover), loadsAfterMove, slot, mover)) continue;
 
-      return {
-        assignments: [
-          ...withoutTheirs,
-          { slotId: theirSlot.id, employeeId: alternative.id },
-          { slotId: slot.id, employeeId: mover },
-        ],
-        unfilled: state.unfilled.filter((entry) => entry.id !== slot.id),
-      };
+      for (const alternative of problem.employees) {
+        if (alternative.id === mover) continue;
+        if (!couldTake(employees.get(alternative.id), loadsAfterMove, theirSlot, alternative.id)) {
+          continue;
+        }
+        return {
+          assignments: [
+            ...withoutTheirs,
+            { slotId: theirSlot.id, employeeId: alternative.id },
+            { slotId: slot.id, employeeId: mover },
+          ],
+          unfilled: state.unfilled.filter((entry) => entry.id !== slot.id),
+        };
+      }
     }
   }
   return null;

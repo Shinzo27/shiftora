@@ -371,6 +371,10 @@ Do this before writing any code, whatever tool or model you are:
   only on insert leaves a successful second run looking like a wall of warnings.
 - **Backtracking only undoes "busy"**: moving a shift frees a person; it cannot create a role or
   cancel leave. Blockers other than `already_working`/`min_rest` are left alone.
+- **The solver's budget is checked inside its loops** (`attemptSwap` takes `outOfTime`): a deadline
+  checked only between slots let one step overrun 2 s by a full second. Measure solver changes with
+  `pnpm --filter @shiftora/domain bench` before and after; every row must show 0 hard-rule breaches
+  (`hardRuleBreaches`, an independent checker — keep it independent of `blockersFor`).
 - **Only one run at a time per week.** The API refuses a second request while one is
   `queued`/`running` (`409 autofill.already_running`) instead of queueing two solvers that would
   both write shifts; the second would report a confusing "nothing to do".

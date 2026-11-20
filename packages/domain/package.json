@@ -17,7 +17,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "bench": "tsc -p tsconfig.build.json && node ../../scripts/bench-scheduler.mjs"
   },
   "devDependencies": {
     "@shiftora/config": "workspace:*",
