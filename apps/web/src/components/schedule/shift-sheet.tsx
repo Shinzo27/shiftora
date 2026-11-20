@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { addDays, type LocalDate } from '@shiftora/domain';
 import type { Employee, JobRole, Shift, ShiftWarning } from '@shiftora/shared';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, Trash2 } from 'lucide-react';
 import { useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
@@ -22,17 +22,20 @@ import {
 import { SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Spinner } from '@/components/ui/spinner';
 import { Textarea } from '@/components/ui/textarea';
-import { shiftsApi } from '@/lib/api';
+import { shiftsApi, shiftTemplatesApi } from '@/lib/api';
 import { apiFieldErrors, errorMessage } from '@/lib/forms';
 import { shiftFormSchema, type ShiftFormValues } from '@/lib/shift-form';
 import { weekLabel } from '@/lib/week';
 
 const OPEN = 'open';
 const NO_ROLE = 'none';
+const NO_TEMPLATE = 'none';
 
 interface ShiftSheetProps {
   orgId: string;
   scheduleId: string;
+  /** The branch, for its shift templates. */
+  locationId: string;
   weekStart: LocalDate;
   employees: Employee[];
   jobRoles: JobRole[];
@@ -52,6 +55,7 @@ interface ShiftSheetProps {
 export function ShiftSheet({
   orgId,
   scheduleId,
+  locationId,
   weekStart,
   employees,
   jobRoles,
@@ -87,6 +91,25 @@ export function ShiftSheet({
   });
 
   const weekEnd = addDays(weekStart, 6);
+
+  // The branch's templates: picking one fills the times, break and role (all still editable).
+  const templates = useQuery({
+    queryKey: ['shift-templates', orgId, locationId],
+    queryFn: () => shiftTemplatesApi.list(orgId, locationId),
+    enabled: locationId !== '',
+  });
+  const [templateId, setTemplateId] = useState(NO_TEMPLATE);
+
+  function applyTemplate(id: string) {
+    setTemplateId(id);
+    const template = templates.data?.find((item) => item.id === id);
+    if (!template) return;
+    const options = { shouldDirty: true, shouldValidate: true } as const;
+    form.setValue('startTime', template.startTime, options);
+    form.setValue('endTime', template.endTime, options);
+    form.setValue('breakMinutes', template.breakMinutes, options);
+    form.setValue('jobRoleId', template.jobRoleId, options);
+  }
 
   function handleSaved(result: { warnings: ShiftWarning[] }) {
     void queryClient.invalidateQueries({ queryKey: ['shifts', orgId, scheduleId] });
@@ -199,6 +222,28 @@ export function ShiftSheet({
             </FieldDescription>
           )}
         </Field>
+
+        {templates.data && templates.data.length > 0 ? (
+          <Field>
+            <FieldLabel htmlFor="shift-template">Start from a template</FieldLabel>
+            <Select value={templateId} onValueChange={applyTemplate}>
+              <SelectTrigger id="shift-template" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_TEMPLATE}>No template</SelectItem>
+                {templates.data.map((template) => (
+                  <SelectItem key={template.id} value={template.id}>
+                    {template.name} · {template.startTime}–{template.endTime}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Fills the times, break and role; you can still change them.
+            </FieldDescription>
+          </Field>
+        ) : null}
 
         <div className="grid grid-cols-2 gap-3">
           <Field data-invalid={dateError ? true : undefined}>

@@ -222,7 +222,8 @@ function PeriodTable({ periods, isOwner }: { periods: PayPeriodView[]; isOwner: 
                       </Badge>
                       <div className="tabular text-sm">
                         {rupees.format(period.totals.amountMinor / 100)} · {period.totals.employees}{' '}
-                        people · {(period.totals.paidMinutes / 60).toFixed(1)} h
+                        {period.totals.employees === 1 ? 'person' : 'people'} ·{' '}
+                        {(period.totals.paidMinutes / 60).toFixed(1)} h
                       </div>
                     </div>
                   ) : period.status === 'calculating' ? (

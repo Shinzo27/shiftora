@@ -39,19 +39,19 @@ describe('validateWeeklySlots', () => {
 
   it('flags overlapping slots on the same day', () => {
     expect(validateWeeklySlots([slot(1, '09:00', '13:00'), slot(1, '12:00', '18:00')])).toEqual([
-      { index: 1, message: 'Overlaps slot 1' },
+      { index: 1, message: 'Overlaps time 1' },
     ]);
   });
 
   it('flags an overnight slot that runs into the next day’s slot', () => {
     expect(validateWeeklySlots([slot(5, '22:00', '06:00'), slot(6, '05:00', '09:00')])).toEqual([
-      { index: 1, message: 'Overlaps slot 1' },
+      { index: 1, message: 'Overlaps time 1' },
     ]);
   });
 
   it('wraps around the week: Sunday night overlaps Monday morning', () => {
     expect(validateWeeklySlots([slot(7, '22:00', '06:00'), slot(1, '05:00', '09:00')])).toEqual([
-      { index: 1, message: 'Overlaps slot 1' },
+      { index: 1, message: 'Overlaps time 1' },
     ]);
   });
 

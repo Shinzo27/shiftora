@@ -40,7 +40,7 @@ describe('setAvailabilityRequest', () => {
       ],
     });
     expect(result.error?.issues).toEqual([
-      expect.objectContaining({ path: ['slots', 1], message: 'Overlaps slot 1' }),
+      expect.objectContaining({ path: ['slots', 1], message: 'Overlaps time 1' }),
     ]);
   });
 });

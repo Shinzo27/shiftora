@@ -93,6 +93,61 @@ test.describe('scheduling and pay gaps', () => {
     await expect(sheet.getByText('No time off coming up.')).toBeVisible();
   });
 
+  test('a shift template fills a new shift, overnight included', async ({ page, request }) => {
+    const clinic = await seedClinic(request);
+    const headers = {
+      authorization: `Bearer ${await token(request, clinic.email, clinic.password)}`,
+      'x-org-id': clinic.orgId,
+    };
+    const template = await request.post(`${API}/shift-templates`, {
+      headers,
+      data: {
+        locationId: clinic.locationId,
+        name: 'Night',
+        startTime: '21:00',
+        endTime: '07:00',
+        breakMinutes: 45,
+      },
+    });
+    expect(template.ok(), await template.text()).toBeTruthy();
+
+    await signIn(page, clinic.email);
+    await openOrg(page, clinic.orgId, 'schedule');
+    await page
+      .getByRole('button', { name: /add shift/i })
+      .first()
+      .click();
+    const sheet = page.getByRole('dialog', { name: 'Add a shift' });
+    await sheet.getByRole('combobox', { name: 'Employee' }).click();
+    await page.getByRole('option', { name: 'Asha Mehta' }).click();
+    await sheet.getByRole('combobox', { name: 'Start from a template' }).click();
+    await page.getByRole('option', { name: 'Night · 21:00–07:00' }).click();
+
+    await expect(sheet.getByLabel('Starts')).toHaveValue('21:00');
+    await expect(sheet.getByLabel('Ends')).toHaveValue('07:00');
+    await expect(sheet.getByLabel('Break (minutes)')).toHaveValue('45');
+    await sheet.getByRole('button', { name: 'Add shift' }).click();
+
+    await expect(page.getByRole('button', { name: /edit shift .*21:00 to 07:00/i })).toBeVisible();
+  });
+
+  test("a new clinic's owner adds its first pay rules", async ({ page, request }) => {
+    // A new organisation has no rules at all — the case the editor once could not open for.
+    const clinic = await seedClinic(request);
+    await signIn(page, clinic.email);
+    await openOrg(page, clinic.orgId, 'payroll');
+
+    await page.getByRole('button', { name: 'New version' }).click();
+    const dialog = page.getByRole('dialog', { name: 'First pay rules' });
+    await dialog.getByLabel('Applies to work from').fill('2027-01-04');
+    await dialog.getByRole('checkbox', { name: 'Weekly overtime' }).click();
+    await dialog.getByLabel('Weekly overtime after hours').fill('40');
+    await expect(dialog).toContainText('overtime after 40 h a week at 1.5×');
+    await dialog.getByRole('button', { name: 'Save version' }).click();
+
+    await expect(page.getByText('overtime after 40 h a week at 1.5×')).toBeVisible();
+  });
+
   test('job roles are added, renamed in place and deleted after a warning', async ({
     page,
     request,

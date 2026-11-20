@@ -107,7 +107,7 @@ Repository: `git@github-personal:Shinzo27/shiftora.git` (private), branch `main`
 | W2 → W8 | See [§14](#14-day-by-day-plan) | Planned | |
 
 Numbers today: 28 migrations, 883 automated tests (447 unit, 436 integration against real
-Postgres and Redis) plus 10 Playwright end-to-end tests, 110 API endpoints, a React web app on shadcn/ui
+Postgres and Redis) plus 12 Playwright end-to-end tests, 110 API endpoints, a React web app on shadcn/ui
 (login, orgs, locations, employees, the draggable week board with conflict badges, the publish
 flow, live updates over a socket, forgot-password and email-confirmation pages, an installable
 staff app for phones with per-device Web Push; light and dark; axe
@@ -133,6 +133,16 @@ clean on WCAG 2.1 A/AA; Chrome reports no installability errors).
 > - **Local demo data changed:** Meera has a Sunday 09:00–17:00 slot and time off 24–26 Dec; an open
 >   Sunday 22 Nov shift at Andheri is offered to Rohan; Andheri has an "Outpatients" department and a
 >   "Day" template.
+> - **UI2 follow-ups, same day:** (1) **overtime shown live** — the first pay rules entered in the
+>   editor (from 1 Dec: weekly overtime after 40 h at 1.5×), Rohan's 7–11 Dec punches (5 × 9 h,
+>   inserted as demo data the way the seed writes punches), period 7–13 Dec approved → ₹42,750 =
+>   40 h × ₹900 + 5 h × ₹1,350, and View pay shows Friday split into 4 h and a **5 h Overtime 1.5×**
+>   line. That run found a **real bug**: the pay-rules editor never opened for an organisation with
+>   no rules yet (`writing && latest`), i.e. for every new clinic — fixed ("First pay rules" starts
+>   from plain hourly pay) with a Playwright test that fails on the old condition. (2) **"Start from
+>   a template"** in the shift sheet (verified: Night 21:00–07:00, 45 min, Nurse → saved overnight,
+>   555 paid minutes; Playwright test). (3) "Overlaps slot N" → "Overlaps time N" in the domain, the
+>   shared schema test and the API test. Also "1 people" → "1 person" on Payroll. Playwright 12/12.
 > - **Next — W7½ UI3** (policing the UI: the CI route-coverage check reading
 >   `docs/ui-coverage.md`, a dated sweep of every page, axe on every route — `@axe-core/playwright`
 >   needs the owner's OK — and the role-gating smoke test), then **W7 D6** (benchmark).
@@ -1273,8 +1283,10 @@ invoice format sign-off with a CA (values are config, not code).
 | OpenTelemetry spans (HTTP, pg, ioredis, BullMQ) on the existing trace id, exported to Grafana (Tempo/Loki/Prometheus), and Sentry for errors — new dependencies and a hosted backend, so with the deploy | W8 D1 |
 | Audit log retention (detach and archive months older than N years) once the owner decides N | After launch |
 | ~~Screens missing for API features~~ Done: every route has a screen or a reason in `docs/ui-coverage.md` | ✅ W7½ UI2 |
-| Shift templates are managed but not yet *used*: "Add shift from template" on the week board (and departments are not shown anywhere else yet) | W8 polish |
-| The availability overlap message says "Overlaps slot 1" (the domain's word) while the screen labels rows "time 1" — align the wording in `validateWeeklySlots` | W7½ UI3 |
+| ~~Shift templates managed but not used~~ Done: "Start from a template" in the shift sheet fills times, break and role (overnight included) | ✅ 2026-11-20 |
+| Departments are managed but not shown anywhere else yet (no department on a shift or an employee) | When a clinic asks |
+| ~~Availability overlap said "slot 1" while the rows say "time 1"~~ Done: `validateWeeklySlots` says "Overlaps time N" | ✅ 2026-11-20 |
+| Pay-period date inputs show as invalid before anything is typed (`required` on the Payroll page's From/To) — same fix as time off | W7½ UI3 |
 | No automated guard that an endpoint has a screen, and no recorded sweep of every page | W7½ UI3 |
 | `auth.int.test.ts` could reuse `src/testing/test-app.ts` | Any time |
 | Web bundle is 1,093 kB / 339 kB gzip (one chunk, now including the schedule page, dnd-kit and Motion): split per route with React Router `lazy` | W3 D1 (PWA) |

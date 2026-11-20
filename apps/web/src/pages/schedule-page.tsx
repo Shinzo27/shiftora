@@ -389,6 +389,7 @@ export function SchedulePage() {
           key={sheet.shift?.id ?? `${sheet.initial.date}:${sheet.initial.employeeId ?? 'open'}`}
           orgId={orgId}
           scheduleId={schedule?.id ?? ''}
+          locationId={location?.id ?? ''}
           weekStart={weekStart}
           employees={employees.data?.items ?? []}
           jobRoles={jobRoles.data ?? []}

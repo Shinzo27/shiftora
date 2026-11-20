@@ -65,7 +65,7 @@ export function validateWeeklySlots(slots: readonly WeeklySlot[]): SlotIssue[] {
       const a = intervals[i];
       const b = intervals[j];
       if (a && b && overlaps(a, b)) {
-        issues.push({ index: j, message: `Overlaps slot ${i + 1}` });
+        issues.push({ index: j, message: `Overlaps time ${i + 1}` });
       }
     }
   }

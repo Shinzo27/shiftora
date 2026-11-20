@@ -290,7 +290,7 @@ describe('weekly availability', () => {
       },
     });
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ errors: [{ path: 'slots.1', message: 'Overlaps slot 1' }] });
+    expect(res.body).toMatchObject({ errors: [{ path: 'slots.1', message: 'Overlaps time 1' }] });
   });
 });
 

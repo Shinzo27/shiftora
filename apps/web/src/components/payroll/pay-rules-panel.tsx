@@ -166,10 +166,12 @@ export function PayRulesPanel() {
         </ul>
       )}
 
-      {writing && latest ? (
+      {/* No `latest` yet is the normal start (new organisations have no rules): the dialog then
+          starts from plain hourly pay. Requiring one made the first version impossible to add. */}
+      {writing ? (
         <RulesDialog
           orgId={orgId}
-          previous={latest}
+          previous={latest ?? null}
           onClose={() => setWriting(false)}
           onSaved={() => {
             setWriting(false);
@@ -202,9 +204,11 @@ interface Draft {
   note: string;
 }
 
+/** Plain hourly pay: what applies before an organisation's first version. */
+const NO_RULES: PayRulesData = { overtime: [], nightPremium: null, breaks: [], rounding: null };
+
 /** Starts from the last version, so a change is an edit rather than retyping everything. */
-function draftFrom(previous: PayRulesVersionView): Draft {
-  const rules = previous.rules;
+function draftFrom(rules: PayRulesData): Draft {
   const day = rules.overtime.find((rule) => rule.period === 'day');
   const week = rules.overtime.find((rule) => rule.period === 'week');
   const night = rules.nightPremium;
@@ -289,13 +293,14 @@ function RulesDialog({
   onSaved,
 }: {
   orgId: string;
-  previous: PayRulesVersionView;
+  /** null for the organisation's first version. */
+  previous: PayRulesVersionView | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [draft, setDraft] = useState<Draft>(() => ({
-    ...draftFrom(previous),
-    roundingTo: String(previous.rules.rounding?.toMinutes ?? 5),
+    ...draftFrom(previous?.rules ?? NO_RULES),
+    roundingTo: String(previous?.rules.rounding?.toMinutes ?? 5),
   }));
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
@@ -316,10 +321,11 @@ function RulesDialog({
     <Dialog open onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New pay rules version</DialogTitle>
+          <DialogTitle>{previous ? 'New pay rules version' : 'First pay rules'}</DialogTitle>
           <DialogDescription>
-            Starts from v{previous.version} ({describeRules(previous.rules)}). Payslips before the
-            start date keep the old rules.
+            {previous
+              ? `Starts from v${previous.version} (${describeRules(previous.rules)}). Payslips before the start date keep the old rules.`
+              : 'Everything is off until you turn it on. Before the start date, staff are paid their plain hourly rate.'}
           </DialogDescription>
         </DialogHeader>
 
