@@ -1,0 +1,186 @@
+{
+  "startedAt": "2026-11-24T17:06:38.697Z",
+  "base": "http://127.0.0.1:4000/api/v1",
+  "setup": {
+    "orgId": "01a20e7c-2683-70a3-80fe-c1c09721cec8",
+    "location": "Andheri",
+    "jobRole": "Nurse",
+    "eligibleStaff": [
+      "Asha Mehta",
+      "Meera Iyer",
+      "Rohan Desai"
+    ],
+    "note": "all three racers granted the same role and location so the race is real",
+    "shiftsCreated": 10
+  },
+  "rounds": [
+    {
+      "shiftId": "01a20e86-20b4-7038-a27c-814349cd605a",
+      "racers": 3,
+      "winners": 0,
+      "statuses": [
+        409,
+        409,
+        409
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        "shift_request.not_eligible"
+      ]
+    },
+    {
+      "shiftId": "01a20e86-20da-7169-a56b-1c0bfd47e6b8",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-20fc-7023-8b58-7b32d63a8532",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        200,
+        409
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        null,
+        "shift_request.not_eligible"
+      ]
+    },
+    {
+      "shiftId": "01a20e86-2117-73cc-a4c2-6497565e2d8b",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift.already_taken",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-2133-7762-bbb3-81455eb4258d",
+      "racers": 3,
+      "winners": 0,
+      "statuses": [
+        409,
+        409,
+        409
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        "shift_request.not_eligible"
+      ]
+    },
+    {
+      "shiftId": "01a20e86-214e-761b-82b4-73ab0d242737",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-216c-737e-9005-fda67ac43ba7",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-2186-753e-8bde-835647025506",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift.already_taken",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-21a1-75f8-b34b-cc1e9b26aebb",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        409,
+        200
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        "shift_request.not_eligible",
+        null
+      ]
+    },
+    {
+      "shiftId": "01a20e86-21bc-77d3-96c8-31f56f21c3ea",
+      "racers": 3,
+      "winners": 1,
+      "statuses": [
+        409,
+        200,
+        409
+      ],
+      "codes": [
+        "shift_request.not_eligible",
+        null,
+        "shift.already_taken"
+      ]
+    }
+  ],
+  "summary": {
+    "rounds": 10,
+    "racersPerRound": 3,
+    "roundsWithExactlyOneWinner": 8,
+    "roundsWithZeroWinners": 2,
+    "roundsWithMultipleWinners": 0,
+    "totalClaims": 30,
+    "ok200": 8,
+    "conflict409": 22,
+    "otherStatuses": [],
+    "serverErrors5xx": 0,
+    "latencyMs": {
+      "p50": 20,
+      "p95": 51.2,
+      "max": 51.9
+    }
+  },
+  "serverUp": true
+}
