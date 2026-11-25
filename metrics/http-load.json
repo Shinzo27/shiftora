@@ -1,0 +1,52 @@
+{
+  "ranAt": "2026-11-25T16:30:43.492Z",
+  "machine": {
+    "platform": "win32",
+    "arch": "x64",
+    "node": "v26.13.1",
+    "cpus": 12,
+    "memGB": 16
+  },
+  "config": {
+    "connections": 50,
+    "durationSeconds": 10
+  },
+  "results": [
+    {
+      "label": "health (unauth, baseline)",
+      "path": "/health/live",
+      "requestsPerSec": 15797,
+      "totalRequests": 173782,
+      "non2xx": 0,
+      "p50": 2,
+      "p95": 5,
+      "p99": 8,
+      "max": 45,
+      "throughputMB": 5
+    },
+    {
+      "label": "me/open-shifts (staff, auth + RLS)",
+      "path": "/me/open-shifts",
+      "requestsPerSec": 297,
+      "totalRequests": 2967,
+      "non2xx": 0,
+      "p50": 162,
+      "p95": 262,
+      "p99": 327,
+      "max": 480,
+      "throughputMB": 0
+    },
+    {
+      "label": "schedules (owner, auth + query)",
+      "path": "/schedules?locationId=01a20e7c-269b-77b3-9268-a8e9b0ad0591&weekStart=2026-11-23",
+      "requestsPerSec": 916,
+      "totalRequests": 9162,
+      "non2xx": 0,
+      "p50": 52,
+      "p95": 67,
+      "p99": 85,
+      "max": 195,
+      "throughputMB": 1
+    }
+  ]
+}

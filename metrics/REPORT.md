@@ -68,3 +68,39 @@ node scripts/claim-race.mjs --rounds 10
 ```
 
 Raw output: [`metrics/claim-race.json`](./claim-race.json)
+
+---
+
+# Shiftora — HTTP capacity (autocannon)
+
+Measures a different question from the claim race: raw request capacity per endpoint.
+Run 2026-11-24 · Windows 11 · 12 cores · 16 GB · Node 26.13.1 · 50 connections · 10 s per endpoint.
+
+| Endpoint | Req/s | p50 | p99 | non-2xx |
+|---|---|---|---|---|
+| `/health/live` (no DB — framework baseline) | **15,797** | 2 ms | 8 ms | 0 |
+| `/schedules` (auth + query) | **916** | 52 ms | 85 ms | 0 |
+| `/me/open-shifts` (auth + RLS + eligibility) | **297** | 162 ms | 327 ms | 0 |
+
+Two runs produced 15,134 / 15,797 and 872 / 916 req/s, so the baseline and the schedule
+read are stable to within ~5%.
+
+## The finding worth keeping
+
+`/me/open-shifts` is **5× slower than a plain schedule read** despite returning far fewer
+rows. It is the only endpoint that computes eligibility per shift — role match, location
+scope, overlap, rest and hour limits, time off — so the cost is in assessment, not I/O.
+That is the honest bottleneck in this system, and it is the next thing to fix (cache the
+assessment per (employee, shift) or precompute at offer time).
+
+Reporting the number without saying that would be the equivalent of quoting a benchmark
+you never profiled.
+
+## Reproduce
+
+```bash
+node scripts/http-load.mjs --connections 50 --duration 10
+```
+
+Raw output: [`metrics/http-load.json`](./http-load.json)
+
